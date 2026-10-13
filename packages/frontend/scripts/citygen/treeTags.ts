@@ -3,8 +3,11 @@
  * (`lib/map/cityTiles.ts` → `CITY_TREE_PROPS`).
  *
  * Only what is recorded: a crown form when `leaf_type` or the botanical name
- * says it, a height or a crown diameter when tagged with a readable number.
- * Nothing is inferred from position, neighbours or the area's other trees.
+ * says it, a height, a crown diameter or a trunk circumference when tagged
+ * with a readable number, and `street` when the tree is recorded as a street
+ * or avenue tree (a node of a `natural=tree_row`, `denotation=avenue|urban`).
+ * Nothing is inferred from position, neighbours or the area's other trees —
+ * the client reads the setting from the tiles around it (`treeContext.ts`).
  */
 import type { CityTileTree, TreeCrown } from '../../lib/map/cityTiles';
 
@@ -19,7 +22,12 @@ export const TREE_KEYS = new Set([
   'species:en',
   'height',
   'diameter_crown',
+  'circumference',
+  'denotation',
 ]);
+
+/** `denotation` values that record a street or avenue tree. */
+const STREET_DENOTATIONS = new Set(['avenue', 'urban']);
 
 /** Families drawn as palms or conifers (`taxon:family`, or a family as `taxon`). */
 const PALM_FAMILIES = new Set(['arecaceae', 'palmae']);
@@ -85,6 +93,19 @@ export function parseMetres(value: string | undefined): number | undefined {
   return metres > 0 && metres < 150 ? metres : undefined;
 }
 
+/**
+ * A trunk circumference in metres (`1.2`, `1.2 m`, `120 cm` — OSM's default
+ * unit is the metre), or `undefined`. 5 cm to 20 m.
+ */
+export function parseCircumference(value: string | undefined): number | undefined {
+  if (!value) return undefined;
+  const match = /^\s*(\d+(?:[.,]\d+)?)\s*(m|cm)?\s*$/.exec(value);
+  if (!match) return undefined;
+  const number = Number(match[1].replace(',', '.'));
+  const metres = match[2] === 'cm' ? number / 100 : number;
+  return metres >= 0.05 && metres <= 20 ? metres : undefined;
+}
+
 /** The genus a botanical name starts with, lower case (`Platanus x hispanica` → `platanus`). */
 function genusOf(name: string | undefined): string | undefined {
   if (!name) return undefined;
@@ -115,8 +136,14 @@ export function treeCrown(tags: Record<string, string>): TreeCrown | undefined {
   return undefined;
 }
 
-/** The tile properties of one `natural=tree` node's tags. */
-export function treeProperties(tags: Record<string, string>): CityTileTree['properties'] {
+/**
+ * The tile properties of one `natural=tree` node's tags. `inTreeRow`: the
+ * node is a node of a `natural=tree_row` way (the compiler's way pass).
+ */
+export function treeProperties(
+  tags: Record<string, string>,
+  inTreeRow = false,
+): CityTileTree['properties'] {
   const properties: CityTileTree['properties'] = {};
   const crown = treeCrown(tags);
   if (crown) properties.crown = crown;
@@ -124,5 +151,8 @@ export function treeProperties(tags: Record<string, string>): CityTileTree['prop
   if (height !== undefined) properties.height = height;
   const diameter = parseMetres(tags.diameter_crown);
   if (diameter !== undefined) properties.crown_diameter = diameter;
+  const circumference = parseCircumference(tags.circumference);
+  if (circumference !== undefined) properties.circumference = circumference;
+  if (inTreeRow || STREET_DENOTATIONS.has(tags.denotation)) properties.street = true;
   return properties;
 }

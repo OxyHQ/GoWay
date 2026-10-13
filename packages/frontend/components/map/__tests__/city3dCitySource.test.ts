@@ -11,6 +11,7 @@ import {
   fetchCityCoverage,
   fetchCityCoverageDocument,
 } from '@/components/map/city3dLayer.web';
+import { CITY_ROAD_TILE_PATH } from '@/lib/map/cityRoads';
 import {
   CITY_COVERAGE_PATH,
   CITY_TILE_LAYER,
@@ -44,6 +45,11 @@ describe('citySourceFor', () => {
       treeLayer: CITY_TREE_LAYER,
       coverage: [BARCELONA],
     });
+  });
+
+  test('where the road archive is published, the trees read it for their setting', () => {
+    const source = citySourceFor(basemap, true, 'http://localhost:8105', [BARCELONA], true);
+    expect(source.city?.roadTileUrlTemplate).toBe(`http://localhost:8105${CITY_ROAD_TILE_PATH}`);
   });
 });
 

@@ -69,6 +69,9 @@ import {
   type TileCost,
 } from './lod';
 import type { CityCoverageArea } from '@/lib/map/cityTiles';
+
+import type { ClearanceField } from '../camera/clearance';
+import { createVolumeField, type ModelVolumes, type TileVolumes } from '../camera/field';
 import type { QualityProfile } from '@/lib/map/quality/profile';
 
 import type { AnimationClock } from '../../perf/animationClock';
@@ -114,6 +117,7 @@ import { assignSources, type SourcedTile } from './sources';
 import { Transitions } from './transitions';
 import { treeMinHeightM } from './tsl/treeMaterial';
 import { createTslPass, type Warming } from './tsl/tslPass';
+import type { TreeSettingCounts } from './treeContext';
 import type { TreeSourceLayers } from './treeSources';
 import { WorkerPool, webWorker } from './workerPool';
 
@@ -150,6 +154,11 @@ export interface CityEngineOptions {
     sourceLayer: string;
     /** The city tiles' layer of trees OSM records (`CITY_TREE_LAYER`). */
     treeLayer: string;
+    /**
+     * `{z}/{x}/{y}` of the road archive's tiles (`CITY_ROAD_TILE_PATH`), read
+     * for the trees' setting (`treeContext.ts`); absent where none is published.
+     */
+    roadTileUrlTemplate?: string;
     coverage: readonly CityCoverageArea[];
   } | null;
   /**
@@ -276,6 +285,11 @@ export interface CityEngineStats {
   /** Trees (instances) and their triangles drawn last frame. */
   trees: number;
   treeTriangles: number;
+  /**
+   * Where the drawn tiles' mapped trees went (`treeContext.ts`): street or
+   * nature, moved off a carriageway to the kerb, or left out of one.
+   */
+  treeSettings: TreeSettingCounts;
   /** GPU bytes held by the tile cache. */
   gpuBytes: number;
   /** Worker time for the last tile: decode + mesh, and tree placement. */
@@ -337,6 +351,11 @@ export interface CityEngine {
   renderModels(view: CityView): void;
   /** The drawn ground everything stands on (`setGround`), or `null` on a flat map. */
   readonly ground: Ground | null;
+  /**
+   * The buildings held and the landmarks drawn, as the height field the
+   * camera must clear (`camera/clearance.ts`, `docs/MAP_CAMERA_CLEARANCE.md`).
+   */
+  readonly clearance: ClearanceField;
   /** Draw a pass with this engine's renderer. Not faded with the buildings: a pass owns its own visibility. */
   renderPass(pass: CityPass, view: CityView): void;
   /** The map's light, re-applied whenever `building-3d`'s would change (the sun). */
@@ -429,17 +448,29 @@ function expandTemplate(template: string, tile: TileId): string {
     .replace('{y}', String(tile.y));
 }
 
-/** The fill's source tile for a city tile: its ancestor at the fill source's zoom. */
-function treeFill(
+/**
+ * What surrounds a city tile's trees (`treeContext.ts`): its ancestor at the
+ * basemap's zoom (areas; the fill's landcover) and the road tile at its own
+ * address.
+ */
+function treeContextFor(
   tile: TileId,
-  fill: { tileUrlTemplate: string; tileZoom: number; mappedLayer: string },
-): { url: string; tile: TileId; mappedLayer: string } {
-  const shift = Math.max(0, tile.z - fill.tileZoom);
+  source: {
+    tileUrlTemplate: string;
+    tileZoom: number;
+    mappedLayer: string;
+    roadTileUrlTemplate?: string;
+  },
+): { url: string; tile: TileId; roadsUrl?: string; mappedLayer: string } {
+  const shift = Math.max(0, tile.z - source.tileZoom);
   const parent = { z: tile.z - shift, x: tile.x >> shift, y: tile.y >> shift };
   return {
-    url: expandTemplate(fill.tileUrlTemplate, parent),
+    url: expandTemplate(source.tileUrlTemplate, parent),
     tile: parent,
-    mappedLayer: fill.mappedLayer,
+    ...(source.roadTileUrlTemplate
+      ? { roadsUrl: expandTemplate(source.roadTileUrlTemplate, tile) }
+      : {}),
+    mappedLayer: source.mappedLayer,
   };
 }
 
@@ -624,6 +655,45 @@ export function createCityEngine(options: CityEngineOptions): CityEngine {
     transitions.drop(entry);
     disposeEntry(entry);
     grounder.forget(entry.key);
+    volumesVersion++;
+  });
+  // The camera's height field (`camera/field.ts`): the finest mesh held per
+  // tile and the landmarks drawn, re-listed only when one of them (or the
+  // ground) changed — a tile admitted or evicted, a landmark drawn or not.
+  let volumesVersion = 0;
+  let volumesListed = -1;
+  let volumeTiles: TileVolumes[] = [];
+  let volumeModels: ModelVolumes[] = [];
+  const listVolumes = () => {
+    if (volumesListed === volumesVersion) return;
+    volumesListed = volumesVersion;
+    const finest = new Map<string, { lod: Lod; tile: TileVolumes }>();
+    for (const entry of cache.values()) {
+      const volumes = entry?.packed?.volumes;
+      if (!entry?.packed || !volumes) continue;
+      const name = entry.key.slice(0, entry.key.indexOf('@'));
+      const known = finest.get(name);
+      if (known && known.lod <= entry.lod) continue;
+      const [z, x, y] = name.split('/').map(Number);
+      finest.set(name, {
+        lod: entry.lod,
+        tile: { tile: { z, x, y }, volumes, polygonBoxes: entry.packed.polygonBoxes },
+      });
+    }
+    volumeTiles = [...finest.values()].map((f) => f.tile);
+    volumeModels = landmarks.volumes();
+  };
+  const clearance = createVolumeField({
+    version: () => volumesVersion,
+    tiles: () => {
+      listVolumes();
+      return volumeTiles;
+    },
+    models: () => {
+      listVolumes();
+      return volumeModels;
+    },
+    ground: () => ground,
   });
   const scheduler = new TileScheduler<LodRequest>((t) => lodKey(tileKey(t), t.lod));
   const requests = new Map<number, LodRequest>();
@@ -641,6 +711,8 @@ export function createCityEngine(options: CityEngineOptions): CityEngine {
   let errors = 0;
   // Which official datasets each tile entry draws, and the set last reported.
   const entrySources = new WeakMap<object, readonly string[]>();
+  // Where each tile entry's mapped trees went (`treeContext.ts`), for the stats.
+  const entryTreeSettings = new WeakMap<object, TreeSettingCounts>();
   let drawnSources = '';
   const reportSources = (sources: ReadonlySet<string>) => {
     const key = [...sources].sort().join(',');
@@ -652,7 +724,13 @@ export function createCityEngine(options: CityEngineOptions): CityEngine {
   let lastFrameAt = 0;
   let lastStatsAt = 0;
   let lastSignature = '';
-  let drawn = { triangles: 0, vertices: 0, trees: 0, treeTriangles: 0 };
+  let drawn = {
+    triangles: 0,
+    vertices: 0,
+    trees: 0,
+    treeTriangles: 0,
+    treeSettings: { street: 0, nature: 0, nudged: 0, offCarriageway: 0 },
+  };
   // Tiles this frame wanted to draw but could not yet: on terrain, not lifted.
   const unlifted = new Set<string>();
   // Measured full-detail cost per canonical tile, and a running mean of it.
@@ -732,11 +810,14 @@ export function createCityEngine(options: CityEngineOptions): CityEngine {
       if ((status === 'drawn') === drawnLandmarks.has(id)) return;
       if (status === 'drawn') drawnLandmarks.add(id);
       else drawnLandmarks.delete(id);
+      volumesVersion++;
       rehide(id);
       options.onLandmarkStatus?.(id, status);
     },
     onLoadFailed: (id) => options.onLandmarkFailed?.(id),
     pageOrigin: typeof location !== 'undefined' ? location.origin : null,
+    // The eye must not enter them (`camera/clearance.ts`).
+    volumes: true,
   });
 
   // Models are drawn in their own pass (their own layer in the style), with
@@ -882,7 +963,10 @@ export function createCityEngine(options: CityEngineOptions): CityEngine {
     const wanted = protectedKeys();
     while (arrivals.length > 0) {
       const next = arrivals[0];
-      const bytes = (next.reply.mesh?.bytes ?? 0) + (next.reply.trees?.data.byteLength ?? 0);
+      const bytes =
+        (next.reply.mesh?.bytes ?? 0) +
+        (next.reply.trees?.data.byteLength ?? 0) +
+        (next.reply.trees?.form.byteLength ?? 0);
       if (!upload.take(bytes)) break;
       arrivals.shift();
       const entry = createTileEntry(
@@ -895,6 +979,7 @@ export function createCityEngine(options: CityEngineOptions): CityEngine {
         next.format,
       );
       if (entry && next.reply.sources) entrySources.set(entry, next.reply.sources);
+      if (entry && next.reply.treeSettings) entryTreeSettings.set(entry, next.reply.treeSettings);
       remember(next.key.slice(0, next.key.indexOf('@')), next.lod, entry);
       if (next.reply.treesComplete === false) {
         const attempts = (incomplete.get(next.key)?.attempts ?? 0) + 1;
@@ -912,6 +997,7 @@ export function createCityEngine(options: CityEngineOptions): CityEngine {
         incomplete.delete(next.key);
       }
       cache.put(next.key, entry, entry?.bytes ?? 0, frame, wanted);
+      if (entry?.packed?.volumes) volumesVersion++;
     }
     if (arrivals.length > 0) options.requestRepaint();
     reportStats(true);
@@ -982,14 +1068,16 @@ export function createCityEngine(options: CityEngineOptions): CityEngine {
                 sourceLayer: options.city.sourceLayer,
                 format: 'goway' as const,
                 ...(hidden.length > 0 ? { hidden } : {}),
-                // The fill reads the basemap's landcover: the city tiles
+                // The trees' setting reads the basemap's areas and the road
+                // archive; the fill the basemap's landcover: the city tiles
                 // carry buildings and the trees OSM records, no landcover.
                 ...(trees
                   ? {
-                      treeFill: treeFill(tile, {
+                      treeContext: treeContextFor(tile, {
                         tileUrlTemplate: options.tileUrlTemplate,
                         tileZoom: options.tileZoom,
                         mappedLayer: options.city.treeLayer,
+                        roadTileUrlTemplate: options.city.roadTileUrlTemplate,
                       }),
                     }
                   : {}),
@@ -1120,7 +1208,13 @@ export function createCityEngine(options: CityEngineOptions): CityEngine {
     }
 
     for (const entry of cache.values()) setEntryVisible(entry, false);
-    drawn = { triangles: 0, vertices: 0, trees: 0, treeTriangles: 0 };
+    drawn = {
+      triangles: 0,
+      vertices: 0,
+      trees: 0,
+      treeTriangles: 0,
+      treeSettings: { street: 0, nature: 0, nudged: 0, offCarriageway: 0 },
+    };
     unlifted.clear();
     const casting: DrawnTile[] = [];
     const sources = new Set<string>();
@@ -1162,6 +1256,13 @@ export function createCityEngine(options: CityEngineOptions): CityEngine {
         } else {
           drawn.trees += entry.treeCount;
           drawn.treeTriangles += entry.treeTriangles;
+          const settings = entryTreeSettings.get(entry);
+          if (settings) {
+            drawn.treeSettings.street += settings.street;
+            drawn.treeSettings.nature += settings.nature;
+            drawn.treeSettings.nudged += settings.nudged;
+            drawn.treeSettings.offCarriageway += settings.offCarriageway;
+          }
         }
       }
     }
@@ -1281,6 +1382,8 @@ export function createCityEngine(options: CityEngineOptions): CityEngine {
       return ground;
     },
 
+    clearance,
+
     renderModels(view) {
       if (disposed || !models.active) return;
       probe?.enter('models');
@@ -1299,6 +1402,7 @@ export function createCityEngine(options: CityEngineOptions): CityEngine {
       // buildings, trees, the street detail and city life (the grids), models,
       // landmarks and live vehicles (the same sampler, at their anchor).
       ground = sample ? createGround(sample, lattice) : null;
+      volumesVersion++;
       grounder.setGround(ground);
       models.setGround(sample);
       for (const overlay of overlays) overlay.setGround(ground);

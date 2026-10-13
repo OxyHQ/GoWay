@@ -124,6 +124,8 @@ const STYLE_NAMES: Record<MapStyleId, string> = {
   standard: 'GoWay Standard',
   streets: 'GoWay Streets',
   outdoors: 'GoWay Outdoors',
+  navigation: 'GoWay Navigation',
+  monochrome: 'GoWay Monochrome',
   satellite: 'GoWay Satellite',
   hybrid: 'GoWay Hybrid',
   light: 'GoWay Light',

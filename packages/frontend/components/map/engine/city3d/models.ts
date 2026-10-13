@@ -48,6 +48,8 @@ import * as THREE from 'three';
 import type { GLTF } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import type { ModelPlacement } from '@goway.to/sdk';
 
+import type { ModelVolumes } from '../camera/field';
+import { type SurfaceMesh, surfaceVolumes, type VolumeIndex } from '../camera/volumes';
 import { createGltfLoader } from './gltf';
 import { batchable, batchAsset } from './modelBatch';
 import {
@@ -135,6 +137,11 @@ export interface ModelLayer {
    * it rather than at sea level inside it.
    */
   setGround(sample: GroundSampler | null): void;
+  /**
+   * Each drawn model as columns for the camera (`camera/volumes.ts`): the
+   * asset's own triangles, measured once per asset, placed where it stands.
+   */
+  volumes(): ModelVolumes[];
   /** Whether anything could draw (lets the engine skip the pass). */
   readonly active: boolean;
   dispose(): void;
@@ -149,11 +156,14 @@ interface Asset {
   batched: THREE.Group | null;
   /** Bounds in the asset's own metres. */
   bounds: THREE.Box3;
+  /** Its columns for the camera, when the layer measures them (`ModelLayerOptions.volumes`). */
+  volumes: VolumeIndex | null;
   animations: THREE.AnimationClip[];
 }
 
 interface Instance {
   spec: ModelSpec;
+  asset: Asset;
   root: THREE.Group;
   /** Bounds of the asset, cached for sizing and picking. */
   bounds: THREE.Box3;
@@ -405,12 +415,50 @@ export interface ModelLayerOptions {
   onLoadFailed?: (id: string) => void;
   /** Where relative URLs resolve and which origin counts as "this page". */
   pageOrigin: string | null;
+  /**
+   * Measure each asset's columns for the camera when it loads
+   * (`assetVolumes`), and report the drawn models in `volumes()`: the
+   * landmarks, which the eye must not enter. Off for vehicles and SDK models.
+   */
+  volumes?: boolean;
 }
 
 /** Whether a model matrix is unchanged (`modelMatrix` is float64 arithmetic: exact equality). */
 function sameMatrix(a: ArrayLike<number>, b: ArrayLike<number>): boolean {
   for (let i = 0; i < 16; i++) if (a[i] !== b[i]) return false;
   return true;
+}
+
+/**
+ * A model's columns for the camera (`camera/volumes.ts` → `surfaceVolumes`),
+ * from its own triangles in its own metres: x east, y north at heading 0
+ * (glTF's −X and +Z), z up. Columns of 1.5–8 m, about 32 across the model: a
+ * spire stays a spire. Exported for the tests.
+ */
+export function assetVolumes(scene: THREE.Object3D): VolumeIndex | null {
+  scene.updateMatrixWorld(true);
+  const box = new THREE.Box3().setFromObject(scene);
+  if (box.isEmpty()) return null;
+  const extent = Math.max(box.max.x - box.min.x, box.max.z - box.min.z);
+  const cellM = Math.min(8, Math.max(1.5, extent / 32));
+  const meshes: SurfaceMesh[] = [];
+  const point = new THREE.Vector3();
+  scene.traverse((node) => {
+    const mesh = node as THREE.Mesh;
+    if (!mesh.isMesh) return;
+    const position = mesh.geometry.getAttribute('position') as THREE.BufferAttribute | undefined;
+    if (!position) return;
+    const enu = new Float32Array(position.count * 3);
+    for (let i = 0; i < position.count; i++) {
+      point.fromBufferAttribute(position, i).applyMatrix4(mesh.matrixWorld);
+      enu[i * 3] = -point.x;
+      enu[i * 3 + 1] = point.z;
+      enu[i * 3 + 2] = point.y;
+    }
+    const index = mesh.geometry.getIndex();
+    meshes.push({ positions: enu, index: index ? index.array : null });
+  });
+  return surfaceVolumes(meshes, cellM);
 }
 
 export function createModelLayer(options: ModelLayerOptions): ModelLayer {
@@ -474,7 +522,9 @@ export function createModelLayer(options: ModelLayerOptions): ModelLayer {
       if (triangles > MAX_MODEL_TRIANGLES) throw new Error('model over the triangle budget');
       const bounds = new THREE.Box3().setFromObject(gltf.scene);
       const batched = batchable(gltf.scene, gltf.animations) ? batchAsset(gltf.scene, night) : null;
-      return { scene: gltf.scene, batched, bounds, animations: gltf.animations };
+      // Measured here, with the parse, not on the first camera change that asks.
+      const volumes = options.volumes ? assetVolumes(gltf.scene) : null;
+      return { scene: gltf.scene, batched, bounds, volumes, animations: gltf.animations };
     })();
     assets.set(url, promise);
     return promise;
@@ -507,6 +557,7 @@ export function createModelLayer(options: ModelLayerOptions): ModelLayer {
     }
     return {
       spec,
+      asset,
       root,
       bounds: asset.bounds.clone(),
       mixer,
@@ -756,6 +807,25 @@ export function createModelLayer(options: ModelLayerOptions): ModelLayer {
     setGround(sample) {
       ground = sample;
       options.requestRepaint();
+    },
+
+    volumes() {
+      const out: ModelVolumes[] = [];
+      for (const instance of instances.values()) {
+        const volumes = instance.asset.volumes;
+        if (instance.status !== 'drawn' || !volumes) continue;
+        const { position, altitude, orientation, scale } = instance.spec.placement;
+        out.push({
+          x: mercatorXFromLng(position.longitude),
+          y: mercatorYFromLat(position.latitude),
+          latitude: position.latitude,
+          baseM: altitude.meters + (ground ? ground(position.longitude, position.latitude) : 0),
+          heading: orientation.heading,
+          scale,
+          volumes,
+        });
+      }
+      return out;
     },
 
     anchors() {

@@ -4,16 +4,34 @@ import type { SourceAreas } from './areas';
 export const LIVE_SOURCE_AREAS: Readonly<Record<string, SourceAreas>> = {
   "renfe-cercanias": {
     "outer": {
-      "west": -8.28,
-      "south": 36.36,
-      "east": 3.21,
-      "north": 43.79
+      "west": -8.88,
+      "south": 36.08,
+      "east": 5.43,
+      "north": 45.81
     },
     "areas": [
       {
-        "west": -8.28,
-        "south": 43.44,
-        "east": -8.15,
+        "west": -8.88,
+        "south": 41.1,
+        "east": -8.5,
+        "north": 41.75
+      },
+      {
+        "west": -8.81,
+        "south": 42.47,
+        "east": -1.61,
+        "north": 43.05
+      },
+      {
+        "west": -8.76,
+        "south": 41.97,
+        "east": -3.62,
+        "north": 42.53
+      },
+      {
+        "west": -8.5,
+        "south": 42.97,
+        "east": -6.99,
         "north": 43.55
       },
       {
@@ -23,27 +41,45 @@ export const LIVE_SOURCE_AREAS: Readonly<Record<string, SourceAreas>> = {
         "north": 43.79
       },
       {
-        "west": -7.11,
-        "south": 43.43,
-        "east": -6.99,
-        "north": 43.54
+        "west": -7.28,
+        "south": 39.33,
+        "east": -6.34,
+        "north": 39.52
       },
       {
-        "west": -6.46,
-        "south": 38.04,
+        "west": -7.03,
+        "south": 38.46,
+        "east": -3.35,
+        "north": 39.04
+      },
+      {
+        "west": -7.01,
+        "south": 36.95,
+        "east": -2.54,
+        "north": 37.54
+      },
+      {
+        "west": -7,
+        "south": 37.47,
+        "east": -6.72,
+        "north": 37.98
+      },
+      {
+        "west": -6.69,
+        "south": 38,
         "east": -5.75,
         "north": 38.5
       },
       {
-        "west": -6.45,
-        "south": 38.51,
-        "east": -6.29,
-        "north": 39.51
+        "west": -6.53,
+        "south": 41.46,
+        "east": -4.38,
+        "north": 42.03
       },
       {
         "west": -6.43,
-        "south": 39.74,
-        "east": -4.23,
+        "south": 39.45,
+        "east": -3.22,
         "north": 40.03
       },
       {
@@ -51,12 +87,6 @@ export const LIVE_SOURCE_AREAS: Readonly<Record<string, SourceAreas>> = {
         "south": 36.36,
         "east": -6.02,
         "north": 36.96
-      },
-      {
-        "west": -6.26,
-        "south": 36.97,
-        "east": -5.74,
-        "north": 37.54
       },
       {
         "west": -6.16,
@@ -73,44 +103,38 @@ export const LIVE_SOURCE_AREAS: Readonly<Record<string, SourceAreas>> = {
       {
         "west": -5.92,
         "south": 37.5,
-        "east": -5.48,
-        "north": 37.98
+        "east": -3.21,
+        "north": 38.03
       },
       {
-        "west": -5.76,
-        "south": 42.49,
-        "east": -2.97,
-        "north": 43.05
+        "west": -5.71,
+        "south": 40.45,
+        "east": -2.79,
+        "north": 41.03
       },
       {
-        "west": -5.55,
-        "south": 41.97,
-        "east": -3.62,
-        "north": 42.51
-      },
-      {
-        "west": -4.96,
-        "south": 41,
+        "west": -5.63,
+        "south": 40.96,
         "east": -4.65,
-        "north": 41.37
+        "north": 41.54
       },
       {
-        "west": -4.81,
+        "west": -5.51,
+        "south": 36.08,
+        "east": -5.37,
+        "north": 36.52
+      },
+      {
+        "west": -5.44,
         "south": 36.49,
         "east": -4.38,
         "north": 36.96
       },
       {
-        "west": -4.78,
-        "south": 41.59,
-        "east": -4.38,
-        "north": 42.03
-      },
-      {
-        "west": -4.73,
-        "south": 40.45,
-        "east": -2.79,
-        "north": 41
+        "west": -4.62,
+        "south": 37.96,
+        "east": -3.47,
+        "north": 38.31
       },
       {
         "west": -3.93,
@@ -119,16 +143,46 @@ export const LIVE_SOURCE_AREAS: Readonly<Record<string, SourceAreas>> = {
         "north": 40.55
       },
       {
+        "west": -3.65,
+        "south": 38.96,
+        "east": -1.95,
+        "north": 39.45
+      },
+      {
         "west": -2.84,
         "south": 40.95,
-        "east": -1.59,
-        "north": 41.4
+        "east": -1.04,
+        "north": 41.54
+      },
+      {
+        "west": -2.69,
+        "south": 41.45,
+        "east": 2.87,
+        "north": 42.05
+      },
+      {
+        "west": -2.54,
+        "south": 36.78,
+        "east": -2.39,
+        "north": 37
       },
       {
         "west": -2.49,
         "south": 42.01,
         "east": -1.55,
-        "north": 42.97
+        "north": 42.53
+      },
+      {
+        "west": -2.19,
+        "south": 39.99,
+        "east": -2.09,
+        "north": 40.09
+      },
+      {
+        "west": -1.9,
+        "south": 38.46,
+        "east": -0.11,
+        "north": 39.05
       },
       {
         "west": -1.83,
@@ -143,22 +197,28 @@ export const LIVE_SOURCE_AREAS: Readonly<Record<string, SourceAreas>> = {
         "north": 38.02
       },
       {
-        "west": -1.57,
-        "south": 41.47,
-        "east": -0.49,
-        "north": 42.05
+        "west": -1.47,
+        "south": 37.99,
+        "east": -0.45,
+        "north": 38.53
+      },
+      {
+        "west": -1.41,
+        "south": 40.52,
+        "east": -1.21,
+        "north": 41.01
+      },
+      {
+        "west": -1.29,
+        "south": 39.96,
+        "east": -0.65,
+        "north": 40.51
       },
       {
         "west": -1.25,
         "south": 38.98,
         "east": 0,
         "north": 40.04
-      },
-      {
-        "west": -1.05,
-        "south": 37.99,
-        "east": -0.11,
-        "north": 39.04
       },
       {
         "west": -0.78,
@@ -185,16 +245,46 @@ export const LIVE_SOURCE_AREAS: Readonly<Record<string, SourceAreas>> = {
         "north": 41.05
       },
       {
-        "west": 0.58,
-        "south": 41.45,
-        "east": 2.87,
-        "north": 42.05
-      },
-      {
         "west": 1.85,
         "south": 41.98,
         "east": 3.21,
         "north": 42.51
+      },
+      {
+        "west": 2.83,
+        "south": 42.65,
+        "east": 2.93,
+        "north": 42.75
+      },
+      {
+        "west": 2.96,
+        "south": 43.14,
+        "east": 3.06,
+        "north": 43.24
+      },
+      {
+        "west": 3.83,
+        "south": 43.55,
+        "east": 4.84,
+        "north": 43.97
+      },
+      {
+        "west": 4.81,
+        "south": 45.71,
+        "east": 4.91,
+        "north": 45.81
+      },
+      {
+        "west": 4.93,
+        "south": 44.94,
+        "east": 5.03,
+        "north": 45.04
+      },
+      {
+        "west": 5.27,
+        "south": 43.25,
+        "east": 5.43,
+        "north": 43.51
       }
     ]
   },
@@ -355,5 +445,2108 @@ export const LIVE_SOURCE_AREAS: Readonly<Record<string, SourceAreas>> = {
         "north": 40.96
       }
     ]
+  },
+  "helsinki-hsl": {
+    "outer": {
+      "west": 23.98,
+      "south": 59.94,
+      "east": 25.72,
+      "north": 61.03
+    },
+    "areas": [
+      {
+        "west": 23.98,
+        "south": 59.96,
+        "east": 25.72,
+        "north": 60.55
+      },
+      {
+        "west": 24.38,
+        "south": 59.94,
+        "east": 24.5,
+        "north": 60.05
+      },
+      {
+        "west": 24.73,
+        "south": 60.45,
+        "east": 25.71,
+        "north": 61.03
+      }
+    ]
+  },
+  "netherlands-ovapi": {
+    "outer": {
+      "west": -0.18,
+      "south": 13.3,
+      "east": 21.1,
+      "north": 55.72
+    },
+    "areas": [
+      {
+        "west": -0.18,
+        "south": 51.48,
+        "east": -0.08,
+        "north": 51.58
+      },
+      {
+        "west": -0.1,
+        "south": 43.04,
+        "east": 0,
+        "north": 43.14
+      },
+      {
+        "west": 0.27,
+        "south": 51.09,
+        "east": 0.93,
+        "north": 51.49
+      },
+      {
+        "west": 1.21,
+        "south": 51.9,
+        "east": 1.31,
+        "north": 52
+      },
+      {
+        "west": 1.39,
+        "south": 13.3,
+        "east": 1.6,
+        "north": 13.42
+      },
+      {
+        "west": 1.64,
+        "south": 17.72,
+        "east": 1.74,
+        "north": 17.82
+      },
+      {
+        "west": 1.72,
+        "south": 25.65,
+        "east": 1.85,
+        "north": 25.77
+      },
+      {
+        "west": 2.31,
+        "south": 48.82,
+        "east": 2.83,
+        "north": 48.93
+      },
+      {
+        "west": 2.52,
+        "south": 48.95,
+        "east": 2.62,
+        "north": 49.05
+      },
+      {
+        "west": 3.02,
+        "south": 50.95,
+        "east": 7.86,
+        "north": 52.05
+      },
+      {
+        "west": 3.03,
+        "south": 50.57,
+        "east": 7.25,
+        "north": 51.05
+      },
+      {
+        "west": 3.43,
+        "south": 35.52,
+        "east": 3.53,
+        "north": 35.62
+      },
+      {
+        "west": 3.56,
+        "south": 35.4,
+        "east": 3.66,
+        "north": 35.5
+      },
+      {
+        "west": 4.09,
+        "south": 51.95,
+        "east": 10.02,
+        "north": 52.55
+      },
+      {
+        "west": 4.57,
+        "south": 52.45,
+        "east": 7.52,
+        "north": 53.54
+      },
+      {
+        "west": 4.74,
+        "south": 43.87,
+        "east": 4.84,
+        "north": 43.97
+      },
+      {
+        "west": 4.93,
+        "south": 44.94,
+        "east": 5.03,
+        "north": 45.04
+      },
+      {
+        "west": 5.27,
+        "south": 43.25,
+        "east": 5.43,
+        "north": 43.51
+      },
+      {
+        "west": 5.87,
+        "south": 45.5,
+        "east": 6.82,
+        "north": 45.72
+      },
+      {
+        "west": 6.08,
+        "south": 49.56,
+        "east": 6.18,
+        "north": 49.66
+      },
+      {
+        "west": 6.47,
+        "south": 45.43,
+        "east": 6.57,
+        "north": 45.53
+      },
+      {
+        "west": 7.18,
+        "south": 49.57,
+        "east": 7.28,
+        "north": 49.67
+      },
+      {
+        "west": 7.54,
+        "south": 47.46,
+        "east": 8.88,
+        "north": 48.05
+      },
+      {
+        "west": 7.54,
+        "south": 49.95,
+        "east": 8.74,
+        "north": 50.49
+      },
+      {
+        "west": 7.72,
+        "south": 48.2,
+        "east": 8,
+        "north": 48.53
+      },
+      {
+        "west": 7.97,
+        "south": 50.83,
+        "east": 8.07,
+        "north": 50.93
+      },
+      {
+        "west": 8.14,
+        "south": 48.57,
+        "east": 9.89,
+        "north": 49.04
+      },
+      {
+        "west": 8.16,
+        "south": 47.33,
+        "east": 8.59,
+        "north": 47.53
+      },
+      {
+        "west": 8.17,
+        "south": 53.03,
+        "east": 8.86,
+        "north": 53.19
+      },
+      {
+        "west": 8.25,
+        "south": 46.07,
+        "east": 8.35,
+        "north": 46.17
+      },
+      {
+        "west": 8.42,
+        "south": 49.43,
+        "east": 8.52,
+        "north": 49.53
+      },
+      {
+        "west": 8.56,
+        "south": 44.86,
+        "east": 8.66,
+        "north": 44.96
+      },
+      {
+        "west": 9.02,
+        "south": 45.76,
+        "east": 9.12,
+        "north": 45.86
+      },
+      {
+        "west": 9.09,
+        "south": 49.75,
+        "east": 9.99,
+        "north": 50.03
+      },
+      {
+        "west": 9.31,
+        "south": 54.47,
+        "east": 9.62,
+        "north": 54.87
+      },
+      {
+        "west": 9.4,
+        "south": 51.26,
+        "east": 9.5,
+        "north": 51.36
+      },
+      {
+        "west": 9.41,
+        "south": 55.44,
+        "east": 9.53,
+        "north": 55.56
+      },
+      {
+        "west": 9.48,
+        "south": 46.8,
+        "east": 9.86,
+        "north": 47.21
+      },
+      {
+        "west": 9.63,
+        "south": 50.5,
+        "east": 9.73,
+        "north": 50.6
+      },
+      {
+        "west": 9.88,
+        "south": 53.5,
+        "east": 10.72,
+        "north": 53.92
+      },
+      {
+        "west": 9.93,
+        "south": 48.08,
+        "east": 11.66,
+        "north": 48.51
+      },
+      {
+        "west": 9.93,
+        "south": 54.02,
+        "east": 10.18,
+        "north": 54.36
+      },
+      {
+        "west": 9.94,
+        "south": 53.2,
+        "east": 10.46,
+        "north": 53.54
+      },
+      {
+        "west": 10.03,
+        "south": 52.54,
+        "east": 12.4,
+        "north": 53.03
+      },
+      {
+        "west": 10.29,
+        "south": 43.5,
+        "east": 10.39,
+        "north": 43.6
+      },
+      {
+        "west": 10.34,
+        "south": 55.35,
+        "east": 10.44,
+        "north": 55.45
+      },
+      {
+        "west": 10.49,
+        "south": 52.08,
+        "east": 11.68,
+        "north": 52.48
+      },
+      {
+        "west": 10.53,
+        "south": 47.1,
+        "east": 13.74,
+        "north": 47.54
+      },
+      {
+        "west": 10.93,
+        "south": 45.38,
+        "east": 11.03,
+        "north": 45.48
+      },
+      {
+        "west": 11.01,
+        "south": 51.75,
+        "east": 11.11,
+        "north": 51.85
+      },
+      {
+        "west": 11.03,
+        "south": 48.69,
+        "east": 11.49,
+        "north": 49.5
+      },
+      {
+        "west": 11.09,
+        "south": 47.51,
+        "east": 11.25,
+        "north": 47.89
+      },
+      {
+        "west": 11.44,
+        "south": 52.95,
+        "east": 11.81,
+        "north": 53.38
+      },
+      {
+        "west": 11.75,
+        "south": 55.4,
+        "east": 11.85,
+        "north": 55.5
+      },
+      {
+        "west": 12.04,
+        "south": 55.59,
+        "east": 12.62,
+        "north": 55.72
+      },
+      {
+        "west": 12.05,
+        "south": 48.96,
+        "east": 12.15,
+        "north": 49.06
+      },
+      {
+        "west": 12.07,
+        "south": 47.47,
+        "east": 12.48,
+        "north": 47.9
+      },
+      {
+        "west": 12.27,
+        "south": 45.39,
+        "east": 12.37,
+        "north": 45.49
+      },
+      {
+        "west": 12.33,
+        "south": 51.3,
+        "east": 12.43,
+        "north": 51.4
+      },
+      {
+        "west": 13,
+        "south": 47.76,
+        "east": 13.1,
+        "north": 47.86
+      },
+      {
+        "west": 13.15,
+        "south": 52.34,
+        "east": 13.85,
+        "north": 52.88
+      },
+      {
+        "west": 13.4,
+        "south": 48.52,
+        "east": 13.5,
+        "north": 48.62
+      },
+      {
+        "west": 13.68,
+        "south": 50.99,
+        "east": 13.79,
+        "north": 51.12
+      },
+      {
+        "west": 13.95,
+        "south": 52.97,
+        "east": 14.37,
+        "north": 53.32
+      },
+      {
+        "west": 13.98,
+        "south": 48.07,
+        "east": 14.93,
+        "north": 48.34
+      },
+      {
+        "west": 13.98,
+        "south": 50.03,
+        "east": 14.49,
+        "north": 50.97
+      },
+      {
+        "west": 14.5,
+        "south": 52.29,
+        "east": 14.87,
+        "north": 52.4
+      },
+      {
+        "west": 15.57,
+        "south": 48.12,
+        "east": 16.43,
+        "north": 48.26
+      },
+      {
+        "west": 16.86,
+        "south": 52.35,
+        "east": 16.96,
+        "north": 52.45
+      },
+      {
+        "west": 16.99,
+        "south": 51.05,
+        "east": 17.09,
+        "north": 51.15
+      },
+      {
+        "west": 18.2,
+        "south": 52.18,
+        "east": 18.3,
+        "north": 52.28
+      },
+      {
+        "west": 18.97,
+        "south": 50.02,
+        "east": 20,
+        "north": 50.31
+      },
+      {
+        "west": 18.99,
+        "south": 47.45,
+        "east": 19.09,
+        "north": 47.55
+      },
+      {
+        "west": 19.3,
+        "south": 52.18,
+        "east": 19.4,
+        "north": 52.28
+      },
+      {
+        "west": 20.95,
+        "south": 52.18,
+        "east": 21.1,
+        "north": 52.3
+      }
+    ]
+  },
+  "norway-entur": {
+    "outer": {
+      "west": 4.46,
+      "south": 47.21,
+      "east": 31.16,
+      "north": 78.3
+    },
+    "areas": [
+      {
+        "west": 4.46,
+        "south": 60.95,
+        "east": 13.39,
+        "north": 61.55
+      },
+      {
+        "west": 4.54,
+        "south": 60.45,
+        "east": 12.46,
+        "north": 61.05
+      },
+      {
+        "west": 4.72,
+        "south": 61.45,
+        "east": 12.56,
+        "north": 62.05
+      },
+      {
+        "west": 4.83,
+        "south": 58.95,
+        "east": 15.89,
+        "north": 59.55
+      },
+      {
+        "west": 4.87,
+        "south": 59.95,
+        "east": 7.39,
+        "north": 60.55
+      },
+      {
+        "west": 5.03,
+        "south": 59.45,
+        "east": 13.37,
+        "north": 60.05
+      },
+      {
+        "west": 5.03,
+        "south": 61.95,
+        "east": 12.13,
+        "north": 62.55
+      },
+      {
+        "west": 5.46,
+        "south": 58.45,
+        "east": 10.09,
+        "north": 59.05
+      },
+      {
+        "west": 5.75,
+        "south": 57.95,
+        "east": 8.95,
+        "north": 58.55
+      },
+      {
+        "west": 5.98,
+        "south": 62.45,
+        "east": 11.94,
+        "north": 63.05
+      },
+      {
+        "west": 7.04,
+        "south": 57.94,
+        "east": 7.58,
+        "north": 58.05
+      },
+      {
+        "west": 7.23,
+        "south": 62.95,
+        "east": 14.88,
+        "north": 63.55
+      },
+      {
+        "west": 7.91,
+        "south": 63.45,
+        "east": 12.15,
+        "north": 64.05
+      },
+      {
+        "west": 7.99,
+        "south": 59.95,
+        "east": 13.31,
+        "north": 60.55
+      },
+      {
+        "west": 9.31,
+        "south": 54.77,
+        "east": 9.53,
+        "north": 55.54
+      },
+      {
+        "west": 9.36,
+        "south": 63.95,
+        "east": 14.05,
+        "north": 64.55
+      },
+      {
+        "west": 9.92,
+        "south": 57.54,
+        "east": 10.03,
+        "north": 57.65
+      },
+      {
+        "west": 9.93,
+        "south": 54.03,
+        "east": 10.03,
+        "north": 54.13
+      },
+      {
+        "west": 9.96,
+        "south": 53.5,
+        "east": 10.72,
+        "north": 53.92
+      },
+      {
+        "west": 10.34,
+        "south": 55.35,
+        "east": 10.44,
+        "north": 55.45
+      },
+      {
+        "west": 10.72,
+        "south": 64.45,
+        "east": 13.87,
+        "north": 65.05
+      },
+      {
+        "west": 11.12,
+        "south": 58.51,
+        "east": 12.5,
+        "north": 59.05
+      },
+      {
+        "west": 11.18,
+        "south": 54.45,
+        "east": 11.97,
+        "north": 54.82
+      },
+      {
+        "west": 11.35,
+        "south": 47.21,
+        "east": 13.24,
+        "north": 47.5
+      },
+      {
+        "west": 11.51,
+        "south": 64.96,
+        "east": 14.51,
+        "north": 66.05
+      },
+      {
+        "west": 11.77,
+        "south": 58.24,
+        "east": 12.35,
+        "north": 58.41
+      },
+      {
+        "west": 11.92,
+        "south": 57.61,
+        "east": 12.98,
+        "north": 57.92
+      },
+      {
+        "west": 12.01,
+        "south": 66.45,
+        "east": 15.76,
+        "north": 67.05
+      },
+      {
+        "west": 12.02,
+        "south": 67.45,
+        "east": 13.19,
+        "north": 68.04
+      },
+      {
+        "west": 12.03,
+        "south": 57.06,
+        "east": 12.3,
+        "north": 57.54
+      },
+      {
+        "west": 12.05,
+        "south": 54.03,
+        "east": 12.18,
+        "north": 54.2
+      },
+      {
+        "west": 12.15,
+        "south": 65.95,
+        "east": 14.89,
+        "north": 66.55
+      },
+      {
+        "west": 12.22,
+        "south": 55.51,
+        "east": 13.35,
+        "north": 55.93
+      },
+      {
+        "west": 12.38,
+        "south": 47.47,
+        "east": 12.48,
+        "north": 47.57
+      },
+      {
+        "west": 12.46,
+        "south": 55.97,
+        "east": 13.05,
+        "north": 56.97
+      },
+      {
+        "west": 13,
+        "south": 47.76,
+        "east": 13.1,
+        "north": 47.86
+      },
+      {
+        "west": 13.08,
+        "south": 67.95,
+        "east": 18.88,
+        "north": 68.55
+      },
+      {
+        "west": 13.23,
+        "south": 52.43,
+        "east": 13.44,
+        "north": 52.6
+      },
+      {
+        "west": 13.67,
+        "south": 60.64,
+        "east": 13.77,
+        "north": 60.74
+      },
+      {
+        "west": 13.67,
+        "south": 66.95,
+        "east": 16.14,
+        "north": 67.55
+      },
+      {
+        "west": 13.68,
+        "south": 50.99,
+        "east": 13.78,
+        "north": 51.09
+      },
+      {
+        "west": 13.71,
+        "south": 56.11,
+        "east": 13.81,
+        "north": 56.21
+      },
+      {
+        "west": 14.11,
+        "south": 57.6,
+        "east": 14.74,
+        "north": 57.83
+      },
+      {
+        "west": 14.39,
+        "south": 50.04,
+        "east": 14.49,
+        "north": 50.14
+      },
+      {
+        "west": 14.39,
+        "south": 68.45,
+        "east": 19.8,
+        "north": 69.05
+      },
+      {
+        "west": 14.51,
+        "south": 56.85,
+        "east": 14.61,
+        "north": 56.95
+      },
+      {
+        "west": 14.67,
+        "south": 67.45,
+        "east": 16.27,
+        "north": 68.05
+      },
+      {
+        "west": 14.99,
+        "south": 62.47,
+        "east": 15.97,
+        "north": 63.01
+      },
+      {
+        "west": 15.08,
+        "south": 58.27,
+        "east": 15.68,
+        "north": 58.47
+      },
+      {
+        "west": 15.08,
+        "south": 68.95,
+        "east": 20.99,
+        "north": 69.55
+      },
+      {
+        "west": 15.44,
+        "south": 78.2,
+        "east": 15.54,
+        "north": 78.3
+      },
+      {
+        "west": 15.95,
+        "south": 59.46,
+        "east": 17.99,
+        "north": 59.91
+      },
+      {
+        "west": 16.02,
+        "south": 62.34,
+        "east": 17.38,
+        "north": 62.55
+      },
+      {
+        "west": 16.13,
+        "south": 58.55,
+        "east": 16.26,
+        "north": 59.05
+      },
+      {
+        "west": 16.31,
+        "south": 56.61,
+        "east": 16.51,
+        "north": 57.31
+      },
+      {
+        "west": 16.34,
+        "south": 57.71,
+        "east": 16.69,
+        "north": 57.94
+      },
+      {
+        "west": 16.98,
+        "south": 60.63,
+        "east": 17.2,
+        "north": 61.77
+      },
+      {
+        "west": 17.39,
+        "south": 69.45,
+        "east": 22.2,
+        "north": 70.05
+      },
+      {
+        "west": 17.6,
+        "south": 59.11,
+        "east": 18.11,
+        "north": 59.42
+      },
+      {
+        "west": 17.69,
+        "south": 62.59,
+        "east": 17.98,
+        "north": 63.1
+      },
+      {
+        "west": 18.52,
+        "south": 69.95,
+        "east": 25.63,
+        "north": 70.55
+      },
+      {
+        "west": 18.66,
+        "south": 63.24,
+        "east": 19.21,
+        "north": 63.39
+      },
+      {
+        "west": 19.43,
+        "south": 63.53,
+        "east": 20.34,
+        "north": 63.97
+      },
+      {
+        "west": 19.58,
+        "south": 64.05,
+        "east": 19.76,
+        "north": 64.36
+      },
+      {
+        "west": 19.98,
+        "south": 64.74,
+        "east": 20.09,
+        "north": 65.1
+      },
+      {
+        "west": 20.04,
+        "south": 67.47,
+        "east": 20.28,
+        "north": 67.92
+      },
+      {
+        "west": 20.6,
+        "south": 65.63,
+        "east": 21.04,
+        "north": 67.18
+      },
+      {
+        "west": 21,
+        "south": 68.84,
+        "east": 21.1,
+        "north": 68.94
+      },
+      {
+        "west": 21.66,
+        "south": 65.53,
+        "east": 22.22,
+        "north": 65.88
+      },
+      {
+        "west": 21.94,
+        "south": 70.49,
+        "east": 22.35,
+        "north": 70.68
+      },
+      {
+        "west": 22.43,
+        "south": 68.4,
+        "east": 22.54,
+        "north": 68.5
+      },
+      {
+        "west": 22.85,
+        "south": 68.88,
+        "east": 23.14,
+        "north": 69.05
+      },
+      {
+        "west": 22.89,
+        "south": 68.95,
+        "east": 25.9,
+        "north": 69.54
+      },
+      {
+        "west": 22.97,
+        "south": 69.54,
+        "east": 23.58,
+        "north": 70.04
+      },
+      {
+        "west": 23.03,
+        "south": 68.23,
+        "east": 23.13,
+        "north": 68.33
+      },
+      {
+        "west": 23.08,
+        "south": 70.45,
+        "east": 28.15,
+        "north": 71.05
+      },
+      {
+        "west": 23.09,
+        "south": 65.82,
+        "east": 23.19,
+        "north": 65.92
+      },
+      {
+        "west": 23.63,
+        "south": 67.88,
+        "east": 23.87,
+        "north": 68.01
+      },
+      {
+        "west": 23.85,
+        "south": 70.96,
+        "east": 24.11,
+        "north": 71.13
+      },
+      {
+        "west": 24.08,
+        "south": 65.78,
+        "east": 24.18,
+        "north": 65.88
+      },
+      {
+        "west": 24.75,
+        "south": 67.61,
+        "east": 24.96,
+        "north": 67.85
+      },
+      {
+        "west": 24.88,
+        "south": 69.45,
+        "east": 26.47,
+        "north": 70.04
+      },
+      {
+        "west": 24.96,
+        "south": 70.95,
+        "east": 26.03,
+        "north": 71.16
+      },
+      {
+        "west": 25.66,
+        "south": 66.45,
+        "east": 25.9,
+        "north": 66.59
+      },
+      {
+        "west": 26.45,
+        "south": 69.95,
+        "east": 31.16,
+        "north": 70.54
+      },
+      {
+        "west": 26.99,
+        "south": 69.87,
+        "east": 27.27,
+        "north": 70
+      },
+      {
+        "west": 27.78,
+        "south": 70.98,
+        "east": 27.9,
+        "north": 71.09
+      },
+      {
+        "west": 28.98,
+        "south": 70.48,
+        "east": 29.79,
+        "north": 70.92
+      },
+      {
+        "west": 29.1,
+        "south": 69.16,
+        "east": 30.54,
+        "north": 70.02
+      }
+    ]
+  },
+  "oslo-bysykkel": {
+    "outer": {
+      "west": 10.6,
+      "south": 59.85,
+      "east": 10.86,
+      "north": 60
+    },
+    "areas": [
+      {
+        "west": 10.6,
+        "south": 59.85,
+        "east": 10.86,
+        "north": 60
+      }
+    ]
+  },
+  "bergen-bysykkel": {
+    "outer": {
+      "west": 5.24,
+      "south": 60.31,
+      "east": 5.41,
+      "north": 60.46
+    },
+    "areas": [
+      {
+        "west": 5.24,
+        "south": 60.31,
+        "east": 5.41,
+        "north": 60.46
+      }
+    ]
+  },
+  "trondheim-bysykkel": {
+    "outer": {
+      "west": 10.31,
+      "south": 63.35,
+      "east": 10.51,
+      "north": 63.5
+    },
+    "areas": [
+      {
+        "west": 10.31,
+        "south": 63.35,
+        "east": 10.51,
+        "north": 63.5
+      }
+    ]
+  },
+  "prague-pid": {
+    "outer": {
+      "west": 12.78,
+      "south": 48.96,
+      "east": 15.96,
+      "north": 51.01
+    },
+    "areas": [
+      {
+        "west": 12.78,
+        "south": 49.95,
+        "east": 15.87,
+        "north": 50.55
+      },
+      {
+        "west": 13.11,
+        "south": 49.45,
+        "east": 15.84,
+        "north": 50.05
+      },
+      {
+        "west": 13.47,
+        "south": 48.96,
+        "east": 15.28,
+        "north": 49.55
+      },
+      {
+        "west": 14.07,
+        "south": 50.45,
+        "east": 15.96,
+        "north": 51.01
+      }
+    ]
+  },
+  "bilbao-metro": {
+    "outer": {
+      "west": -3.09,
+      "south": 43.19,
+      "east": -2.83,
+      "north": 43.45
+    },
+    "areas": [
+      {
+        "west": -3.09,
+        "south": 43.19,
+        "east": -2.83,
+        "north": 43.45
+      }
+    ]
+  },
+  "bordeaux-tbm": {
+    "outer": {
+      "west": -0.85,
+      "south": 44.7,
+      "east": -0.41,
+      "north": 45.08
+    },
+    "areas": [
+      {
+        "west": -0.85,
+        "south": 44.7,
+        "east": -0.41,
+        "north": 45.05
+      },
+      {
+        "west": -0.63,
+        "south": 44.95,
+        "east": -0.45,
+        "north": 45.08
+      }
+    ]
+  },
+  "montpellier-tam": {
+    "outer": {
+      "west": 3.65,
+      "south": 43.47,
+      "east": 4.09,
+      "north": 43.8
+    },
+    "areas": [
+      {
+        "west": 3.65,
+        "south": 43.47,
+        "east": 4.09,
+        "north": 43.8
+      }
+    ]
+  },
+  "nice-lignes-azur": {
+    "outer": {
+      "west": 6.82,
+      "south": 43.6,
+      "east": 7.43,
+      "north": 44.33
+    },
+    "areas": [
+      {
+        "west": 6.82,
+        "south": 43.96,
+        "east": 7.37,
+        "north": 44.33
+      },
+      {
+        "west": 7.03,
+        "south": 43.6,
+        "east": 7.43,
+        "north": 44.05
+      }
+    ]
+  },
+  "ireland-nta": {
+    "outer": {
+      "west": -10.51,
+      "south": 51.4,
+      "east": -5.89,
+      "north": 55.43
+    },
+    "areas": [
+      {
+        "west": -10.51,
+        "south": 51.96,
+        "east": -6.26,
+        "north": 52.55
+      },
+      {
+        "west": -10.41,
+        "south": 51.47,
+        "east": -7.67,
+        "north": 52.05
+      },
+      {
+        "west": -10.18,
+        "south": 52.95,
+        "east": -5.99,
+        "north": 54.54
+      },
+      {
+        "west": -9.98,
+        "south": 52.45,
+        "east": -5.99,
+        "north": 53.05
+      },
+      {
+        "west": -9.86,
+        "south": 51.4,
+        "east": -9.32,
+        "north": 51.55
+      },
+      {
+        "west": -8.82,
+        "south": 54.45,
+        "east": -5.89,
+        "north": 55.05
+      },
+      {
+        "west": -8.45,
+        "south": 54.95,
+        "east": -6.88,
+        "north": 55.43
+      }
+    ]
+  },
+  "toronto-ttc": {
+    "outer": {
+      "west": -79.7,
+      "south": 43.54,
+      "east": -79.07,
+      "north": 43.96
+    },
+    "areas": [
+      {
+        "west": -79.7,
+        "south": 43.54,
+        "east": -79.07,
+        "north": 43.96
+      }
+    ]
+  },
+  "calgary-transit": {
+    "outer": {
+      "west": -114.32,
+      "south": 50.8,
+      "east": -113.77,
+      "north": 51.24
+    },
+    "areas": [
+      {
+        "west": -114.32,
+        "south": 50.8,
+        "east": -113.77,
+        "north": 51.24
+      }
+    ]
+  },
+  "edmonton-ets": {
+    "outer": {
+      "west": -113.98,
+      "south": 53.2,
+      "east": -113.15,
+      "north": 53.76
+    },
+    "areas": [
+      {
+        "west": -113.98,
+        "south": 53.2,
+        "east": -113.15,
+        "north": 53.76
+      }
+    ]
+  },
+  "halifax-transit": {
+    "outer": {
+      "west": -63.91,
+      "south": 44.52,
+      "east": -63.23,
+      "north": 44.94
+    },
+    "areas": [
+      {
+        "west": -63.91,
+        "south": 44.52,
+        "east": -63.23,
+        "north": 44.94
+      }
+    ]
+  },
+  "york-yrt": {
+    "outer": {
+      "west": -79.71,
+      "south": 43.68,
+      "east": -79.16,
+      "north": 44.37
+    },
+    "areas": [
+      {
+        "west": -79.71,
+        "south": 43.68,
+        "east": -79.16,
+        "north": 44.37
+      }
+    ]
+  },
+  "mississauga-miway": {
+    "outer": {
+      "west": -79.85,
+      "south": 43.42,
+      "east": -79.46,
+      "north": 43.89
+    },
+    "areas": [
+      {
+        "west": -79.85,
+        "south": 43.42,
+        "east": -79.46,
+        "north": 43.89
+      }
+    ]
+  },
+  "durham-drt": {
+    "outer": {
+      "west": -79.31,
+      "south": 43.72,
+      "east": -78.53,
+      "north": 44.49
+    },
+    "areas": [
+      {
+        "west": -79.31,
+        "south": 43.72,
+        "east": -78.53,
+        "north": 44.49
+      }
+    ]
+  },
+  "boston-mbta": {
+    "outer": {
+      "west": -71.9,
+      "south": 41.53,
+      "east": -70.23,
+      "north": 42.85
+    },
+    "areas": [
+      {
+        "west": -71.9,
+        "south": 41.96,
+        "east": -70.58,
+        "north": 42.85
+      },
+      {
+        "west": -71.54,
+        "south": 41.53,
+        "east": -70.23,
+        "north": 42.03
+      }
+    ]
+  },
+  "seattle-king-county": {
+    "outer": {
+      "west": -122.56,
+      "south": 47.14,
+      "east": -121.74,
+      "north": 47.92
+    },
+    "areas": [
+      {
+        "west": -122.56,
+        "south": 47.14,
+        "east": -121.74,
+        "north": 47.55
+      },
+      {
+        "west": -122.51,
+        "south": 47.45,
+        "east": -121.75,
+        "north": 47.92
+      }
+    ]
+  },
+  "austin-capmetro": {
+    "outer": {
+      "west": -98.04,
+      "south": 30.1,
+      "east": -97.32,
+      "north": 30.64
+    },
+    "areas": [
+      {
+        "west": -98.04,
+        "south": 30.1,
+        "east": -97.32,
+        "north": 30.55
+      },
+      {
+        "west": -97.96,
+        "south": 30.45,
+        "east": -97.6,
+        "north": 30.64
+      }
+    ]
+  },
+  "vancouver-translink": {
+    "outer": {
+      "west": -123.47,
+      "south": 48.95,
+      "east": -122.25,
+      "north": 49.52
+    },
+    "areas": [
+      {
+        "west": -123.47,
+        "south": 48.95,
+        "east": -122.25,
+        "north": 49.52
+      }
+    ]
+  },
+  "chicago-metra": {
+    "outer": {
+      "west": -88.67,
+      "south": 41.37,
+      "east": -87.5,
+      "north": 42.64
+    },
+    "areas": [
+      {
+        "west": -88.67,
+        "south": 41.95,
+        "east": -87.63,
+        "north": 42.53
+      },
+      {
+        "west": -88.51,
+        "south": 41.46,
+        "east": -87.5,
+        "north": 42.05
+      },
+      {
+        "west": -88.04,
+        "south": 41.37,
+        "east": -87.65,
+        "north": 41.55
+      },
+      {
+        "west": -87.88,
+        "south": 42.54,
+        "east": -87.78,
+        "north": 42.64
+      }
+    ]
+  },
+  "toronto-bikeshare": {
+    "outer": {
+      "west": -79.65,
+      "south": 43.54,
+      "east": -79.07,
+      "north": 43.86
+    },
+    "areas": [
+      {
+        "west": -79.65,
+        "south": 43.54,
+        "east": -79.07,
+        "north": 43.86
+      }
+    ]
+  },
+  "rio-bus": {
+    "outer": {
+      "west": -43.77,
+      "south": -23.12,
+      "east": -43.11,
+      "north": -22.73
+    },
+    "areas": [
+      {
+        "west": -43.77,
+        "south": -23.12,
+        "east": -43.11,
+        "north": -22.73
+      }
+    ]
+  },
+  "rio-brt": {
+    "outer": {
+      "west": -43.77,
+      "south": -23.12,
+      "east": -43.11,
+      "north": -22.73
+    },
+    "areas": [
+      {
+        "west": -43.77,
+        "south": -23.12,
+        "east": -43.11,
+        "north": -22.73
+      }
+    ]
+  },
+  "brisbane-translink": {
+    "outer": {
+      "west": 152.07,
+      "south": -28.22,
+      "east": 153.59,
+      "north": -26.11
+    },
+    "areas": [
+      {
+        "west": 152.07,
+        "south": -28.05,
+        "east": 153.48,
+        "north": -26.95
+      },
+      {
+        "west": 152.63,
+        "south": -27.01,
+        "east": 153.19,
+        "north": -26.11
+      },
+      {
+        "west": 153.25,
+        "south": -28.22,
+        "east": 153.59,
+        "north": -27.95
+      }
+    ]
+  },
+  "adelaide-metro": {
+    "outer": {
+      "west": 133.63,
+      "south": -37.9,
+      "east": 141.04,
+      "north": -32.08
+    },
+    "areas": [
+      {
+        "west": 133.63,
+        "south": -32.43,
+        "east": 133.99,
+        "north": -32.08
+      },
+      {
+        "west": 134.16,
+        "south": -33,
+        "east": 135.32,
+        "north": -32.67
+      },
+      {
+        "west": 135.41,
+        "south": -33.2,
+        "east": 136.47,
+        "north": -33
+      },
+      {
+        "west": 135.77,
+        "south": -34.79,
+        "east": 135.93,
+        "north": -34.66
+      },
+      {
+        "west": 136.05,
+        "south": -34.42,
+        "east": 136.4,
+        "north": -34.07
+      },
+      {
+        "west": 136.44,
+        "south": -33.96,
+        "east": 136.98,
+        "north": -33.63
+      },
+      {
+        "west": 136.93,
+        "south": -35.29,
+        "east": 137.03,
+        "north": -35.19
+      },
+      {
+        "west": 137.01,
+        "south": -35.05,
+        "east": 139.7,
+        "north": -34.45
+      },
+      {
+        "west": 137.1,
+        "south": -33.02,
+        "east": 138.89,
+        "north": -32.45
+      },
+      {
+        "west": 137.43,
+        "south": -34.55,
+        "east": 140.83,
+        "north": -33.95
+      },
+      {
+        "west": 137.46,
+        "south": -33.55,
+        "east": 138.97,
+        "north": -32.96
+      },
+      {
+        "west": 137.51,
+        "south": -35.93,
+        "east": 140.11,
+        "north": -35.45
+      },
+      {
+        "west": 137.55,
+        "south": -35.55,
+        "east": 140.96,
+        "north": -34.95
+      },
+      {
+        "west": 137.57,
+        "south": -34.05,
+        "east": 139.13,
+        "north": -33.49
+      },
+      {
+        "west": 137.69,
+        "south": -32.55,
+        "east": 138.09,
+        "north": -32.3
+      },
+      {
+        "west": 139.71,
+        "south": -37.53,
+        "east": 140.89,
+        "north": -36.54
+      },
+      {
+        "west": 140.29,
+        "south": -36.44,
+        "east": 141.04,
+        "north": -36.04
+      },
+      {
+        "west": 140.31,
+        "south": -37.9,
+        "east": 140.86,
+        "north": -37.55
+      },
+      {
+        "west": 140.68,
+        "south": -34.98,
+        "east": 140.96,
+        "north": -34.67
+      }
+    ]
+  },
+  "auckland-at": {
+    "outer": {
+      "west": 169.55,
+      "south": -37.84,
+      "east": 175.52,
+      "north": -27.03
+    },
+    "areas": [
+      {
+        "west": 169.55,
+        "south": -27.13,
+        "east": 169.65,
+        "north": -27.03
+      },
+      {
+        "west": 174.38,
+        "south": -37.05,
+        "east": 175.52,
+        "north": -36.49
+      },
+      {
+        "west": 174.47,
+        "south": -36.49,
+        "east": 174.82,
+        "north": -36.24
+      },
+      {
+        "west": 174.65,
+        "south": -37.45,
+        "east": 175.03,
+        "north": -36.95
+      },
+      {
+        "west": 175.11,
+        "south": -37.84,
+        "east": 175.32,
+        "north": -37.51
+      }
+    ]
+  },
+  "wellington-metlink": {
+    "outer": {
+      "west": 174.67,
+      "south": -41.4,
+      "east": 175.73,
+      "north": -40.57
+    },
+    "areas": [
+      {
+        "west": 174.67,
+        "south": -41.4,
+        "east": 175.73,
+        "north": -40.57
+      }
+    ]
+  },
+  "japan-toei-bus": {
+    "outer": {
+      "west": 139.13,
+      "south": 35.53,
+      "east": 139.95,
+      "north": 35.89
+    },
+    "areas": [
+      {
+        "west": 139.13,
+        "south": 35.53,
+        "east": 139.95,
+        "north": 35.89
+      }
+    ]
+  },
+  "japan-toei-train": {
+    "outer": {
+      "west": 139.58,
+      "south": 35.54,
+      "east": 139.98,
+      "north": 35.86
+    },
+    "areas": [
+      {
+        "west": 139.58,
+        "south": 35.54,
+        "east": 139.98,
+        "north": 35.86
+      }
+    ]
+  },
+  "japan-sendai-bus": {
+    "outer": {
+      "west": 140.5,
+      "south": 38.13,
+      "east": 141.05,
+      "north": 38.47
+    },
+    "areas": [
+      {
+        "west": 140.5,
+        "south": 38.13,
+        "east": 141.05,
+        "north": 38.47
+      }
+    ]
+  },
+  "japan-aomori-bus": {
+    "outer": {
+      "west": 140.6,
+      "south": 40.69,
+      "east": 140.91,
+      "north": 41
+    },
+    "areas": [
+      {
+        "west": 140.6,
+        "south": 40.69,
+        "east": 140.91,
+        "north": 41
+      }
+    ]
+  },
+  "japan-gunma-bus": {
+    "outer": {
+      "west": 138.55,
+      "south": 35.03,
+      "east": 139.39,
+      "north": 36.67
+    },
+    "areas": [
+      {
+        "west": 138.55,
+        "south": 36.45,
+        "east": 138.97,
+        "north": 36.67
+      },
+      {
+        "west": 138.64,
+        "south": 36.22,
+        "east": 139.15,
+        "north": 36.55
+      },
+      {
+        "west": 138.81,
+        "south": 35.03,
+        "east": 139.01,
+        "north": 35.36
+      },
+      {
+        "west": 139.29,
+        "south": 35.61,
+        "east": 139.39,
+        "north": 35.71
+      }
+    ]
+  },
+  "japan-gunmachuo-bus": {
+    "outer": {
+      "west": 138.96,
+      "south": 36.25,
+      "east": 139.28,
+      "north": 36.45
+    },
+    "areas": [
+      {
+        "west": 138.96,
+        "south": 36.25,
+        "east": 139.28,
+        "north": 36.45
+      }
+    ]
+  },
+  "japan-joshin-hire": {
+    "outer": {
+      "west": 138.93,
+      "south": 36.2,
+      "east": 139.17,
+      "north": 36.34
+    },
+    "areas": [
+      {
+        "west": 138.93,
+        "south": 36.2,
+        "east": 139.17,
+        "north": 36.34
+      }
+    ]
+  },
+  "japan-joshin-kanko-bus": {
+    "outer": {
+      "west": 138.92,
+      "south": 36.22,
+      "east": 139.12,
+      "north": 36.44
+    },
+    "areas": [
+      {
+        "west": 138.92,
+        "south": 36.22,
+        "east": 139.12,
+        "north": 36.44
+      }
+    ]
+  },
+  "japan-kanetsu-bus": {
+    "outer": {
+      "west": 138.68,
+      "south": 36.27,
+      "east": 139.47,
+      "north": 36.93
+    },
+    "areas": [
+      {
+        "west": 138.68,
+        "south": 36.27,
+        "east": 139.47,
+        "north": 36.93
+      }
+    ]
+  },
+  "japan-nagai-bus": {
+    "outer": {
+      "west": 139,
+      "south": 36.22,
+      "east": 139.24,
+      "north": 36.51
+    },
+    "areas": [
+      {
+        "west": 139,
+        "south": 36.22,
+        "east": 139.24,
+        "north": 36.51
+      }
+    ]
+  },
+  "japan-nippon-chuo-bus": {
+    "outer": {
+      "west": 135.38,
+      "south": 34.62,
+      "east": 140.93,
+      "north": 38.31
+    },
+    "areas": [
+      {
+        "west": 135.38,
+        "south": 34.62,
+        "east": 135.87,
+        "north": 35.03
+      },
+      {
+        "west": 136.6,
+        "south": 36.53,
+        "east": 137.26,
+        "north": 36.75
+      },
+      {
+        "west": 136.83,
+        "south": 35.09,
+        "east": 136.95,
+        "north": 35.22
+      },
+      {
+        "west": 138.65,
+        "south": 36.02,
+        "east": 139.65,
+        "north": 36.52
+      },
+      {
+        "west": 139.43,
+        "south": 35.49,
+        "east": 139.84,
+        "north": 35.96
+      },
+      {
+        "west": 140.83,
+        "south": 38.21,
+        "east": 140.93,
+        "north": 38.31
+      }
+    ]
+  },
+  "japan-takasaki-bus": {
+    "outer": {
+      "west": 138.9,
+      "south": 36.17,
+      "east": 139.13,
+      "north": 36.34
+    },
+    "areas": [
+      {
+        "west": 138.9,
+        "south": 36.17,
+        "east": 139.13,
+        "north": 36.34
+      }
+    ]
+  },
+  "japan-keifuku-bus": {
+    "outer": {
+      "west": 135.96,
+      "south": 35.12,
+      "east": 136.93,
+      "north": 36.45
+    },
+    "areas": [
+      {
+        "west": 135.96,
+        "south": 35.6,
+        "east": 136.61,
+        "north": 36.45
+      },
+      {
+        "west": 136.83,
+        "south": 35.12,
+        "east": 136.93,
+        "north": 35.22
+      }
+    ]
+  },
+  "japan-keisei-transit-bus": {
+    "outer": {
+      "west": 139.83,
+      "south": 35.59,
+      "east": 140.01,
+      "north": 35.78
+    },
+    "areas": [
+      {
+        "west": 139.83,
+        "south": 35.59,
+        "east": 140.01,
+        "north": 35.78
+      }
+    ]
+  },
+  "japan-kiyose-bus": {
+    "outer": {
+      "west": 139.45,
+      "south": 35.71,
+      "east": 139.57,
+      "north": 35.83
+    },
+    "areas": [
+      {
+        "west": 139.45,
+        "south": 35.71,
+        "east": 139.57,
+        "north": 35.83
+      }
+    ]
+  },
+  "japan-suginami-slow-mobility": {
+    "outer": {
+      "west": 139.57,
+      "south": 35.65,
+      "east": 139.67,
+      "north": 35.75
+    },
+    "areas": [
+      {
+        "west": 139.57,
+        "south": 35.65,
+        "east": 139.67,
+        "north": 35.75
+      }
+    ]
+  },
+  "japan-kochi-seinan-bus": {
+    "outer": {
+      "west": 132.58,
+      "south": 32.67,
+      "east": 133.16,
+      "north": 33.23
+    },
+    "areas": [
+      {
+        "west": 132.58,
+        "south": 32.67,
+        "east": 133.16,
+        "north": 33.23
+      }
+    ]
+  },
+  "japan-tosa-bus": {
+    "outer": {
+      "west": 133.29,
+      "south": 33.38,
+      "east": 133.52,
+      "north": 33.6
+    },
+    "areas": [
+      {
+        "west": 133.29,
+        "south": 33.38,
+        "east": 133.52,
+        "north": 33.6
+      }
+    ]
+  },
+  "japan-tosaden-bus": {
+    "outer": {
+      "west": 133.36,
+      "south": 33.44,
+      "east": 133.79,
+      "north": 33.67
+    },
+    "areas": [
+      {
+        "west": 133.36,
+        "south": 33.44,
+        "east": 133.79,
+        "north": 33.67
+      }
+    ]
+  },
+  "japan-tosaden-airport-bus": {
+    "outer": {
+      "west": 133.49,
+      "south": 33.5,
+      "east": 133.73,
+      "north": 33.62
+    },
+    "areas": [
+      {
+        "west": 133.49,
+        "south": 33.5,
+        "east": 133.73,
+        "north": 33.62
+      }
+    ]
   }
 };
+
+/** Sources whose stops could not be read when this was generated: they keep their coverage box. */
+export const LIVE_SOURCES_UNREAD: readonly string[] = ["hamilton-hsr","montreal-stm","portland-trimet"];

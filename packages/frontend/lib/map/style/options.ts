@@ -10,9 +10,10 @@ export interface StyleOptions {
   /**
    * How many places the map marks and names: `standard` is Standard's
    * curated density; `dense` lowers the caps and the zooms (Streets); `none`
-   * draws no POI at all (the data basemaps).
+   * draws no POI at all (the data basemaps); `driving` only what a driver
+   * stops for — fuel, charging, parking — and the stations (Navigation).
    */
-  poi: 'none' | 'standard' | 'dense';
+  poi: 'none' | 'standard' | 'dense' | 'driving';
   /** House numbers from this zoom, or never. */
   houseNumbersFrom: number | null;
   /** Street names in capitals (Standard's look) or as the sign writes them. */
@@ -37,6 +38,11 @@ export interface StyleOptions {
    * photograph. Absent, the map draws its own ground.
    */
   imagery?: 'satellite' | 'hybrid';
+  /**
+   * Every road a share wider than Standard's (Navigation: 1.25), casings
+   * included, so the network reads at a glance from a moving car.
+   */
+  roadWidthScale: number;
 }
 
 /** Standard: the curated look every other style starts from. */
@@ -48,6 +54,7 @@ export const STANDARD_OPTIONS: StyleOptions = {
   oneway: true,
   buildingsFrom: 15,
   outdoors: false,
+  roadWidthScale: 1,
 };
 
 /** Streets: more places, earlier footprints, house numbers a zoom sooner. */
@@ -59,6 +66,7 @@ export const STREETS_OPTIONS: StyleOptions = {
   oneway: true,
   buildingsFrom: 14,
   outdoors: false,
+  roadWidthScale: 1,
 };
 
 /** Light and Dark: a quiet ground for somebody else's data. */
@@ -70,6 +78,7 @@ export const DATA_OPTIONS: StyleOptions = {
   oneway: false,
   buildingsFrom: 15,
   outdoors: false,
+  roadWidthScale: 1,
 };
 
 /**
@@ -85,4 +94,32 @@ export const OUTDOORS_OPTIONS: StyleOptions = {
   oneway: false,
   buildingsFrom: 15,
   outdoors: true,
+  roadWidthScale: 1,
+};
+
+/**
+ * Navigation: wide, high-contrast roads, one-way arrows, names as written a
+ * point larger, and only the places a driver stops at.
+ */
+export const NAVIGATION_OPTIONS: StyleOptions = {
+  poi: 'driving',
+  houseNumbersFrom: 17,
+  roadLabelCase: 'as-written',
+  roadLabels: 'all',
+  oneway: true,
+  buildingsFrom: 15,
+  outdoors: false,
+  roadWidthScale: 1.25,
+};
+
+/** Monochrome: Standard's map, every colour taken out. */
+export const MONOCHROME_OPTIONS: StyleOptions = {
+  poi: 'standard',
+  houseNumbersFrom: 18,
+  roadLabelCase: 'upper',
+  roadLabels: 'all',
+  oneway: true,
+  buildingsFrom: 15,
+  outdoors: false,
+  roadWidthScale: 1,
 };

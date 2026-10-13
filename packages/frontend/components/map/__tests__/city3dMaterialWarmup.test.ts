@@ -69,7 +69,7 @@ describe('createMaterialWarmup', () => {
       Object.keys(byName.get(name)?.geometry.attributes ?? {}).sort();
     expect(attributes('openmaptiles:false')).toEqual(['normal', 'position']);
     expect(attributes('goway:false')).toEqual(['color', 'facade', 'normal', 'position']);
-    expect(attributes('trees:false')).toEqual(['aTree', 'normal', 'part', 'position']);
+    expect(attributes('trees:false')).toEqual(['aForm', 'aTree', 'normal', 'part', 'position']);
     for (const mesh of meshesOf(scene)) expect(mesh.geometry.index).not.toBeNull();
   });
 

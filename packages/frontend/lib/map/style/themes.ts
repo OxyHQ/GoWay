@@ -53,6 +53,8 @@ import { type CartographyPalette, DARK_PALETTE, LIGHT_PALETTE, type RoadTier } f
 import { CITY_GROUND_PALETTES, CITY_MATERIALS, type CityMaterial, type Rgb } from './palette3d';
 import {
   DATA_OPTIONS,
+  MONOCHROME_OPTIONS,
+  NAVIGATION_OPTIONS,
   OUTDOORS_OPTIONS,
   STANDARD_OPTIONS,
   STREETS_OPTIONS,
@@ -78,6 +80,24 @@ export interface StyleTheme {
   materials: { day: CityMaterial; night: CityMaterial };
   /** The 3D street detail's day and night. */
   streets: { day: StreetColours; night: StreetColours };
+}
+
+/** Every colour of a palette through one function; `appearance` kept. */
+function mapPalette(
+  palette: CartographyPalette,
+  fn: (value: string, key: string) => string,
+): CartographyPalette {
+  const walk = (node: unknown, key: string): unknown => {
+    if (typeof node === 'string') return fn(node, key);
+    if (node === null || typeof node !== 'object') return node;
+    return Object.fromEntries(
+      Object.entries(node as Record<string, unknown>).map(([k, v]) => [
+        k,
+        walk(v, key ? `${key}.${k}` : k),
+      ]),
+    );
+  };
+  return { ...(walk(palette, '') as CartographyPalette), appearance: palette.appearance };
 }
 
 /** Two palettes of the same shape, combined field by field. */
@@ -336,6 +356,22 @@ const OUTDOORS_INK: Record<MapAppearance, NonNullable<CartographyPalette['outdoo
   },
 };
 
+/**
+ * Standard night's town streets a step deeper, so their white names clear
+ * 4.5:1 on the fill itself (Standard's lean on the halo instead, and keep
+ * their measured values). Streets' night does the same in its own table.
+ */
+function deeperNightStreets(roads: CartographyPalette['roads']): CartographyPalette['roads'] {
+  return {
+    ...roads,
+    primary: { ...roads.primary, fill: '#5c6c84' },
+    secondary: { ...roads.secondary, fill: '#58697f' },
+    tertiary: { ...roads.tertiary, fill: '#536379' },
+    local: { ...roads.local, fill: '#4e5d72' },
+    service: { ...roads.service, fill: '#48576b' },
+  };
+}
+
 /** Outdoors in an appearance: Standard's palette, greener woods, white glaciers, the terrain ink. */
 function outdoorsPalette(appearance: MapAppearance): CartographyPalette {
   const base = appearance === 'light' ? LIGHT_PALETTE : DARK_PALETTE;
@@ -353,21 +389,145 @@ function outdoorsPalette(appearance: MapAppearance): CartographyPalette {
       : {
           natural: '#1f4640',
           park: '#0d5f57',
-          // The town streets a step deeper than Standard's night, so their
-          // white names clear 4.5:1 on the fill (as Streets' night does).
-          roads: {
-            ...base.roads,
-            primary: { ...base.roads.primary, fill: '#5c6c84' },
-            secondary: { ...base.roads.secondary, fill: '#58697f' },
-            tertiary: { ...base.roads.tertiary, fill: '#536379' },
-            local: { ...base.roads.local, fill: '#4e5d72' },
-            service: { ...base.roads.service, fill: '#48576b' },
-          },
+          roads: deeperNightStreets(base.roads),
         }),
     ice: ink.glacier,
     parkOutline: ink.protectedOutline,
     outdoors: ink,
   });
+}
+
+// ---------------------------------------------------------------------------
+// Navigation: the road network, nothing in its way
+// ---------------------------------------------------------------------------
+
+/**
+ * Navigation's roads: the through route warm and wide (amber expressways,
+ * yellow trunks), every other street white by day with a DARK casing, so the
+ * network reads at a glance from a moving car against a cool, quiet ground
+ * that leaves the route line the most saturated thing on screen. At night the
+ * ground goes to a near-black blue-grey and the streets to steps of slate, the
+ * expressways still amber — the colour a driver's eye already reads as
+ * "motorway" on a sign.
+ */
+const NAVIGATION_ROADS: Record<MapAppearance, CartographyPalette['roads']> = {
+  light: {
+    motorway: { fill: '#f5b335', casing: '#c4861b', fillLowZoom: '#f1a826' },
+    motorwayLink: { fill: '#f7c25b', casing: '#c98f2c' },
+    trunk: { fill: '#ffd47c', casing: '#c99c43' },
+    trunkLink: { fill: '#ffdc94', casing: '#cfa553' },
+    primary: { fill: '#ffffff', casing: '#8c96a2' },
+    secondary: { fill: '#ffffff', casing: '#9ca5b0' },
+    tertiary: { fill: '#ffffff', casing: '#abb3bc' },
+    local: { fill: '#ffffff', casing: '#bcc3ca' },
+    service: { fill: '#fafbfc', casing: '#ccd1d6' },
+    track: { fill: '#eceae4', casing: '#d3cfc5' },
+    path: { fill: '#c9ccd1', casing: null },
+    tunnel: { fill: '#eef0f2', casing: '#c9ced4' },
+  },
+  dark: {
+    motorway: { fill: '#dd9c2c', casing: '#5c3f10', fillLowZoom: '#e3a63c' },
+    motorwayLink: { fill: '#c98f30', casing: '#55390f' },
+    trunk: { fill: '#b48647', casing: '#4a3618' },
+    trunkLink: { fill: '#a57c48', casing: '#46341a' },
+    primary: { fill: '#566377', casing: '#252c37' },
+    secondary: { fill: '#4e5a6d', casing: '#232a34' },
+    tertiary: { fill: '#485366', casing: '#212731' },
+    local: { fill: '#414b5c', casing: '#1f252e' },
+    service: { fill: '#3a4352', casing: '#1c212a' },
+    track: { fill: '#363e4a', casing: '#1b2028' },
+    path: { fill: '#4a5463', casing: null },
+    tunnel: { fill: '#2c3440', casing: '#1d222b' },
+  },
+};
+
+function navigationDay(): CartographyPalette {
+  return enforceTypeContrast({
+    ...LIGHT_PALETTE,
+    land: '#eef0f2',
+    landBuiltUp: '#e7eaed',
+    natural: '#dbe9d3',
+    farmland: '#eceee9',
+    park: '#d2e7c9',
+    parkOutline: '#c5ddbb',
+    pitch: '#d6eacd',
+    medical: '#efe6e6',
+    institution: '#e6e8ea',
+    cemetery: '#d6e3cf',
+    water: '#a8cfe7',
+    waterway: '#a8cfe7',
+    roads: NAVIGATION_ROADS.light,
+    building: '#e0e3e7',
+    buildingOutline: '#cdd2d8',
+    labelPlace: '#1c2026',
+    labelRoad: '#262b31',
+  });
+}
+
+function navigationNight(): CartographyPalette {
+  return enforceTypeContrast({
+    ...DARK_PALETTE,
+    land: '#161c26',
+    landBuiltUp: '#1b2230',
+    natural: '#162620',
+    farmland: '#181f29',
+    park: '#173126',
+    parkOutline: '#1d3b2e',
+    pitch: '#1a372b',
+    medical: '#221f2b',
+    institution: '#1c2230',
+    airport: '#1d2636',
+    sand: '#232225',
+    wetland: '#162b27',
+    ice: '#1f2734',
+    cemetery: '#192b24',
+    water: '#0f2238',
+    waterway: '#13294a',
+    roads: NAVIGATION_ROADS.dark,
+    rail: '#3a4250',
+    railHatch: '#4b5463',
+    ferry: '#24426a',
+    aeroway: { fill: '#2a3343', casing: null },
+    building: '#222a36',
+    buildingOutline: '#2c3543',
+    boundaryCountry: '#5f6a7a',
+    boundaryRegion: '#3c4553',
+    labelPlace: '#eef1f5',
+    labelPlaceMinor: '#b2bccb',
+    labelRegion: '#a3aebd',
+    labelRoad: '#e6eaf0',
+    labelWater: '#78a3cf',
+    labelPark: '#86cba1',
+    halo: 'rgba(22,28,38,0.92)',
+    haloStrong: 'rgba(16,21,29,0.95)',
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Monochrome: Standard with the colour taken out
+// ---------------------------------------------------------------------------
+
+/**
+ * Every colour at a whisper of its chroma — lightness, and so the whole
+ * hierarchy, kept — then the type walked back to 4.5:1 (a POI's category
+ * colour goes, its name stays legible). Built FROM Standard rather than drawn
+ * again, so every change to Standard's cartography reaches it.
+ */
+const MONO_CHROMA = 0.06;
+const monochrome = (lch: [number, number, number]): [number, number, number] => [
+  lch[0],
+  lch[1] * MONO_CHROMA,
+  lch[2],
+];
+
+/** Standard's night with the deeper town streets its greys need to keep street names legible. */
+const monoNightBase = (): CartographyPalette => ({
+  ...DARK_PALETTE,
+  roads: deeperNightStreets(DARK_PALETTE.roads),
+});
+
+function monoPalette(palette: CartographyPalette): CartographyPalette {
+  return enforceTypeContrast(mapPalette(palette, (value) => mapColour(value, monochrome)));
 }
 
 // ---------------------------------------------------------------------------
@@ -633,6 +793,32 @@ const RECIPES: Record<MapStyleId, StyleRecipe> = {
       const ground = lit(preset, STANDARD_GROUND.day, STANDARD_GROUND.night);
       return asCityGround(style, { ...ground, roads: { ...ground.roads, path: style.roads.path } });
     },
+  },
+  navigation: {
+    options: NAVIGATION_OPTIONS,
+    palette: (preset) => lit(preset, navigationDay(), navigationNight()),
+    // Navigation's ground is its own under the 3D city too: no maquette
+    // between the driver and the road network.
+    cityGround: (preset) => lit(preset, navigationDay(), navigationNight()),
+  },
+  monochrome: {
+    options: MONOCHROME_OPTIONS,
+    palette: (preset) => monoPalette(lit(preset, LIGHT_PALETTE, monoNightBase())),
+    cityGround: (preset) =>
+      asCityGround(
+        monoPalette(lit(preset, LIGHT_PALETTE, monoNightBase())),
+        mapPalette(lit(preset, STANDARD_GROUND.day, STANDARD_GROUND.night), (value) =>
+          mapColour(value, monochrome),
+        ),
+      ),
+    materials: (base) => ({
+      day: mapMaterial(base.day, monochrome),
+      night: mapMaterial(base.night, monochrome),
+    }),
+    streets: (base) => ({
+      day: mapStreets(base.day, (hex) => mapColour(hex, monochrome)),
+      night: mapStreets(base.night, (hex) => mapColour(hex, monochrome)),
+    }),
   },
   // Over a photograph (`docs/MAP_SATELLITE.md`): the night palette's light
   // type, whose halos `imagery.ts` darkens to read over any photo. No 3D

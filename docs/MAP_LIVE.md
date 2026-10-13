@@ -64,7 +64,7 @@ same day.
 | Id | What | Coverage | Licence | Attribution shown | Key | Polled | Verdict |
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | `adsb-lol` | Aircraft (ADS-B/MLAT), adsb.lol `/v2` | Worldwide, by region | **ODbL 1.0** ("The license for the API as well as all data ADSB.lol makes public is ODbL") | © adsb.lol contributors (ODbL 1.0) | None today; "in the future, you will require an API key which you can get by feeding" | 15 s per region, ≤ 4 regions/poll | Accept with conditions |
-| `renfe-cercanias` | Trains, Renfe Cercanías and **Rodalies de Catalunya** (GTFS-RT) | Spain | **CC BY 4.0** + Spanish public-sector reuse conditions ("permiten la reutilización … para fines comerciales y no comerciales") | Origen de los datos: Renfe Operadora | None | 20 s (Renfe republishes every 20 s) | Accept |
+| `renfe-cercanias` | Trains, Renfe: Cercanías and **Rodalies de Catalunya** — the regional R11–R17, RT1–2, RG1, RL3–4 included (`vehicle_positions.pb`) — and high-speed, long-distance and Media Distancia (`vehicle_positions_LD.pb`, `posicion-vehiculos-av-ld-md`): two GTFS-RT feeds, one source | Spain | **CC BY 4.0** + Spanish public-sector reuse conditions ("permiten la reutilización … para fines comerciales y no comerciales"), both feeds | Origen de los datos: Renfe Operadora | None | 20 s (both feeds republish every 15–20 s) | Accept |
 | `fgc-geotren` | Trains, FGC (Geotren, Opendatasoft) | Catalonia | **CC BY 4.0** | Ferrocarrils de la Generalitat de Catalunya | None; 5,000 calls/day/IP | 60 s (2 calls → 2,880/day) | Accept |
 | `mta-bus` | Buses, MTA Bus Time (GTFS-RT) | New York City | **MTA data feed terms**: "authorizes you to download and host the data on a non-MTA server … and to make the data available to others" | Data: MTA | Documented as required (free); answered without one on 2026-10-11 | 15 s | Accept with conditions |
 | `mta-lirr` | Trains, Long Island Rail Road (GTFS-RT) | NY region | MTA terms | Data: MTA | None | 20 s | Accept with conditions |
@@ -135,6 +135,15 @@ Conditions that come with the accepted ones:
   adsb.lol, AMB, AISA, EMT Fuenlabrada, Digitraffic). Only whole networks
   count as coverage for other features (`Coverage for other features` below).
 
+Renfe's two feeds are one source: a Rodalies regional train is in BOTH (11
+trains on 2026-10-12, matched by train number), and is drawn once, from the
+commuter feed, which carries its line and its track (`adapters/combined.ts`).
+The long-distance static file has no shapes: those trains are drawn where
+reported (approximate), named by their service (AVE, Alvia, MD, Regional).
+Measured on an all-Catalonia view at 21:45 local: 68 Renfe trains, 49 from
+the commuter feed (11 lines, R11 at Figueres, R15 at Tarragona, RL4 at
+Lleida among them) and 19 from the long-distance one.
+
 ### Rejected or deferred
 
 | Source | Why |
@@ -146,14 +155,213 @@ Conditions that come with the accepted ones:
 | **TMB** (Barcelona city buses, iBus; metro, iMetro) | No vehicle positions anywhere; arrival predictions only, behind an `app_id`/`app_key` registration. The terms allow derived works and commercial use, but a key is issued "solely for the application indicated" — so it is **deferred to GoWay registering its own key**, not built on a borrowed one. With a key, both join `arrivalEstimates.ts` as estimates (the `tmb-bus`, `tmb-bus-articulated` and `tmb-metro` fleets are ready). Barcelona's red city buses and its metro are therefore **not on the map**. |
 | **EMT Madrid** (MobilityLabs) | Arrival predictions only, ODbL; registration required and the per-account quota cannot feed a city-wide poll. Deferred. |
 | **CRTM** (Madrid region) | Static GTFS only; no open realtime. |
-| **Generalitat de Catalunya**, **Moventis**, **Sagalés** | No open realtime feed found. (Nitbus is AMB's and comes with `amb-bus`.) |
+| **Generalitat de Catalunya** (intercity buses), **Moventis**, **Sagalés**, **Monbus**, the urban buses of **Girona**, **Tarragona**, **Lleida**, **Reus**, **Sabadell**, **Terrassa** | No open realtime feed: the Mobility Database lists, for all of Catalonia, only AMB's (checked 2026-10-12), and the NAP lists none either. Outside the AMB's metropolitan area no bus is drawn. (Nitbus is AMB's and comes with `amb-bus`.) |
 | **Bicing via Open Data BCN** | CC BY 4.0 but the resource needs a registered token; registration pending. |
 | **FGC GTFS-RT** vehicle positions | Licence fine (CC BY 4.0); the file served 0 bytes on three tries. Geotren is used instead; switch when the GTFS-RT file is live. |
 | **NYC Ferry** vehicle positions | Endpoint not on the published developer tools; the grant is "to test, design, and support your products", not to redistribute. Held. |
-| **HSL** (Helsinki, GTFS-RT, CC BY 4.0) | Licence fine, adapter is the generic GTFS-RT one — but a `VehiclePosition` names a route id, not its mode, and HSL's ids do not encode it reliably; a bus drawn as a tram is wrong data. Needs the static GTFS `routes.txt` join first. |
 | **aisstream.io** | Publishes no licence or terms. |
 | **AISHub** | Display allowed, but raw positions may not be passed on, a key requires running a receiver, 1 request/min. Barcelona/NYC ships need our own receivers and AISHub's written OK. |
 | **NOAA / USCG AIS** | Historical archives only. |
+
+## Worldwide providers (`live/providers.ts`)
+
+Beyond the hand-built catalogue above, **73 feeds in 14 countries** are data,
+not code: one `LiveProvider` entry each — id, place, URL, coverage, credit,
+licence, auth, poll interval, static GTFS — built into a source by **one
+adapter per standard**:
+
+| Format | Adapter | Entries |
+| --- | --- | --- |
+| `gtfs-rt-vp` — GTFS-Realtime `VehiclePositions` | `adapters/gtfsRealtime.ts` | 69 |
+| `gtfs-rt-tu` — GTFS-Realtime `TripUpdates`, placed along the static shapes | `adapters/arrivalEstimates.ts` | 0 (AMB's is in the catalogue; the one candidate, Santa Monica, was refused — below) |
+| `gbfs` — bike-share stations | `adapters/gbfs.ts` | 4 |
+| `siri-vm` — SIRI VehicleMonitoring, XML or JSON | `adapters/siriVm.ts` | 0 (every SIRI feed found also publishes GTFS-RT, which is used) |
+
+**Seeded** from the Mobility Database catalog (MobilityData, `feeds_v2.csv`)
+and the operators' and cities' open-data portals; Transitland was not needed.
+**Admitted only with a read licence**: every entry's `licenceCheck` records the
+day, the page and the words that allow public, commercial redistribution, and
+`licence.test.ts` fails the build for an entry without them, without an https
+licence and credit, with a name, credit or id the public contract would
+refuse, or with a key in its URL. Rejections are listed below with the reason.
+
+**Keyless first.** 51 entries need nothing; 22 need a key the owner registers
+for (→ Owner's checklist). A keyed entry stays off until
+`LIVE_SOURCE_<ID>_KEY` is set, and `LIVE_SOURCES=all` skips it quietly.
+Where a provider asks callers to name themselves, they are named:
+`GoWay-Live/1.0 (+https://goway.to)` as user agent everywhere,
+`ET-Client-Name: oxy-goway` for Entur and `Client-Identifier: oxy-goway` for
+Urban Sharing's bike shares. Every entry is still **demand-driven and polled
+once per deployment** (→ Production): nothing is fetched until someone
+watches its box, and then only by the lease holder, at the interval in the
+entry — inside each provider's published limit (TransLink's 1,000 requests a
+day is one every 90 s; the NTA's one a minute; Trafiklab's quota is shared
+by its four operators, polled every 60 s). A feed is woken only by a viewer
+near its operator's stops (`areas.ts`): 51 of the 73 have areas derived from
+their static GTFS or GBFS stations (Norway's 141,654 stops in 89 areas, the
+Netherlands' in 75), and their `coverage` is the box round them; the rest —
+no public stops, or a host that refused `live:areas` (Hamilton, STM, TriMet,
+listed in `LIVE_SOURCES_UNREAD`) — keep the box drawn from their observed
+vehicles. A feed naming one mode (`defaultMode` other than `other`) is a
+source of that mode only, so a bus-only feed is never woken by a regional
+view.
+
+**Modes come from the operator's own `routes.txt`.** A `VehiclePosition`
+names a route, not a mode; Helsinki's or Prague's buses, trams, metros,
+trains and ferries are one feed. Each entry reads its static GTFS at the depth
+it can afford, measured on 2026-10-12 with the hub's own parser:
+
+- **full** (routes, trips, shapes — vehicles on their tracks) where the
+  parsed file is small: Halifax 122 MB, York 133 MB, Mississauga 141 MB,
+  Durham 174 MB resident while loading, the Japanese operators a few MB.
+- **`only: 'routes'`** where shapes would cost hundreds of megabytes (Prague
+  2.2 GB, Helsinki 1.1 GB, Austin 1.7 GB, Toronto 0.7 GB): line, colour and
+  mode only, read **by HTTP range** — the archive's directory and
+  `routes.txt`, never the archive (`zip.ts` → `readZipEntriesRanged`). The
+  Netherlands' 259 MB file costs 236 KB, Norway's 534 MB file 250 KB.
+- **`only: 'trips'`** where vehicles name only their trip (Calgary, Toei's
+  trains, the NTA): `routes.txt` and `trips.txt`.
+- **none** where it is not public (dBus, Denver, Cairns, Canberra,
+  Christchurch, Trafiklab's second key): the line is the route id only where
+  that id is the name riders use (`routeIdIsLine`), never `100001` or
+  `OST:Line:1_400`.
+
+Measured match (vehicles whose route was found in their own `routes.txt`):
+every one for Prague (920/920), Bordeaux, Nice, the MBTA, King County,
+Adelaide, Brisbane, Halifax, Mississauga and York; Helsinki 312/315, Rio
+1,063/1,071, Edmonton 270/272, the Netherlands 1,442/1,474, Norway
+3,488/3,957; Toronto 1,067/1,287 and Austin 245/363, whose remainder are
+vehicles sent without a route (out of service). A feed that carries several
+modes defaults to `other`, so a vehicle its file does not place is drawn as
+a neutral marker with no 3D body — never guessed into a bus.
+
+A static GTFS a task has not needed for 15 minutes is let go
+(`STATIC_GTFS_IDLE_MS`), so a day of viewers across the world does not leave
+every network in memory.
+
+### Coverage
+
+Probed through each entry's own adapter on 2026-10-12 at 21:00 UTC (night in
+Europe, morning in Japan and Australia); the counts are what one poll
+returned.
+
+| City / region | Mode | Feed | Licence | Keyed? | Status |
+| --- | --- | --- | --- | --- | --- |
+| Helsinki (FI) | bus, tram, metro, train, ferry | `helsinki-hsl` | CC BY 4.0 | no | live; 212 vehicles at probe |
+| Netherlands (NL) | bus, tram, metro, ferry | `netherlands-ovapi` | CC0 (NDOV) · OVapi terms | no | live; 1429 vehicles at probe |
+| Norway (NO) | bus, tram, metro, rail, ferry | `norway-entur` | NLOD 2.0 | no | live; 1101 vehicles at probe |
+| Oslo (NO) | bike share (stations) | `oslo-bysykkel` | NLOD 2.0 | no | live; 267 stations at probe |
+| Bergen (NO) | bike share (stations) | `bergen-bysykkel` | NLOD 2.0 | no | live; 98 stations at probe |
+| Trondheim (NO) | bike share (stations) | `trondheim-bysykkel` | NLOD 2.0 | no | live; 75 stations at probe |
+| Prague and Central Bohemia (CZ) | bus, tram, metro, rail, ferry | `prague-pid` | CC BY 4.0 | no | live; 758 vehicles at probe |
+| Bilbao (ES) | metro | `bilbao-metro` | CC BY 4.0 · Ley 37/2007 | no | live; 3 vehicles at probe |
+| Donostia / San Sebastián (ES) | bus | `donostia-dbus` | CC BY 4.0 | no | live; 4 vehicles at probe |
+| Bordeaux (FR) | bus, tram | `bordeaux-tbm` | Licence Ouverte 2.0 | no | live; 120 vehicles at probe |
+| Montpellier (FR) | bus, tram | `montpellier-tam` | ODbL 1.0 | no | live; 27 vehicles at probe |
+| Nice (FR) | bus, tram | `nice-lignes-azur` | Licence Ouverte 2.0 | no | live; 113 vehicles at probe |
+| Ireland (IE) | bus, tram, rail | `ireland-nta` | CC BY 4.0 | yes — [register](https://developer.nationaltransport.ie/) | off until its key is set |
+| Stockholm (SE) | bus, tram, metro, rail, ferry — mode unknown until its static GTFS (a second key) | `sweden-sl` | CC0 1.0 | yes — [register](https://www.trafiklab.se/) | off until its key is set |
+| Skåne (SE) | bus, tram, metro, rail, ferry — mode unknown until its static GTFS (a second key) | `sweden-skane` | CC0 1.0 | yes — [register](https://www.trafiklab.se/) | off until its key is set |
+| Uppsala (SE) | bus, tram, metro, rail, ferry — mode unknown until its static GTFS (a second key) | `sweden-ul` | CC0 1.0 | yes — [register](https://www.trafiklab.se/) | off until its key is set |
+| Östergötland (SE) | bus, tram, metro, rail, ferry — mode unknown until its static GTFS (a second key) | `sweden-otraf` | CC0 1.0 | yes — [register](https://www.trafiklab.se/) | off until its key is set |
+| Toronto (CA) | bus, streetcar (no subway) | `toronto-ttc` | OGL – Toronto | no | live; 1288 vehicles at probe |
+| Calgary (CA) | bus | `calgary-transit` | OGL – City of Calgary | no | live; 282 vehicles at probe |
+| Edmonton (CA) | bus | `edmonton-ets` | OGL – Edmonton 1.0 | no | live; 272 vehicles at probe |
+| Halifax (CA) | bus, ferry | `halifax-transit` | OGL – Halifax | no | live; 91 vehicles at probe |
+| York Region (CA) | bus, BRT | `york-yrt` | YRT Open Data Licence | no | live; 103 vehicles at probe; **awaiting** YRT developer form |
+| Mississauga (CA) | bus | `mississauga-miway` | City of Mississauga Terms of Use | no | live; 154 vehicles at probe |
+| Durham Region (CA) | bus | `durham-drt` | Region of Durham Open Data Licence 1.0 | no | live; 69 vehicles at probe |
+| Hamilton (CA) | bus | `hamilton-hsr` | City of Hamilton Open Data Licence | no | licence verified; host did not resolve from our probe (research probe: 200, 11,979 B) |
+| Boston (US) | bus, subway, light rail, commuter rail, ferry | `boston-mbta` | MassDOT Developers License Agreement | no | live; 529 vehicles at probe |
+| Seattle / King County (US) | bus, streetcar | `seattle-king-county` | King County Transit Data Terms of Use | no | live; 533 vehicles at probe |
+| Denver (US) | bus, light rail, commuter rail | `denver-rtd` | RTD GTFS Realtime License Agreement | no | live; 609 vehicles at probe |
+| Austin (US) | bus, rail | `austin-capmetro` | CMTA Open Data License Agreement | no | live; 363 vehicles at probe |
+| Vancouver (CA) | bus | `vancouver-translink` | TransLink Open API Terms of Use | yes — [register](https://developer.translink.ca/) | off until its key is set |
+| Montréal (CA) | bus | `montreal-stm` | CC BY 4.0 | yes — [register](https://portail.developpeurs.stm.info/) | off until its key is set |
+| Ottawa (CA) | bus, O-Train | `ottawa-oc-transpo` | OC Transpo developer terms · OGL – Ottawa 2.0 | yes — [register](https://www.octranspo.com/en/plan-your-trip/travel-tools/developers) | off until its key is set |
+| Chicago (US) | commuter rail | `chicago-metra` | Metra GTFS Realtime API License Agreement | yes — [register](https://metra.com/developers) | off until its key is set |
+| Portland (US) | bus, MAX, streetcar | `portland-trimet` | TriMet Developer Terms of Use | yes — [register](https://developer.trimet.org/appid/registration/) | off until its key is set |
+| Toronto (CA) | bike share (stations) | `toronto-bikeshare` | OGL – Toronto | no | live; 1075 stations at probe |
+| Rio de Janeiro (BR) | bus | `rio-bus` | CC BY 4.0 | no | live; 1063 vehicles at probe |
+| Rio de Janeiro (BR) | BRT | `rio-brt` | CC BY 4.0 | no | live; 150 vehicles at probe |
+| Brisbane / South East Queensland (AU) | bus, train, ferry, tram | `brisbane-translink` | CC BY 4.0 | no | live; 1440 vehicles at probe |
+| Cairns (AU) | bus | `cairns-translink` | CC BY 4.0 | no | live; 40 vehicles at probe |
+| Adelaide (AU) | bus, train, tram | `adelaide-metro` | CC BY 4.0 | no | live; 0 vehicles at probe |
+| Canberra (AU) | light rail | `canberra-light-rail` | CC BY-SA 4.0 | no | live; 10 vehicles at probe |
+| Sydney (AU) | bus | `sydney-buses` | CC BY 4.0 | yes — [register](https://opendata.transport.nsw.gov.au/) | off until its key is set |
+| Sydney (AU) | rail | `sydney-trains` | CC BY 4.0 | yes — [register](https://opendata.transport.nsw.gov.au/) | off until its key is set |
+| Sydney (AU) | metro | `sydney-metro` | CC BY 4.0 | yes — [register](https://opendata.transport.nsw.gov.au/) | off until its key is set |
+| Sydney (AU) | ferry | `sydney-ferries` | CC BY 4.0 | yes — [register](https://opendata.transport.nsw.gov.au/) | off until its key is set |
+| Sydney (AU) | light rail | `sydney-light-rail` | CC BY 4.0 | yes — [register](https://opendata.transport.nsw.gov.au/) | off until its key is set |
+| Melbourne (AU) | rail | `victoria-metro` | CC BY 4.0 | yes — [register](https://opendata.transport.vic.gov.au/) | off until its key is set |
+| Melbourne (AU) | tram | `victoria-tram` | CC BY 4.0 | yes — [register](https://opendata.transport.vic.gov.au/) | off until its key is set |
+| Melbourne (AU) | bus | `victoria-bus` | CC BY 4.0 | yes — [register](https://opendata.transport.vic.gov.au/) | off until its key is set |
+| Victoria (AU) | regional rail | `victoria-vline` | CC BY 4.0 | yes — [register](https://opendata.transport.vic.gov.au/) | off until its key is set |
+| Auckland (NZ) | bus, train, ferry | `auckland-at` | CC BY 4.0 | yes — [register](https://dev-portal.at.govt.nz/) | off until its key is set |
+| Wellington (NZ) | bus, train, ferry | `wellington-metlink` | CC BY 4.0 | yes — [register](https://opendata.metlink.org.nz/) | off until its key is set |
+| Christchurch (NZ) | bus | `christchurch-metro` | CC BY 4.0 | yes — [register](https://apidevelopers.metroinfo.co.nz/signup) | off until its key is set |
+| Tokyo (JP) | bus | `japan-toei-bus` | CC BY 4.0 | no | live; 166 vehicles at probe |
+| Tokyo (JP) | subway, tram, AGT | `japan-toei-train` | CC BY 4.0 | no | live; 71 vehicles at probe |
+| Sendai (JP) | bus | `japan-sendai-bus` | CC BY 4.0 | no | live; 65 vehicles at probe |
+| Aomori (JP) | bus | `japan-aomori-bus` | CC BY 4.0 | no | live; 13 vehicles at probe |
+| Gunma (JP) | bus | `japan-gunma-bus` | CC BY 4.0 | no | live; 3 vehicles at probe (06:00 JST) |
+| Gunma (JP) | bus | `japan-gunmachuo-bus` | CC BY 4.0 | no | live; 0 vehicles at probe (06:00 JST) |
+| Gunma (JP) | bus | `japan-joshin-hire` | CC BY 4.0 | no | live; 0 vehicles at probe (06:00 JST) |
+| Gunma (JP) | bus | `japan-joshin-kanko-bus` | CC BY 4.0 | no | live; 1 vehicles at probe (06:00 JST) |
+| Gunma (JP) | bus | `japan-kanetsu-bus` | CC BY 4.0 | no | live; 6 vehicles at probe |
+| Gunma (JP) | bus | `japan-nagai-bus` | CC BY 4.0 | no | live; 0 vehicles at probe (06:00 JST) |
+| Gunma (JP) | bus | `japan-nippon-chuo-bus` | CC BY 4.0 | no | live; 1 vehicles at probe (06:00 JST) |
+| Takasaki (JP) | bus | `japan-takasaki-bus` | CC BY 4.0 | no | live; 0 vehicles at probe (06:00 JST) |
+| Fukui (JP) | bus | `japan-keifuku-bus` | CC BY 4.0 | no | live; 3 vehicles at probe (06:00 JST) |
+| Chiba (JP) | bus | `japan-keisei-transit-bus` | CC BY 4.0 | no | live; 8 vehicles at probe |
+| Kiyose (JP) | bus | `japan-kiyose-bus` | CC BY 4.0 | no | live; 0 vehicles at probe (06:00 JST) |
+| Suginami (JP) | bus | `japan-suginami-slow-mobility` | CC BY 4.0 | no | live; 1 vehicles at probe (06:00 JST) |
+| Kochi (JP) | bus | `japan-kochi-seinan-bus` | CC BY 4.0 | no | live; 1 vehicles at probe (06:00 JST) |
+| Tosa (JP) | bus | `japan-tosa-bus` | CC BY 4.0 | no | live; 1 vehicles at probe (06:00 JST) |
+| Kochi (JP) | bus | `japan-tosaden-bus` | CC BY 4.0 | no | live; 4 vehicles at probe |
+| Kochi (JP) | bus | `japan-tosaden-airport-bus` | CC BY 4.0 | no | live; 1 vehicles at probe (06:00 JST) |
+
+Counts: **73 feeds** for **56 places in 14 countries** (40 places keyless);
+**51 keyless, 22 keyed**; 69 GTFS-RT vehicle-position feeds and 4 GBFS bike
+shares. **34 candidates excluded for their licence** (refused, or not
+verifiable) and 18 more for having no usable feed — below.
+
+### Excluded
+
+| Candidate | Why |
+| --- | --- |
+| **Rome** (RSM/ATAC) | The portal says CC BY-SA but the operator's page limits use to "supporto al viaggio" and reserves legal action: conflicting terms. |
+| **Germany** (gtfs.de) | Trip updates only, 17 MB a poll, CC BY-SA over upstreams marked "special agreement" or "Unbekannt". |
+| **Berlin** (VBB) | Trip updates only; its licence was not verified first-hand. |
+| **Vilnius**, **Kraków**, **Málaga** (EMT) | Keyless feeds, no licence published anywhere we could read. |
+| **Budapest** (BKK) | Terms visible only after registration. |
+| **Finland, Waltti cities** | Static GTFS is CC BY 4.0; the realtime licence is not stated. |
+| **Lisbon** (Carris, Carris Metropolitana) | No realtime licence; Carris said its API "não vai voltar a ser pública". |
+| **Great Britain** (Bus Open Data Service, SIRI-VM/GTFS-RT, keyed) | The data licence page refused our probe (WAF); the site's footer OGL covers its content, not demonstrably the feeds. Owner to confirm, then it is one `siri-vm` or `gtfs-rt-vp` entry. |
+| **Atlanta** (MARTA), **Orange County** (OCTA) | "Commercial use … is prohibited without the written permission". |
+| **Los Angeles** (Metro / Swiftly) | Redistribution and reformatting forbidden. |
+| **Washington** (WMATA, keyed) | Re-serving through the SDK needs WMATA's prior written authorisation. |
+| **SF Bay Area** (511, keyed) | Sublicensees (SDK users) must accept in writing; 60 requests/hour. |
+| **Seattle** (Sound Transit / OneBusAway, keyed) | Grant is "use and display"; terms must be passed on; data not to be changed. |
+| **Chicago** (CTA, keyed) | Proprietary API (no GTFS-RT) and "for the sole purpose of assisting … riders". |
+| **Des Moines** (DART), **Madison** (Metro), **Santa Monica** (Big Blue Bus, trip updates) | Licences limited to rider assistance or promoting public transport. |
+| **Pittsburgh** (PRT) | No sublicensing (clause 6) — the SDK re-serves. |
+| **Philadelphia** (SEPTA) | The licence covers "Trip Planning Data", not the realtime feeds. |
+| **Minneapolis** (Metro Transit) | No licence published. |
+| **Victoria BC** (BC Transit) | Redistribution granted, commercial use never mentioned. |
+| **Chicago, Washington, Boston bike share** (Lyft GBFS) | The same Bikeshare Data License as `nyc-bikeshare`: "stand-alone dataset" clause awaiting Lyft's answer. |
+| **Hakodate**, **Okayama Uno Bus** (ODPT, GTFS-RU) | Operator permission required for passenger information. |
+| **Japan, keyed ODPT feeds** (Tokyo Metro, JR East, Yokohama…) | The ODPT Basic Licence text was not readable; "Challenge" feeds are contest-only. |
+| **São Paulo** (SPTrans), **Curitiba** (URBS) | Keyed JSON, terms not public. |
+| **Malaysia** (Prasarana, keyless GTFS-RT) | Licence not yet read. |
+| **Paris** (IDFM), **London** (TfL), **Madrid** (EMT), **Hong Kong** | Licence fine, no vehicle positions (arrival times only). |
+| **Valencia**, **Perth**, **Santiago**, **Bogotá**, **Mexico City**, **Montevideo** | No public realtime feed. |
+| **Bilbao** (Bilbobus) | Licence fine; the feed is empty. |
+| **Kitchener-Waterloo** (GRT) | Licence fine; the host refused every connection. |
+| **Buenos Aires** | The portal says its API datasets are "suspendidos". |
+| **Taipei** (TDX), **Seoul**, **Singapore** (LTA) | Licences allow it, but no GTFS-RT: per-route or per-stop APIs that need their own adapters and keys. |
+| **Queensland regional** (Townsville, Mackay…) | Feeds answer empty; TransLink lists realtime only for South East Queensland and Cairns. |
+| **Colombo** | Only an unofficial, unlicensed reverse-engineered feed. |
 
 ## Architecture
 
@@ -494,8 +702,8 @@ empty. Kinds come from the transit mode (`rail` → `train`, `subway` → `metro
 
 ## Gates
 
-- **Backend** `LIVE_SOURCES` (each feed opted into by id; an unknown id fails
-  the boot parse). There is no other switch: live runs when a usable source is
+- **Backend** `LIVE_SOURCES` (each feed opted into by id, or `all`; an
+  unknown id fails the boot parse). There is no other switch: live runs when a usable source is
   listed. None: no poller, no `/live` namespace, `GET /live/sources` →
   `503 service_unavailable`, and no other live setting (the Valkey URL
   included) is read — none can stop the backend from booting.
@@ -576,7 +784,8 @@ EXPO_PUBLIC_API_URL=http://localhost:3000 bun run --cwd packages/frontend web
 | MTA subway | 8 / 30 s | none published |
 | AMB | 1 / 30 s | none published |
 | AISA, EMT Fuenlabrada | 1 / 20 s each | none published |
-| Static GTFS | each file once a day per process (≤ 120 MB) | — |
+| Worldwide providers | 1 / 15–90 s each while watched (the entry's interval) | each provider's published limit (→ Worldwide providers) |
+| Static GTFS | each file once a day per process (≤ 120 MB), or its `routes.txt` by range; let go after 15 min unneeded | — |
 
 Polling is per DEPLOYMENT (one leader per source, → Production) and
 demand-driven, so cost scales with the areas watched, not with viewers or
@@ -707,9 +916,10 @@ parameters the task definition names as `secrets`.
 
 | Variable | Value | Where |
 | --- | --- | --- |
-| `LIVE_SOURCES` | `renfe-cercanias,fgc-geotren,mta-lirr,mta-mnr,mta-subway,amb-bus,aisa-bus,emt-fuenlabrada,digitraffic-ais` to start; add `mta-bus` with its key, `adsb-lol` after the operator's answer, `nyc-bikeshare` after Lyft's (→ Licences) | environment |
+| `LIVE_SOURCES` | `all`: every catalogue and worldwide source whose licence is read, **except** those still `awaiting` a permission (`adsb-lol`, `nyc-bikeshare`, `york-yrt` — → Licences) and keyed ones without their key, which are skipped with one log line each kind. Name an awaiting source beside it once its permission is in (`all,adsb-lol`). A list of ids still works as before | environment |
 | `REDIS_URL` | `/oxy/_shared/REDIS_URL` (the fleet Valkey), as allo, clarity and moovo read it. Read only when `LIVE_SOURCES` lists a source; if it is malformed, GoWay logs a warning (never the value) and live runs without a bus — a variable a dozen services share never stops GoWay booting | SSM, `secrets` |
 | `LIVE_SOURCE_MTA_BUS_KEY` | the MTA Bus Time key | SSM `/oxy/goway/LIVE_SOURCE_MTA_BUS_KEY`, `secrets` |
+| `LIVE_SOURCE_<ID>_KEY` | one per keyed worldwide feed, once registered (→ Keys to register) | SSM `/oxy/goway/LIVE_SOURCE_<ID>_KEY`, `secrets` |
 
 Nothing else: the user agent (`GoWay-Live/1.0 (+https://goway.to)`, which
 names a way to reach GoWay to feeds that ask callers to identify themselves),
@@ -744,6 +954,32 @@ Infrastructure (`oxy-infra`; nothing here writes SSM or touches AWS):
 5. The tasks' security group already reaches Valkey (`redis-sg` admits
    `tasks`); nothing to change.
 
+### Keys to register (worldwide)
+
+Each is free; GoWay registers once, as GoWay, for public commercial use where
+the form asks. Each key becomes SSM `/oxy/goway/LIVE_SOURCE_<ID>_KEY` (named in
+the task's `secrets` and the execution role's `ssm:GetParameters`, as in steps
+1–3 above). Until then the feed is simply off.
+
+| Feed id(s) | Register at | Variable(s) | Limit / condition |
+| --- | --- | --- | --- |
+| `ireland-nta` | https://developer.nationaltransport.ie/ | `LIVE_SOURCE_IRELAND_NTA_KEY` | One call a minute per key (we poll every 60 s); "must add significant value" — a public map does. |
+| `sweden-sl`, `sweden-skane`, `sweden-ul`, `sweden-otraf` | https://www.trafiklab.se/ (project → "GTFS Regional Realtime") | `LIVE_SOURCE_SWEDEN_SL_KEY`, `…_SWEDEN_SKANE_KEY`, `…_SWEDEN_UL_KEY`, `…_SWEDEN_OTRAF_KEY` (the same key four times) | Ask for the Silver tier: Bronze's monthly quota does not cover four operators polled every 60 s while watched. A second key ("GTFS Regional Static") would give their modes — not wired yet. |
+| `vancouver-translink` | https://developer.translink.ca/ — declare commercial use | `LIVE_SOURCE_VANCOUVER_TRANSLINK_KEY` | 1,000 requests a day (we poll every 90 s); revocable on 10 days' notice. |
+| `montreal-stm` | https://portail.developpeurs.stm.info/ | `LIVE_SOURCE_MONTREAL_STM_KEY` | Read the portal's own terms on registering (the data licence, CC BY 4.0, was read; the portal was unreachable). |
+| `ottawa-oc-transpo` | https://www.octranspo.com/en/plan-your-trip/travel-tools/developers | `LIVE_SOURCE_OTTAWA_OC_TRANSPO_KEY` | The terms quote ("commercial purposes") was read from a search snapshot: re-read on registering. |
+| `chicago-metra` | https://metra.com/developers | `LIVE_SOURCE_CHICAGO_METRA_KEY` | "Not sponsored, affiliated, or operated by Metra" is the credit drawn. |
+| `portland-trimet` | https://developer.trimet.org/appid/registration/ | `LIVE_SOURCE_PORTLAND_TRIMET_KEY` | No TriMet marks. |
+| `sydney-buses`, `sydney-trains`, `sydney-metro`, `sydney-ferries`, `sydney-light-rail` | https://opendata.transport.nsw.gov.au/ | `LIVE_SOURCE_SYDNEY_BUSES_KEY` … (the same key five times) | No logos, no implied endorsement. |
+| `victoria-metro`, `victoria-tram`, `victoria-bus`, `victoria-vline` | https://opendata.transport.vic.gov.au/ | `LIVE_SOURCE_VICTORIA_METRO_KEY` … (the same key four times) | 24 calls a minute per mode. |
+| `auckland-at` | https://dev-portal.at.govt.nz/ | `LIVE_SOURCE_AUCKLAND_AT_KEY` | Its "API conditions" page would not render: read it on registering; the endpoint may answer JSON (check the first poll). |
+| `wellington-metlink` | https://opendata.metlink.org.nz/ | `LIVE_SOURCE_WELLINGTON_METLINK_KEY` | Credit "GWRC". |
+| `christchurch-metro` | https://apidevelopers.metroinfo.co.nz/signup | `LIVE_SOURCE_CHRISTCHURCH_METRO_KEY` | No Metro branding, never "official". |
+
+And one form, not a key: **York Region** (`york-yrt`) hands its feed URLs out
+through https://forms.yrt.ca/YRT-GTFS-Data — file it once, then name
+`york-yrt` in `LIVE_SOURCES` beside `all`.
+
 ### Licences, per source
 
 | Source | Ready? | What is left |
@@ -756,6 +992,7 @@ Infrastructure (`oxy-infra`; nothing here writes SSM or touches AWS):
 | `aisa-bus`, `emt-fuenlabrada` | **yes** | "Powered by MITRAMS" drawn. |
 | `digitraffic-ais` | **yes** | Credit drawn; `Digitraffic-User` sent. Baltic only. |
 | `adsb-lol` | after the operator's answer | The operator asks production users to get in touch first (email below), and an API key for non-feeders is announced: plan an ADS-B feeder (an RTL-SDR stick, an antenna and `readsb` on a small computer feeding adsb.lol). ODbL: the credit and the licence link are drawn and listed. |
+| Worldwide providers | **yes**, each as its row says | → Worldwide providers: every one credited while drawn; ODbL (Montpellier) and CC BY-SA (Canberra) entries make what GoWay re-serves of them share-alike; revocable grants (MBTA, King County, RTD, CapMetro, Mississauga, TransLink) are withdrawn by removing the entry. |
 | `nyc-bikeshare` | **no, not yet** | The Bikeshare Data License forbids distributing the data "as a stand-alone dataset". Whether a public map that draws it, over a socket anyone can open, is that is Lyft's (or counsel's) question. Ask before listing it. |
 
 ### MTA Bus Time key
@@ -831,5 +1068,6 @@ questions at the time.
 - Every task holds every source's current positions in memory; a task that
   starts is synced by the leaders, and a deployment that restarts entirely
   refills within one poll interval.
-- HSL, Bicing, TMB, EMT Madrid, NYC Ferry and Baltic-only ships are
-  documented above as next sources, not built.
+- Bicing, TMB, EMT Madrid, NYC Ferry and Baltic-only ships are
+  documented above as next sources, not built; the worldwide exclusions are
+  under Worldwide providers → Excluded.

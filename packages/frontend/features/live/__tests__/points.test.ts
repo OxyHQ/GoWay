@@ -53,6 +53,16 @@ function sample(positionBasis: 'reported' | 'estimated'): LiveSample {
 }
 
 describe('pointOf', () => {
+  test('a vehicle whose feed names no mode is a neutral marker: no bus, no train, no 3D body', () => {
+    const unknown = sample('reported');
+    unknown.entity = { ...unknown.entity, mode: 'other', lineColor: null } as LiveEntity;
+    const point = pointOf(unknown, null);
+    expect(point.glyph).toBe('transit-other');
+    expect(point.model).toBeUndefined();
+    expect(point.length).toBeUndefined();
+    expect(point.parts).toBeUndefined();
+  });
+
   test('an estimated train is drawn flat, in the estimated style, with no 3D model', () => {
     const point = pointOf(sample('estimated'), null);
     expect(point.estimated).toBe(true);

@@ -46,25 +46,29 @@
       }
     },
     {
-      "id": "satellite",
-      "light": "fixed",
+      "id": "navigation",
+      "light": "follows",
       "presets": [
-        "day"
+        "day",
+        "night"
       ],
       "defaultPreset": "day",
       "urls": {
-        "day": "https://goway.to/map/styles/satellite/day.json"
+        "day": "https://goway.to/map/styles/navigation/day.json",
+        "night": "https://goway.to/map/styles/navigation/night.json"
       }
     },
     {
-      "id": "hybrid",
-      "light": "fixed",
+      "id": "monochrome",
+      "light": "follows",
       "presets": [
-        "day"
+        "day",
+        "night"
       ],
       "defaultPreset": "day",
       "urls": {
-        "day": "https://goway.to/map/styles/hybrid/day.json"
+        "day": "https://goway.to/map/styles/monochrome/day.json",
+        "night": "https://goway.to/map/styles/monochrome/night.json"
       }
     },
     {

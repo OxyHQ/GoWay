@@ -351,6 +351,21 @@ export function farConiferShape(): TreeShape {
 export const PALM = { top: 0.86, reach: 0.34, droop: 0.2 } as const;
 
 /**
+ * Where each unit shape's crown sits, as fractions of the unit tree's height:
+ * `base`, the crown's lowest point, and `radius`, its widest reach. The
+ * shader stretches the unit tree so the crown spans each tree's own crown
+ * base → top and its crown diameter (`trees.ts` → `treeForm`,
+ * `tsl/treeMaterial.ts`): everything below `base` (the clear trunk) to the
+ * crown base, everything above it to the rest of the height. Order:
+ * broadleaf, conifer, palm.
+ */
+export const CROWN_FRAMES = {
+  broadleaf: { base: CROWN.centre - CROWN.halfHeight, radius: CROWN.radius },
+  conifer: { base: CONIFER_TIERS[0][0], radius: CONIFER_TIERS[0][2] },
+  palm: { base: PALM.top - PALM.droop, radius: PALM.reach },
+} as const;
+
+/**
  * Fronds radiating from the trunk's top and drooping. Each is two segments; a
  * near frond is a shallow V in section (two faces each side of its rib), so it
  * has an upper surface from every side, a far one is flat.

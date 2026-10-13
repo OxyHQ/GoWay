@@ -16,119 +16,54 @@
  * style with a fixed light (the data-visualisation Light and Dark) is
  * published in one and ignores the person's.
  */
-import type { MapImageryMode } from '../imagery';
 import type { MapAppearance } from '../provider';
 
-/** Every style GoWay publishes, in the order the picker shows them. */
-export const MAP_STYLE_IDS = [
-  'standard',
-  'streets',
-  'outdoors',
-  'satellite',
-  'hybrid',
-  'light',
-  'dark',
-] as const;
-export type MapStyleId = (typeof MAP_STYLE_IDS)[number];
+/**
+ * The vocabulary and the catalogue are the PUBLIC contract — the same ids the
+ * embed takes and `@goway.to/sdk` builds URLs from — so they are defined once,
+ * in `packages/contracts/src/map-style.ts`, and read here. What follows is the
+ * app's own: the appearance a light belongs to, the light modes, the sun.
+ */
+import {
+  DEFAULT_MAP_STYLE,
+  isMapLightPreset,
+  isMapStyleId,
+  MAP_LIGHT_PRESETS,
+  MAP_STYLE_CATALOGUE,
+  MAP_STYLE_IDS,
+  MAP_STYLE_INDEX_PATH,
+  type MapLightPreset,
+  type MapStyleDefinition,
+  type MapStyleId,
+  type MapStyleSelection,
+  mapStyleDefinition,
+  mapStylePath,
+  resolveMapStyle,
+} from '@goway.to/sdk';
 
-/** The lights a style can be drawn in. */
-export const MAP_LIGHT_PRESETS = ['day', 'dawn', 'dusk', 'night'] as const;
-export type MapLightPreset = (typeof MAP_LIGHT_PRESETS)[number];
+export {
+  DEFAULT_MAP_STYLE,
+  isMapLightPreset,
+  isMapStyleId,
+  MAP_LIGHT_PRESETS,
+  MAP_STYLE_IDS,
+  MAP_STYLE_INDEX_PATH,
+  mapStyleDefinition,
+  mapStylePath,
+  resolveMapStyle,
+};
+export type { MapLightPreset, MapStyleDefinition, MapStyleId, MapStyleSelection };
 
-/** One style, as the catalogue publishes it. */
-export interface MapStyleDefinition {
-  id: MapStyleId;
-  /**
-   * The lights it is published in. A style that `follows` the light lists
-   * `day` and `night` at least; `fixed` lists exactly one.
-   */
-  presets: readonly MapLightPreset[];
-  /** Whether it follows the person's light, or keeps its own. */
-  light: 'follows' | 'fixed';
-  /**
-   * The documents carry their own terrain — a hillshade and contour lines
-   * from GoWay's elevation tiles — so the map credits the elevation data
-   * whatever the Terrain switch says, and the relief adapters add no second
-   * hillshade over it.
-   */
-  relief?: true;
-  /**
-   * Drawn over GoWay's satellite imagery (`docs/MAP_SATELLITE.md`): the
-   * imagery alone, or under the roads and labels. The canvas credits each
-   * imagery source while it is on screen.
-   */
-  imagery?: MapImageryMode;
-  /**
-   * `development`: offered by the picker and the embed only in a development
-   * build — a style whose data is not published yet (the imagery, until the
-   * owner approves its first published run). Defaults to `always`.
-   */
-  offer?: 'always' | 'development';
-}
-
-export const MAP_STYLES: readonly MapStyleDefinition[] = [
-  // The default: GoWay's own look, in all four lights.
-  { id: 'standard', presets: ['day', 'dawn', 'dusk', 'night'], light: 'follows' },
-  // Denser places, a coloured road hierarchy, house numbers.
-  { id: 'streets', presets: ['day', 'night'], light: 'follows' },
-  // The terrain map: contours, hillshade, trails, peaks, huts.
-  { id: 'outdoors', presets: ['day', 'night'], light: 'follows', relief: true },
-  // The imagery alone, and the imagery under GoWay's roads and labels. A
-  // photograph has one light: these keep it (and skip the globe's night pass).
-  { id: 'satellite', presets: ['day'], light: 'fixed', imagery: 'satellite', offer: 'development' },
-  { id: 'hybrid', presets: ['day'], light: 'fixed', imagery: 'hybrid', offer: 'development' },
-  // Quiet basemaps for data drawn over them, from Bloom's neutral tokens.
-  { id: 'light', presets: ['day'], light: 'fixed' },
-  { id: 'dark', presets: ['night'], light: 'fixed' },
-];
-
-export const DEFAULT_MAP_STYLE: MapStyleId = 'standard';
-
-/** A style in one light: what a document is built for, and what a map loads. */
-export interface MapStyleSelection {
-  style: MapStyleId;
-  preset: MapLightPreset;
-}
-
-export function isMapStyleId(value: unknown): value is MapStyleId {
-  return typeof value === 'string' && (MAP_STYLE_IDS as readonly string[]).includes(value);
-}
-
-export function isMapLightPreset(value: unknown): value is MapLightPreset {
-  return typeof value === 'string' && (MAP_LIGHT_PRESETS as readonly string[]).includes(value);
-}
-
-/** Whether a style is offered to people on this build (`MapStyleDefinition.offer`). */
-export function isMapStyleOffered(id: MapStyleId, development: boolean): boolean {
-  return mapStyleDefinition(id).offer !== 'development' || development;
-}
-
-export function mapStyleDefinition(id: MapStyleId): MapStyleDefinition {
-  // The list is closed over `MapStyleId`, so this always finds one.
-  return MAP_STYLES.find((entry) => entry.id === id) as MapStyleDefinition;
-}
+/** Every published style, in the order the picker shows them. */
+export const MAP_STYLES: readonly MapStyleDefinition[] = MAP_STYLE_CATALOGUE;
 
 /**
- * The light a style is actually drawn in when `wanted` is asked for.
- *
- * A fixed style has one. A style without dawn and dusk draws twilight as day
- * while the sun is still up and as night once it has set — which is what
- * `wanted` already encodes: {@link lightPresetFromSun} only says `dawn` or
- * `dusk` for the twilight band, and the band's two halves are told apart
- * by `sunUp`.
+ * Whether a style is offered on this build (`MapStyleDefinition.offer`): a
+ * style whose data is not published yet (the imagery) only in a development
+ * build. The picker and the embed ask this; the documents exist either way.
  */
-export function resolveMapStyle(
-  style: MapStyleId,
-  wanted: MapLightPreset,
-  sunUp = wanted !== 'dusk',
-): MapStyleSelection {
-  const { presets } = mapStyleDefinition(style);
-  if (presets.includes(wanted)) return { style, preset: wanted };
-  if (presets.length === 1) return { style, preset: presets[0] };
-  if (wanted === 'dawn' || wanted === 'dusk') {
-    return { style, preset: sunUp ? 'day' : 'night' };
-  }
-  return { style, preset: presets[0] };
+export function isMapStyleOffered(id: MapStyleId, development: boolean): boolean {
+  return mapStyleDefinition(id).offer !== 'development' || development;
 }
 
 /**
@@ -145,11 +80,6 @@ export function appearancePreset(appearance: MapAppearance): MapLightPreset {
   return appearance === 'dark' ? 'night' : 'day';
 }
 
-/** Where a document is served, relative to GoWay's origin: `/map/styles/<style>/<light>.json`. */
-export function mapStylePath(selection: MapStyleSelection): string {
-  return `/map/styles/${selection.style}/${selection.preset}.json`;
-}
-
 /**
  * A style's picker thumbnail, rendered from its document by the real
  * renderer (`scripts/build-map-thumbs.ts`): `/map/styles/thumbs/<style>-<light>.jpg`.
@@ -158,9 +88,6 @@ export function mapStylePath(selection: MapStyleSelection): string {
 export function mapStyleThumbnailPath(selection: MapStyleSelection): string {
   return `/map/styles/thumbs/${selection.style}-${selection.preset}.jpg`;
 }
-
-/** The catalogue document that lists every style and its documents (`/map/styles/index.json`). */
-export const MAP_STYLE_INDEX_PATH = '/map/styles/index.json';
 
 // ---------------------------------------------------------------------------
 // The light, as the person chooses it

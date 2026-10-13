@@ -18,7 +18,7 @@ import {
   liveTilesFor,
   liveTilesOf,
 } from '@goway/contracts';
-import { LiveHub, MAX_BACKOFF_MS } from '../hub';
+import { LiveHub, MAX_BACKOFF_MS, STATIC_GTFS_IDLE_MS } from '../hub';
 import { contains, LiveTileIndex } from '../tileIndex';
 import type { LiveFetchContext, LivePollResult, LiveSourceDefinition } from '../types';
 import { LiveUpstreamError } from '../types';
@@ -208,6 +208,7 @@ function harness(overrides: Partial<LiveSourceDefinition> = {}): Harness {
     completeness: 'network',
     defaultUrl: 'https://example.org/feed',
     requiresKey: false,
+    licenceCheck: { verifiedOn: '2026-10-12', source: 'https://example.org', quote: 'test' },
     pollIntervalSeconds: 10,
     staleAfterSeconds: 60,
     dropAfterSeconds: 120,
@@ -482,6 +483,136 @@ describe('the hub', () => {
     ]);
     expect(shape?.lengthMeters).toBeGreaterThan(1600);
     expect(h.hub.shape('test-bus', 'nope')).toBeNull();
+  });
+
+  it('lets a static GTFS go once nobody has looked for a while, and reads it again when they do', async () => {
+    const h = harness({
+      staticGtfs: {
+        routes: 'https://gtfs.example/routes.txt',
+        trips: 'https://gtfs.example/trips.txt',
+        shapes: 'https://gtfs.example/shapes.txt',
+      },
+    });
+    const room = { tile: BARCELONA_TILE, kind: 'transit' as const };
+    h.hub.watch('a', [room]);
+    await h.hub.tick();
+    expect(h.hub.shape('test-bus', 'line')).not.toBeNull();
+    h.hub.unwatch('a');
+    h.clock.now += STATIC_GTFS_IDLE_MS - 1_000;
+    await h.hub.tick();
+    await h.hub.tick();
+    expect(h.hub.shape('test-bus', 'line')).not.toBeNull();
+    h.clock.now += STATIC_GTFS_IDLE_MS;
+    await h.hub.tick();
+    expect(h.hub.shape('test-bus', 'line')).toBeNull();
+    h.hub.watch('a', [room]);
+    await h.hub.tick();
+    expect(h.hub.shape('test-bus', 'line')).not.toBeNull();
+    h.hub.stop();
+  });
+
+  it("reads a big archive's routes by range, unencoded, and names each vehicle's line and mode from it", async () => {
+    // A stored (uncompressed) zip of one routes.txt and a large stop_times.txt.
+    const files: [string, string][] = [
+      ['routes.txt', 'route_id,route_short_name,route_type\n100001,7,0\n'],
+      ['stop_times.txt', 'x'.repeat(400_000)],
+    ];
+    const encoder = new TextEncoder();
+    const parts: Uint8Array[] = [];
+    const central: Uint8Array[] = [];
+    let offset = 0;
+    for (const [name, text] of files) {
+      const data = encoder.encode(text);
+      const nameBytes = encoder.encode(name);
+      const local = new Uint8Array(30);
+      const lv = new DataView(local.buffer);
+      lv.setUint32(0, 0x04034b50, true);
+      lv.setUint32(18, data.length, true);
+      lv.setUint32(22, data.length, true);
+      lv.setUint16(26, nameBytes.length, true);
+      const head = new Uint8Array(46);
+      const hv = new DataView(head.buffer);
+      hv.setUint32(0, 0x02014b50, true);
+      hv.setUint32(20, data.length, true);
+      hv.setUint32(24, data.length, true);
+      hv.setUint16(28, nameBytes.length, true);
+      hv.setUint32(42, offset, true);
+      parts.push(local, nameBytes, data);
+      central.push(head, nameBytes);
+      offset += 30 + nameBytes.length + data.length;
+    }
+    const directorySize = central.reduce((sum, part) => sum + part.length, 0);
+    const end = new Uint8Array(22);
+    const ev = new DataView(end.buffer);
+    ev.setUint32(0, 0x06054b50, true);
+    ev.setUint16(10, files.length, true);
+    ev.setUint32(12, directorySize, true);
+    ev.setUint32(16, offset, true);
+    const archive = new Uint8Array(Buffer.concat([...parts, ...central, end]));
+    const requests: Record<string, string>[] = [];
+    let served = 0;
+    const definition: LiveSourceDefinition = {
+      id: 'test-bus',
+      kind: 'transit',
+      name: 'Test buses',
+      attribution: { label: 'Test', href: 'https://example.org' },
+      licence: { label: 'CC BY 4.0', href: 'https://creativecommons.org/licenses/by/4.0/' },
+      coverage: { west: 1.9, south: 41.2, east: 2.4, north: 41.6 },
+      completeness: 'network',
+      defaultUrl: 'https://example.org/feed',
+      requiresKey: false,
+      licenceCheck: { verifiedOn: '2026-10-12', source: 'https://example.org', quote: 'test' },
+      pollIntervalSeconds: 10,
+      staleAfterSeconds: 60,
+      dropAfterSeconds: 120,
+      staticGtfs: { zip: 'https://gtfs.example/big.zip', only: 'routes' },
+      create: () => ({
+        poll: async () => ({
+          entities: [{ ...bus('1', 41.39, 2.17, T0), line: null, mode: 'other' }],
+          rejected: 0,
+          hints: new Map([['test-bus:1', { route: '100001' }]]),
+        }),
+      }),
+    };
+    const clock = { now: T0 };
+    const hub = new LiveHub({
+      sources: [
+        {
+          definition,
+          settings: { url: definition.defaultUrl, userAgent: 'test', maxRegionsPerPoll: 1 },
+        },
+      ],
+      fetch: async (_url, init) => {
+        requests.push(init.headers);
+        const range = /^bytes=(?:-(\d+)|(\d+)-(\d+))$/.exec(init.headers.range ?? '');
+        if (!range) throw new Error('the whole archive was asked for');
+        const from = range[1] ? archive.length - Number(range[1]) : Number(range[2]);
+        const to = range[1] ? archive.length - 1 : Math.min(archive.length - 1, Number(range[3]));
+        const part = archive.slice(Math.max(0, from), to + 1);
+        served += part.length;
+        return {
+          status: 206,
+          headers: { get: () => null },
+          arrayBuffer: async () => part.buffer as ArrayBuffer,
+        };
+      },
+      now: () => clock.now,
+      random: () => 0.5,
+      publish: () => {},
+      logger: { info: () => {}, warn: () => {} },
+    });
+    hub.watch('a', [{ tile: BARCELONA_TILE, kind: 'transit' }]);
+    await hub.tick(); // loads the routes, and polls before they arrive
+    clock.now += 10_000;
+    await hub.tick();
+    expect(requests.length).toBeGreaterThan(0);
+    for (const headers of requests) expect(headers['accept-encoding']).toBe('identity');
+    expect(served).toBeLessThan(archive.length / 2);
+    expect(hub.snapshot(BARCELONA_TILE, 'transit').entities[0]).toMatchObject({
+      line: '7',
+      mode: 'tram',
+    });
+    hub.stop();
   });
 
   it('counts room watchers, so one viewer leaving keeps the room for another', async () => {

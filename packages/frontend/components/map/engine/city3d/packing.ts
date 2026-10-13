@@ -46,6 +46,7 @@
  * before and after). The dense tile's indices grow by 2 bytes each; the
  * duplicated vertices the cuts copied are gone.
  */
+import type { VolumeIndex } from '../camera/volumes';
 import type { TileMesh } from './mesher';
 
 /** The most vertices a 16-bit index can address; past it a tile's indices are 32-bit. */
@@ -129,6 +130,11 @@ export interface PackedMesh {
   polygonBoxes: Float32Array;
   /** Per unit, 1 when its height is the 5 m default (`TileMesh.polygonHeightDefault`). */
   polygonHeightDefault: Uint8Array;
+  /**
+   * The units as prisms, for the camera (`camera/volumes.ts`): added by the
+   * mesh worker (`tileMeshing.ts`), held on the CPU, never uploaded.
+   */
+  volumes?: VolumeIndex;
 }
 
 /** The buffers a packed mesh transfers (no copy) out of the worker. */
@@ -148,6 +154,18 @@ export function packedTransferables(mesh: PackedMesh): ArrayBuffer[] {
     mesh.polygonBoxes.buffer as ArrayBuffer,
     mesh.polygonHeightDefault.buffer as ArrayBuffer,
   );
+  const volumes = mesh.volumes;
+  if (volumes) {
+    out.push(
+      volumes.hullStarts.buffer as ArrayBuffer,
+      volumes.hull.buffer as ArrayBuffer,
+      volumes.box.buffer as ArrayBuffer,
+      volumes.top.buffer as ArrayBuffer,
+      volumes.cellStarts.buffer as ArrayBuffer,
+      volumes.cellUnits.buffer as ArrayBuffer,
+      volumes.cellTop.buffer as ArrayBuffer,
+    );
+  }
   return out;
 }
 

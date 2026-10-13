@@ -176,6 +176,8 @@ async function measure(
       tileZoom: 15,
       sourceLayer: 'building',
       treeLayer: 'tree',
+      // The trees read the road archive for their setting (`treeContext.ts`).
+      roadTileUrlTemplate: `${server.origin}/roads/{z}/{x}/{y}.pbf`,
       coverage: syntheticCoverage(),
     },
     trees: {

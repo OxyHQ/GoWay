@@ -20,6 +20,11 @@ import { queryClient } from '@/lib/queryClient';
 import { THEME_PERSIST_KEY, themeStorage } from '@/lib/themePersistence';
 import { LocaleProvider } from '@/lib/i18n';
 import { ErrorFallback } from '@/components/error-fallback';
+import { installSchedulerYield } from '@/lib/platform/schedulerYield';
+
+// `scheduler.yield()` where the platform lacks it (Safari, Hermes), before
+// anything that yields: three's material warm-up (`lib/platform/schedulerYield.ts`).
+void installSchedulerYield();
 
 /**
  * Top-level error boundary. expo-router renders this whenever a render error
