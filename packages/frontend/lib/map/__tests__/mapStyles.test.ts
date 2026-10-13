@@ -35,7 +35,9 @@ import { GOWAY_STYLE_LAYER_ID_LIST, LABEL_ANCHOR_LAYER_ID } from '@/lib/map/styl
 import { DARK_PALETTE, LIGHT_PALETTE } from '@/lib/map/style/palette';
 import { CITY_GROUND_PALETTES, CITY_MATERIALS } from '@/lib/map/style/palette3d';
 import { styleTheme } from '@/lib/map/style/themes';
-import { LABEL_LANGUAGES } from '@goway.to/sdk';
+import { LABEL_LANGUAGES, parseMapStyleIndex } from '@goway.to/sdk';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 
 const SELECTIONS: MapStyleSelection[] = MAP_STYLES.flatMap((entry) =>
   entry.presets.map((preset) => ({ style: entry.id, preset })),
@@ -314,4 +316,17 @@ describe('the words', () => {
 test('mixColours is the identity at its ends', () => {
   expect(mixColours('#f6f4eb', '#34445b', 0)).toBe('#f6f4eb');
   expect(mixColours('#f6f4eb', '#34445b', 1)).toBe('#34445b');
+});
+
+test('the published catalogue document is what the SDK reads, and lists every document', () => {
+  const raw = readFileSync(join(import.meta.dir, '../../../public/map/styles/index.json'), 'utf8');
+  const index = parseMapStyleIndex(JSON.parse(raw));
+  expect(index.styles.map((s) => s.id)).toEqual([...MAP_STYLE_IDS]);
+  for (const entry of index.styles) {
+    for (const preset of entry.presets) {
+      expect(entry.urls[preset]).toBe(
+        `https://goway.to${mapStylePath({ style: entry.id as never, preset: preset as never })}`,
+      );
+    }
+  }
 });

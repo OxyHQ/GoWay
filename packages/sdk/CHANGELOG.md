@@ -17,6 +17,16 @@ taxonomy.
 
 ### Added
 
+- **Map styles.** GoWay's published styles by id, as Mapbox's style URLs are:
+  `MAP_STYLE_IDS` (`standard`, `streets`, `outdoors`, `navigation`,
+  `monochrome`, `light`, `dark`), `MAP_LIGHT_PRESETS` (`day`, `dawn`, `dusk`,
+  `night`), `MAP_STYLE_CATALOGUE` (the lights each is published in) and
+  `resolveMapStyle`. `client.links.mapStyle(style, light?)` is a complete
+  MapLibre style document URL (`https://goway.to/map/styles/<style>/<light>.json`)
+  for `new maplibregl.Map({ style })` or MapLibre Native; `client.links.embed`
+  frames the embeddable map in one; `client.links.mapStyleIndex()` and
+  `parseMapStyleIndex` read the catalogue document, open to styles added
+  later. Static documents on GoWay's origin, not API operations.
 - 3D model placement, phase 1 of `docs/SDK_MAP_MODELS.md`: the
   `ModelPlacement`/`ModelPlacementInput` types (position, `'ground'` altitude,
   heading/pitch/roll, scale; latitude within Web Mercator's ±85.0511°,
