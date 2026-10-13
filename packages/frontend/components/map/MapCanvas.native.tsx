@@ -57,6 +57,7 @@ import {
   RELIEF_SOURCE_IDS,
 } from '@/lib/map/style/relief';
 import { boundsOf, isDegenerateBounds } from '@/lib/map/geo';
+import { mapStyleDefinition, presetAppearance } from '@/lib/map/style/catalogue';
 import { LABEL_LAYER_IDS, TAP_LAYER_IDS } from '@/lib/map/tapLayers';
 
 import { DefaultMapMarker } from './DefaultMapMarker';
@@ -68,7 +69,6 @@ import {
   pickLabelFeature,
   type QueriedLabel,
 } from './labels';
-import { resolveImageryMode } from '@/lib/map/imagery';
 import type { ImageryView } from '@/lib/map/imageryCoverage';
 
 import { MapAttribution } from './MapAttribution';
@@ -107,6 +107,7 @@ import {
   type MapMarker,
   type ResolvedMapViewport,
 } from './types';
+import { useMapStyle } from './useMapStyle';
 import { useSunLight } from './useSunLight';
 
 /** Zoom used when a "fit" has nothing with area to fit — see `isDegenerateBounds`. */
@@ -119,7 +120,8 @@ export const MapCanvas = forwardRef<MapApi, MapCanvasProps>(function MapCanvas(
   {
     initialViewport = DEFAULT_VIEWPORT,
     appearance,
-    imagery,
+    mapStyle,
+    lightPreset,
     markers,
     renderMarker,
     overlays,
@@ -191,15 +193,19 @@ export const MapCanvas = forwardRef<MapApi, MapCanvasProps>(function MapCanvas(
     );
   }
 
-  const resolvedAppearance = appearance ?? (theme.isDark ? 'dark' : 'light');
-  // Satellite or hybrid (`lib/map/imagery.ts`): the screen's choice. Native
-  // has no page address, so only the prop can ask for it.
-  const imageryMode = resolveImageryMode(imagery, { development: __DEV__, search: '' });
+  // The style and its light (`useMapStyle.ts`), exactly as on the web.
+  const mapStyleState = useMapStyle({ style: mapStyle, lightPreset, appearance }, start);
+  const { style: styleId, preset: stylePreset } = mapStyleState.selection;
+  const settleMapStyle = mapStyleState.settle;
+  const resolvedAppearance = presetAppearance(stylePreset);
+  const styleDrawsRelief = mapStyleDefinition(styleId).relief === true;
   const styleUrl = useMemo(
-    () => resolveMapStyleUrl(resolvedAppearance, imageryMode),
-    [resolvedAppearance, imageryMode],
+    () => resolveMapStyleUrl({ style: styleId, preset: stylePreset }),
+    [styleId, stylePreset],
   );
-  // The imagery sources on screen, re-read at every settled camera.
+  // Satellite and hybrid are catalogue styles over GoWay's imagery: the
+  // credit names each imagery source while it is on screen.
+  const imageryMode = mapStyleDefinition(styleId).imagery ?? null;
   const [imageryView, setImageryView] = useState<ImageryView | null>(null);
   const imageryCredits = useImageryCredits(imageryMode, imageryView);
   // `undefined` when the loaded style makes no anchor promise; `<Layer>`
@@ -211,13 +217,14 @@ export const MapCanvas = forwardRef<MapApi, MapCanvasProps>(function MapCanvas(
   // A toggle in the settings modal adds or removes it live.
   const { terrain } = useMapRelief();
   const hillshade = useMemo(
-    // Not over imagery: the photograph has its own shading, and its document
-    // has no `water` to go under (`lib/map/style/imagery.ts`).
     () =>
-      terrain && !imageryMode && resolveOwnsStyleDocument()
+      // A style with its own relief (Outdoors) already shades the ground; a
+      // photograph (satellite, hybrid) has its own shadows, and its document
+      // has no `water` to go under.
+      terrain && resolveOwnsStyleDocument() && !styleDrawsRelief && !imageryMode
         ? hillshadeLayer(resolvedAppearance)
         : null,
-    [terrain, imageryMode, resolvedAppearance],
+    [terrain, resolvedAppearance, styleDrawsRelief, imageryMode],
   );
   const gestures = resolveInteraction(interaction);
 
@@ -617,6 +624,7 @@ export const MapCanvas = forwardRef<MapApi, MapCanvasProps>(function MapCanvas(
           // never on `onRegionIsChanging`. Unconditional, unlike the label
           // report — the embed passes no callbacks and is lit all the same.
           sunLight.settle({ latitude, longitude });
+          settleMapStyle({ latitude, longitude });
         }}
         onDidFinishLoadingStyle={handleStyleLoaded}
         onDidFailLoadingMap={handleStyleFailed}
@@ -743,7 +751,12 @@ export const MapCanvas = forwardRef<MapApi, MapCanvasProps>(function MapCanvas(
           credit must be on every map GoWay draws, including the embed in
           somebody else's page. See MapBrand.tsx. */}
       <MapBrand />
-      <MapAttribution extra={imageryCredits} expanded={credit.expanded} onToggle={credit.toggle} />
+      <MapAttribution
+        extra={imageryCredits}
+        elevation={styleDrawsRelief}
+        expanded={credit.expanded}
+        onToggle={credit.toggle}
+      />
 
       {error ? <MapErrorState error={error} onRetry={retry} /> : null}
     </View>

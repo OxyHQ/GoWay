@@ -42,6 +42,7 @@ import type {
 import { GOWAY_LABEL_ANCHOR_LAYER_ID } from '../provider';
 import { BUILDING_3D_LAYER_ID, buildBuildings3dLayer } from './buildings3d';
 import type { CartographyPalette, RoadTier, RoadTone } from './palette';
+import { STANDARD_OPTIONS, type StyleOptions } from './options';
 import { FONT_STACKS, OPENMAPTILES_SOURCE_LAYERS as SL } from './schema';
 import { LOCAL_ROAD_FILL, SHOW_BASEMAP_POIS, SHOW_ROAD_AND_POI_LABELS } from './tuning';
 
@@ -62,6 +63,20 @@ import { LOCAL_ROAD_FILL, SHOW_BASEMAP_POIS, SHOW_ROAD_AND_POI_LABELS } from './
 export const LABEL_ANCHOR_LAYER_ID = GOWAY_LABEL_ANCHOR_LAYER_ID;
 
 /**
+ * The two sources only Outdoors declares: GoWay's elevation tiles (for the
+ * hillshade) and the contour lines traced from them at the edge
+ * (`worker/contours.js`). Ids in GoWay's namespace, apart from the relief
+ * prototype's own (`relief.ts`), which adds and removes its sources at
+ * runtime and must never take these away with it.
+ */
+export const TERRAIN_SOURCE_ID = 'goway-terrain';
+export const CONTOUR_SOURCE_ID = 'goway-contours';
+/** The contour tiles' one source-layer (`worker/contours.js`). */
+export const CONTOUR_SOURCE_LAYER = 'contours';
+/** The hillshade a style document carries itself (`relief.ts` adds none over it). */
+export const STYLE_HILLSHADE_LAYER_ID = 'hillshade';
+
+/**
  * Every layer id this style can emit, grouped by stratum.
  *
  * **This is the published contract.** Overlays (#5 search pins, #6 route
@@ -71,12 +86,20 @@ export const LABEL_ANCHOR_LAYER_ID = GOWAY_LABEL_ANCHOR_LAYER_ID;
  * than raising.
  *
  * Ids marked *(flag)* are omitted when the matching constant in `tuning.ts` is
- * switched off; the validator therefore checks that what is emitted is a subset
- * of this list, not that it equals it.
+ * switched off, and ids marked *(style)* when a style's options leave them out
+ * (`options.ts`: a data basemap draws no POI, Standard names house numbers
+ * only from z18). Every style therefore emits an ordered SUBSET of this list —
+ * the same order, the anchor always — and the validator checks exactly that.
  */
 export const GOWAY_STYLE_LAYER_IDS = {
   /** The paint under everything. */
   base: ['background'],
+  /**
+   * GoWay's satellite imagery, one raster layer a zoom tier, finest on top
+   * (`docs/MAP_SATELLITE.md`). Only the satellite and hybrid styles draw them
+   * (`imagery.ts`), and there the fills above give way to the photograph.
+   */
+  imagery: ['goway:imagery:base', 'goway:imagery:detail', 'goway:imagery:fine'],
   /** `landcover` + `landuse` + `park` fills. */
   ground: [
     'landuse-built-up',
@@ -85,6 +108,8 @@ export const GOWAY_STYLE_LAYER_IDS = {
     'landcover-ice',
     'landcover-wetland',
     'landcover-sand',
+    'landcover-rock',
+    'landcover-ice-outline',
     'landuse-pitch',
     'landuse-cemetery',
     'landuse-medical',
@@ -93,6 +118,12 @@ export const GOWAY_STYLE_LAYER_IDS = {
     'park',
     'park-outline',
   ],
+  /**
+   * The terrain, from GoWay's elevation tiles: the hillshade and the contour
+   * lines. *(style)* — Outdoors only; over the land fills, under water, so a
+   * lake is flat and the shading never dirties a road or a label.
+   */
+  relief: ['hillshade', 'contour', 'contour-index'],
   water: ['water', 'waterway'],
   aeroway: ['aeroway-area', 'aeroway-runway', 'aeroway-taxiway'],
   /** Casings first, then fills — see the stacking note above. */
@@ -129,17 +160,21 @@ export const GOWAY_STYLE_LAYER_IDS = {
     'road-ferry',
     'road-rail',
     'road-rail-hatch',
+    'road-aerialway',
   ],
   structures: ['building', BUILDING_3D_LAYER_ID],
   boundaries: ['boundary-region', 'boundary-country'],
   /** The reserved overlay anchor. Nothing renders it. */
   anchor: [LABEL_ANCHOR_LAYER_ID],
-  /** POI markers. All *(flag)* — `SHOW_BASEMAP_POIS`. */
+  /** POI markers. All *(flag)* — `SHOW_BASEMAP_POIS` — and *(style)*. */
   poi: ['poi-dot', 'poi-dot-minor', 'poi-transit-dot'],
   /** Type. `label-road-*` and `label-poi*` are *(flag)* —
-   *  `SHOW_ROAD_AND_POI_LABELS`. */
+   *  `SHOW_ROAD_AND_POI_LABELS`; `road-oneway`, `label-housenumber`,
+   *  `label-road-local` and `label-poi*` are *(style)*. */
   labels: [
     'road-oneway',
+    'label-housenumber',
+    'label-contour',
     'label-waterway',
     'label-water-line',
     'label-water-point',
@@ -150,6 +185,7 @@ export const GOWAY_STYLE_LAYER_IDS = {
     'label-poi',
     'label-poi-transit',
     'label-aerodrome',
+    'label-peak',
     'label-park',
     'label-place-minor',
     'label-place-village',
@@ -293,10 +329,32 @@ const POI_GROUPS: readonly (readonly [keyof CartographyPalette['poi'], string[]]
   ['vehicle', ['parking', 'fuel', 'car', 'bicycle', 'bicycle_rental', 'motorcycle']],
 ];
 
+/**
+ * What a style names among the POIs: Standard's groups and clutter, or the
+ * terrain map's, which takes the shelter, the campsite, the drinking water
+ * and the climbing crag OUT of the clutter and INTO the outdoors group —
+ * on a hiking map they are the destinations.
+ */
+interface PoiVocabulary {
+  groups: typeof POI_GROUPS;
+  clutter: readonly string[];
+}
+
+const OUTDOOR_CLASSES = ['shelter', 'campsite', 'drinking_water', 'climbing'];
+
+const STANDARD_POIS: PoiVocabulary = { groups: POI_GROUPS, clutter: POI_CLUTTER_CLASSES };
+
+const OUTDOOR_POIS: PoiVocabulary = {
+  groups: POI_GROUPS.map(([group, classes]) =>
+    group === 'outdoors' ? ([group, [...classes, ...OUTDOOR_CLASSES]] as const) : ([group, classes] as const),
+  ),
+  clutter: POI_CLUTTER_CLASSES.filter((c) => !OUTDOOR_CLASSES.includes(c)),
+};
+
 /** `match` on `poi.class` producing the group's colour. */
-function poiColor(palette: CartographyPalette): ExpressionSpecification {
+function poiColor(palette: CartographyPalette, vocabulary: PoiVocabulary = STANDARD_POIS): ExpressionSpecification {
   const match: unknown[] = ['match', ['get', 'class']];
-  for (const [group, classes] of POI_GROUPS) match.push(classes, palette.poi[group]);
+  for (const [group, classes] of vocabulary.groups) match.push(classes, palette.poi[group]);
   match.push(palette.poi.other);
   return expr(match);
 }
@@ -311,9 +369,9 @@ function poiColor(palette: CartographyPalette): ExpressionSpecification {
  * twins in {@link CartographyPalette.poiLabel}, because the vivid pin hues are
  * 1.8:1 to 4.1:1 as text and the floor is 4.5:1.
  */
-function poiLabelColor(palette: CartographyPalette): ExpressionSpecification {
+function poiLabelColor(palette: CartographyPalette, vocabulary: PoiVocabulary = STANDARD_POIS): ExpressionSpecification {
   const match: unknown[] = ['match', ['get', 'class']];
-  for (const [group, classes] of POI_GROUPS) match.push(classes, palette.poiLabel[group]);
+  for (const [group, classes] of vocabulary.groups) match.push(classes, palette.poiLabel[group]);
   match.push(palette.poiLabel.other);
   return expr(match);
 }
@@ -360,14 +418,27 @@ const POI_DOT_CAPS: PoiCaps = { major: 12, minor: 30 };
 const POI_LABEL_CAPS: PoiCaps = { major: 18, minor: 40 };
 
 /**
+ * Streets' density (`options.poi = 'dense'`): roughly half again as many
+ * marks and names per tile, the minor tier a zoom sooner and a tighter
+ * collision pad — the "every shop on the block" map, still capped, because a
+ * circle has no collision and an uncapped dot layer is a field of specks.
+ */
+const POI_DENSE_DOT_CAPS: PoiCaps = { major: 20, minor: 45 };
+const POI_DENSE_LABEL_CAPS: PoiCaps = { major: 30, minor: 60 };
+
+/**
  * The shared POI eligibility test: a named point that is not clutter.
  *
  * `has name` is doing real work — an unnamed POI cannot be recognised, tapped
  * with intent, or searched for, so drawing it only costs the map contrast.
  */
-function poiFilter(tier: PoiTier, caps: PoiCaps = POI_LABEL_CAPS): FilterSpecification {
-  const notClutter = ['!', ['in', ['get', 'class'], ['literal', POI_CLUTTER_CLASSES]]];
-  const rank = poiImportance();
+function poiFilter(
+  tier: PoiTier,
+  caps: PoiCaps = POI_LABEL_CAPS,
+  vocabulary: PoiVocabulary = STANDARD_POIS,
+): FilterSpecification {
+  const notClutter = ['!', ['in', ['get', 'class'], ['literal', vocabulary.clutter]]];
+  const rank = poiImportance(vocabulary);
 
   if (tier === 'station') {
     return filter([
@@ -443,9 +514,9 @@ const POI_CATEGORY_PENALTY: Partial<Record<keyof CartographyPalette['poi'], numb
  * wins a collision. MapLibre places the LOWEST sort key first, so the penalty
  * above is a demotion in both roles at once.
  */
-function poiImportance(): ExpressionSpecification {
+function poiImportance(vocabulary: PoiVocabulary = STANDARD_POIS): ExpressionSpecification {
   const penalty: unknown[] = ['match', ['get', 'class']];
-  for (const [group, classes] of POI_GROUPS) penalty.push(classes, POI_CATEGORY_PENALTY[group] ?? 0);
+  for (const [group, classes] of vocabulary.groups) penalty.push(classes, POI_CATEGORY_PENALTY[group] ?? 0);
   penalty.push(0);
   return expr(['+', ['coalesce', ['get', 'rank'], 999], penalty]);
 }
@@ -627,8 +698,19 @@ function toneFor(palette: CartographyPalette, tier: RoadTier): RoadTone {
  * @param palette - the appearance's cartographic palette.
  * @param source  - the vector source id these layers read (`provider.ts` owns it).
  */
-export function buildLayers(palette: CartographyPalette, source: string): LayerSpecification[] {
+export function buildLayers(
+  palette: CartographyPalette,
+  source: string,
+  options: StyleOptions = STANDARD_OPTIONS,
+): LayerSpecification[] {
   const layers: LayerSpecification[] = [];
+  const dense = options.poi === 'dense';
+  const dotCaps = dense ? POI_DENSE_DOT_CAPS : POI_DOT_CAPS;
+  const labelCaps = dense ? POI_DENSE_LABEL_CAPS : POI_LABEL_CAPS;
+  const showPois = options.poi !== 'none';
+  const outdoors = options.outdoors ? (palette.outdoors ?? null) : null;
+  if (options.outdoors && !outdoors) throw new Error('layers: the Outdoors options need the palette\'s outdoors ink');
+  const pois = outdoors ? OUTDOOR_POIS : STANDARD_POIS;
 
   /** A `fill` over one source-layer. */
   const fill = (
@@ -732,6 +814,21 @@ export function buildLayers(palette: CartographyPalette, source: string): LayerS
   fill('landcover-ice', SL.landcover, filter(classIn('ice')), palette.ice);
   fill('landcover-wetland', SL.landcover, filter(classIn('wetland')), palette.wetland);
   fill('landcover-sand', SL.landcover, filter(classIn('sand')), palette.sand);
+  if (outdoors) {
+    // The terrain map draws what the others leave as bare land: rock and
+    // scree above the tree line, and the glacier's edge.
+    fill('landcover-rock', SL.landcover, filter(classIn('rock')), outdoors.rock);
+    layers.push({
+      id: 'landcover-ice-outline',
+      type: 'line',
+      source,
+      'source-layer': SL.landcover,
+      minzoom: 10,
+      filter: filter(classIn('ice')),
+      layout: { 'line-join': 'round' },
+      paint: { 'line-color': outdoors.glacierOutline, 'line-width': byZoom([[10, 0.5], [14, 1], [17, 1.6]]) },
+    });
+  }
 
   fill('landuse-pitch', SL.landuse, filter(classIn('pitch', 'playground', 'stadium', 'track')), palette.pitch);
   fill('landuse-cemetery', SL.landuse, filter(classIn('cemetery')), palette.cemetery);
@@ -757,8 +854,54 @@ export function buildLayers(palette: CartographyPalette, source: string): LayerS
     minzoom: 10,
     filter: filter(['all']),
     layout: { 'line-join': 'round' },
-    paint: { 'line-color': palette.parkOutline, 'line-width': byZoom([[10, 0.4], [14, 0.8], [18, 1.4]]) },
+    paint: {
+      'line-color': outdoors ? outdoors.protectedOutline : palette.parkOutline,
+      'line-width': outdoors
+        ? byZoom([[8, 0.8], [12, 1.4], [16, 2.4]])
+        : byZoom([[10, 0.4], [14, 0.8], [18, 1.4]]),
+      // A protected area's edge is a boundary on a hiking map: dashed.
+      ...(outdoors ? { 'line-dasharray': [3, 2] } : {}),
+    },
   });
+
+  // --- Relief (Outdoors) -------------------------------------------------
+  //
+  // The style's OWN hillshade and contours, from GoWay's elevation tiles, so
+  // every renderer that loads the document draws them — native and
+  // integrators included — with no runtime adapter.
+  if (outdoors) {
+    layers.push({
+      id: STYLE_HILLSHADE_LAYER_ID,
+      type: 'hillshade',
+      source: TERRAIN_SOURCE_ID,
+      minzoom: 3,
+      maxzoom: 18,
+      paint: {
+        // Stronger than the relief toggle's (`relief.ts`): on a terrain map the
+        // shape of the ground is the content.
+        'hillshade-exaggeration': byZoom([[3, 0.4], [7, 0.55], [11, 0.5], [14, 0.38], [17, 0.12]], 1),
+        'hillshade-shadow-color': outdoors.hillshade.shadow,
+        'hillshade-highlight-color': outdoors.hillshade.highlight,
+        'hillshade-accent-color': outdoors.hillshade.accent,
+        'hillshade-illumination-anchor': 'viewport',
+        'hillshade-illumination-direction': 315,
+      },
+    });
+    const contour = (id: string, level: 0 | 1, color: string, widths: readonly (readonly [number, number])[], minzoom: number): void => {
+      layers.push({
+        id,
+        type: 'line',
+        source: CONTOUR_SOURCE_ID,
+        'source-layer': CONTOUR_SOURCE_LAYER,
+        minzoom,
+        filter: filter(['==', ['get', 'level'], level]),
+        layout: { 'line-join': 'round' },
+        paint: { 'line-color': color, 'line-width': byZoom(widths, 1), 'line-opacity': byZoom([[minzoom, 0], [minzoom + 0.6, 1]], 1) },
+      });
+    };
+    contour('contour', 0, outdoors.contour, [[11, 0.4], [14, 0.7], [17, 1]], 11);
+    contour('contour-index', 1, outdoors.contourIndex, [[9, 0.6], [12, 0.9], [14, 1.2], [17, 1.6]], 9);
+  }
 
   // --- Water -------------------------------------------------------------
 
@@ -840,18 +983,44 @@ export function buildLayers(palette: CartographyPalette, source: string): LayerS
   // Footways last of the road block so a park path is not buried under the
   // service road beside it. Dashed, and therefore casing-less — a dashed line
   // inside a casing reads as a ladder.
+  // On the terrain map a path is a TRAIL: from z12, wider, and coloured by
+  // how hard it is. The tiles carry `mtb_scale` (OSM's mountain-bike scale,
+  // 0–6) and not `sac_scale`, so that is the difficulty drawn — honestly
+  // named in `docs/MAP_STYLES.md` → Data gaps. Footways and steps in a town
+  // stay the quiet path colour.
   line(
     PATH_TIER.id,
     SL.transportation,
     filter(['all', IS_LINE, NOT_TUNNEL, classIn(...PATH_TIER.classes)]),
-    toneFor(palette, PATH_TIER.tier).fill,
-    PATH_TIER.widths,
-    { minzoom: PATH_TIER.minzoom, dash: PATH_TIER.dash },
+    outdoors
+      ? expr([
+          'match',
+          ['get', 'subclass'],
+          ['footway', 'pedestrian', 'steps', 'cycleway', 'platform'],
+          toneFor(palette, PATH_TIER.tier).fill,
+          [
+            'match',
+            ['coalesce', ['get', 'mtb_scale'], 0],
+            [4, 5, 6],
+            outdoors.trailExpert,
+            [2, 3],
+            outdoors.trailHard,
+            outdoors.trail,
+          ],
+        ])
+      : toneFor(palette, PATH_TIER.tier).fill,
+    outdoors ? [[12, 0.8], [14, 1.4], [16, 2], [18, 3], [20, 5]] : PATH_TIER.widths,
+    { minzoom: outdoors ? 12 : PATH_TIER.minzoom, dash: outdoors ? [2.2, 1.4] : PATH_TIER.dash },
   );
 
   line('road-ferry', SL.transportation, filter(['all', IS_LINE, classIn('ferry')]), palette.ferry, ROAD_WIDTHS.ferry, { minzoom: 8, dash: [3, 3] });
   line('road-rail', SL.transportation, filter(['all', IS_LINE, NOT_TUNNEL, classIn('rail', 'transit')]), palette.rail, ROAD_WIDTHS.rail, { minzoom: 11 });
   line('road-rail-hatch', SL.transportation, filter(['all', IS_LINE, NOT_TUNNEL, classIn('rail', 'transit')]), palette.railHatch, ROAD_WIDTHS.railHatch, { minzoom: 14, dash: [0.2, 4], cap: 'butt' });
+  if (outdoors) {
+    // Cable cars, gondolas and lifts: a fine dark line, broken where the
+    // cabins hang, from z12.
+    line('road-aerialway', SL.transportation, filter(['all', IS_LINE, classIn('aerialway')]), outdoors.aerialway, [[12, 0.8], [15, 1.4], [18, 2.2]], { minzoom: 12, dash: [4, 1.5], cap: 'butt' });
+  }
 
   // --- Structures --------------------------------------------------------
 
@@ -879,11 +1048,23 @@ export function buildLayers(palette: CartographyPalette, source: string): LayerS
     // grid-aligned. The z15 histogram of that frame shows it exactly — five of
     // the top six colours (#f7f0df #f7efdb #f8efda #f9f0db #f6f4eb) are blends
     // of the same three fills. A footprint is either drawn or it is not.
-    minzoom: 15,
+    // A style may draw them sooner (`options.buildingsFrom`; Streets from
+    // z14), with the same ramp shape shifted.
+    minzoom: options.buildingsFrom,
     paint: {
       'fill-color': palette.building,
-      'fill-outline-color': colorByZoom([[15.4, palette.building], [16.5, palette.buildingOutline]]),
-      'fill-opacity': byZoom([[15, 0], [15.4, 0], [16, 1]], 1),
+      'fill-outline-color': colorByZoom([
+        [options.buildingsFrom + 0.4, palette.building],
+        [options.buildingsFrom + 1.5, palette.buildingOutline],
+      ]),
+      'fill-opacity': byZoom(
+        [
+          [options.buildingsFrom, 0],
+          [options.buildingsFrom + 0.4, 0],
+          [options.buildingsFrom + 1, 1],
+        ],
+        1,
+      ),
     },
   });
 
@@ -989,7 +1170,7 @@ export function buildLayers(palette: CartographyPalette, source: string): LayerS
 
   // --- POIs --------------------------------------------------------------
 
-  if (SHOW_BASEMAP_POIS) {
+  if (SHOW_BASEMAP_POIS && showPois) {
     const dot = (id: string, layerFilter: FilterSpecification, minzoom: number, radius: readonly (readonly [number, number])[]): void => {
       layers.push({
         id,
@@ -999,7 +1180,7 @@ export function buildLayers(palette: CartographyPalette, source: string): LayerS
         minzoom,
         filter: layerFilter,
         paint: {
-          'circle-color': poiColor(palette),
+          'circle-color': poiColor(palette, pois),
           'circle-radius': byZoom(radius, 1.2),
           // A ring in the ground colour is what stops a dot dissolving into a
           // park fill or a building of a similar value.
@@ -1016,9 +1197,9 @@ export function buildLayers(palette: CartographyPalette, source: string): LayerS
     // beside the label rather than as the label's own mark. These radii put the
     // disc at roughly two thirds of Apple's diameter, which is as large as a
     // glyph-less dot can go before it starts looking like a missing icon.
-    dot('poi-dot', poiFilter('major', POI_DOT_CAPS), 14, [[14, 2.8], [15, 3.2], [17, 4.4], [19, 5.4]]);
-    dot('poi-dot-minor', poiFilter('minor', POI_DOT_CAPS), 17, [[17, 3], [19, 4]]);
-    dot('poi-transit-dot', poiFilter('station', POI_DOT_CAPS), 14, [[14, 3.2], [17, 5], [19, 6]]);
+    dot('poi-dot', poiFilter('major', dotCaps, pois), 14, [[14, 2.8], [15, 3.2], [17, 4.4], [19, 5.4]]);
+    dot('poi-dot-minor', poiFilter('minor', dotCaps, pois), dense ? 16 : 17, dense ? [[16, 2.6], [17, 3], [19, 4]] : [[17, 3], [19, 4]]);
+    dot('poi-transit-dot', poiFilter('station', dotCaps, pois), 14, [[14, 3.2], [17, 5], [19, 6]]);
   }
 
   // --- Type --------------------------------------------------------------
@@ -1097,6 +1278,8 @@ export function buildLayers(palette: CartographyPalette, source: string): LayerS
       letterSpacing?: number;
       maxWidth?: number;
       sortKey?: ExpressionSpecification;
+      /** What it says, when it is not the feature's name. */
+      textField?: ExpressionSpecification;
     } = {},
   ): void => {
     layers.push({
@@ -1108,7 +1291,7 @@ export function buildLayers(palette: CartographyPalette, source: string): LayerS
       ...(options.maxzoom === undefined ? {} : { maxzoom: options.maxzoom }),
       filter: layerFilter,
       layout: {
-        'text-field': LABEL_TEXT,
+        'text-field': options.textField ?? LABEL_TEXT,
         'text-font': options.font ?? REGULAR,
         'text-size': byZoom(sizes, 1.2),
         'text-max-width': options.maxWidth ?? 8,
@@ -1163,7 +1346,7 @@ export function buildLayers(palette: CartographyPalette, source: string): LayerS
   // `text-keep-upright` MUST be false. Its default flips a symbol that would
   // otherwise read upside down, which is right for a name and catastrophic for
   // an arrow: every westbound street would point the wrong way.
-  if (SHOW_ROAD_AND_POI_LABELS) {
+  if (SHOW_ROAD_AND_POI_LABELS && options.oneway) {
     layers.push({
       id: 'road-oneway',
       type: 'symbol',
@@ -1197,6 +1380,62 @@ export function buildLayers(palette: CartographyPalette, source: string): LayerS
         'text-opacity': 0.55,
         'text-halo-color': palette.haloStrong,
         'text-halo-width': 0.8,
+      },
+    });
+  }
+
+  // HOUSE NUMBERS, the lowest-priority type on the map: placed first, so any
+  // street, POI or place name wins the space. Small, regular, the quiet
+  // place ink, and only from the zoom a style names (`houseNumbersFrom`:
+  // Standard z18, Streets z17) — below that a block's numbers are a texture
+  // of digits, not an address you can read.
+  if (options.houseNumbersFrom !== null) {
+    layers.push({
+      id: 'label-housenumber',
+      type: 'symbol',
+      source,
+      'source-layer': SL.housenumber,
+      minzoom: options.houseNumbersFrom,
+      filter: filter(['has', 'housenumber']),
+      layout: {
+        'text-field': expr(['get', 'housenumber']),
+        'text-font': REGULAR,
+        'text-size': byZoom([[options.houseNumbersFrom, 8.5], [19, 10], [20, 11]], 1.2),
+        'text-padding': 2,
+      },
+      paint: {
+        'text-color': palette.labelPlaceMinor,
+        'text-halo-color': palette.halo,
+        'text-halo-width': 1.2,
+        'text-halo-blur': 0.3,
+      },
+    });
+  }
+
+  // CONTOUR HEIGHTS, on the index lines only, along the line, and below
+  // every other label in priority: the map's quietest numbers.
+  if (outdoors) {
+    layers.push({
+      id: 'label-contour',
+      type: 'symbol',
+      source: CONTOUR_SOURCE_ID,
+      'source-layer': CONTOUR_SOURCE_LAYER,
+      minzoom: 12,
+      filter: filter(['==', ['get', 'level'], 1]),
+      layout: {
+        'symbol-placement': 'line',
+        'text-field': expr(['concat', ['to-string', ['get', 'ele']], ' m']),
+        'text-font': REGULAR,
+        'text-size': byZoom([[12, 8.5], [16, 10]], 1.2),
+        'symbol-spacing': 360,
+        'text-max-angle': 25,
+        'text-padding': 4,
+      },
+      paint: {
+        'text-color': outdoors.labelContour,
+        'text-halo-color': palette.halo,
+        'text-halo-width': 1.4,
+        'text-halo-blur': 0.3,
       },
     });
   }
@@ -1237,9 +1476,18 @@ export function buildLayers(palette: CartographyPalette, source: string): LayerS
     // added width) made every street label collide with its neighbour's and
     // took the grid's names from 99 placed to 8. 4-6 px is enough to make a
     // second copy of the same name lose without touching the street beside it.
-    lineLabel('label-road-local', SL.transportationName, filter(['all', IS_LINE, classIn('minor', 'service', 'track')]), palette.labelRoad, [[15, 7.5], [18, 9], [20, 10.5]], { minzoom: 15, spacing: 380, uppercase: true, letterSpacing: 0.05, padding: 6 });
-    lineLabel('label-road-arterial', SL.transportationName, filter(['all', IS_LINE, classIn('primary', 'secondary', 'tertiary')]), palette.labelRoad, [[13, 7.5], [16, 9], [20, 11]], { minzoom: 13, spacing: 400, uppercase: true, letterSpacing: 0.05, padding: 7 });
-    lineLabel('label-road-highway', SL.transportationName, filter(['all', IS_LINE, classIn('motorway', 'trunk')]), palette.labelRoad, [[12, 8], [16, 9.5], [20, 11.5]], { minzoom: 12, spacing: 440, uppercase: true, letterSpacing: 0.06, padding: 8 });
+    // A style that names its streets as written (`roadLabelCase`) sets them
+    // a point larger and barely tracked: lower case needs the size capitals
+    // got from their own height, and tracking only helps capitals.
+    const upper = options.roadLabelCase === 'upper';
+    const sized = (stops: readonly (readonly [number, number])[]) =>
+      upper ? stops : stops.map(([z, size]) => [z, size + 1] as const);
+    const tracking = (caps: number) => (upper ? caps : 0.01);
+    if (options.roadLabels === 'all') {
+      lineLabel('label-road-local', SL.transportationName, filter(['all', IS_LINE, classIn('minor', 'service', 'track')]), palette.labelRoad, sized([[15, 7.5], [18, 9], [20, 10.5]]), { minzoom: 15, spacing: 380, uppercase: upper, letterSpacing: tracking(0.05), padding: 6 });
+    }
+    lineLabel('label-road-arterial', SL.transportationName, filter(['all', IS_LINE, classIn('primary', 'secondary', 'tertiary')]), palette.labelRoad, sized([[13, 7.5], [16, 9], [20, 11]]), { minzoom: 13, spacing: 400, uppercase: upper, letterSpacing: tracking(0.05), padding: 7 });
+    lineLabel('label-road-highway', SL.transportationName, filter(['all', IS_LINE, classIn('motorway', 'trunk')]), palette.labelRoad, sized([[12, 8], [16, 9.5], [20, 11.5]]), { minzoom: 12, spacing: 440, uppercase: upper, letterSpacing: tracking(0.06), padding: 8 });
 
     // The POI label carries the CATEGORY COLOUR. See `poiLabelColor`.
     //
@@ -1254,7 +1502,8 @@ export function buildLayers(palette: CartographyPalette, source: string): LayerS
     // means the second copy loses to the first, which is the behaviour wanted
     // for a duplicate and harmless for two genuinely different places, since
     // the loser is the lower-ranked one.
-    const key = poiImportance();
+    const key = poiImportance(pois);
+    if (showPois) {
     // `text-padding` is the density control, and it RAMPS WITH ZOOM because
     // Apple's POI density does. A `rank` cap cannot do this on its own: `rank`
     // is per TILE, a viewport covers about the same number of tiles at every
@@ -1265,27 +1514,59 @@ export function buildLayers(palette: CartographyPalette, source: string): LayerS
     // (and, because POI labels are placed before road labels, took the street
     // grid with it — 99 street names became 8). A padded collision box at low
     // zoom and a tight one high up produces the ramp without touching supply.
-    const poiPadding = byZoom([[14, 30], [15, 16], [16, 8], [18, 4], [20, 3]], 1);
-    pointLabel('label-poi-minor', SL.poi, poiFilter('minor'), poiLabelColor(palette), [[17, 9], [19, 10.5]], {
-      minzoom: 17, anchor: 'top', offset: [0, 0.85], maxWidth: 9, sortKey: key, padding: poiPadding,
+    const poiPadding = dense
+      ? byZoom([[14, 20], [15, 10], [16, 5], [18, 3], [20, 2]], 1)
+      : byZoom([[14, 30], [15, 16], [16, 8], [18, 4], [20, 3]], 1);
+    pointLabel('label-poi-minor', SL.poi, poiFilter('minor', labelCaps, pois), poiLabelColor(palette, pois), dense ? [[16, 8.5], [17, 9], [19, 10.5]] : [[17, 9], [19, 10.5]], {
+      minzoom: dense ? 16 : 17, anchor: 'top', offset: [0, 0.85], maxWidth: 9, sortKey: key, padding: poiPadding,
     });
     // From z14, not z15. Apple already names a dozen places at z14 — Sagrada
     // Família, Park Güell, the Arc de Triomf, a supermarket — and GoWay named
     // none, so its z14 was a map of metro stations: every coloured label in a
     // matched frame came from the transit layer, which is one hue. The padding
     // ramp keeps it to the handful that fit.
-    pointLabel('label-poi', SL.poi, poiFilter('major'), poiLabelColor(palette), [[14, 9], [15, 9.5], [18, 11], [20, 12]], {
+    pointLabel('label-poi', SL.poi, poiFilter('major', labelCaps, pois), poiLabelColor(palette, pois), [[14, 9], [15, 9.5], [18, 11], [20, 12]], {
       minzoom: 14, anchor: 'top', offset: [0, 0.9], maxWidth: 9, sortKey: key, padding: poiPadding,
     });
-    pointLabel('label-poi-transit', SL.poi, poiFilter('station'), poiLabelColor(palette), [[14, 9.5], [18, 11.5]], {
+    pointLabel('label-poi-transit', SL.poi, poiFilter('station', labelCaps, pois), poiLabelColor(palette, pois), [[14, 9.5], [18, 11.5]], {
       minzoom: 14, anchor: 'top', offset: [0, 1], maxWidth: 9, sortKey: key,
       padding: byZoom([[14, 34], [16, 18], [18, 8]], 1),
     });
+    }
   }
 
   pointLabel('label-aerodrome', SL.aerodromeLabel, filter(['all', IS_POINT, ['has', 'iata']]), palette.labelPlaceMinor, [[10, 10.5], [14, 13]], {
     minzoom: 10, font: BOLD, letterSpacing: 0.04,
   });
+
+  // PEAKS, with their heights: a triangle, the name, and the metres under it,
+  // the highest-ranked first. From z9 the tile already holds only the
+  // prominent ones (`rank`), so the filter is the class alone.
+  if (outdoors) {
+    pointLabel(
+      'label-peak',
+      SL.mountainPeak,
+      filter(['all', IS_POINT, ['has', 'name'], classIn('peak', 'volcano')]),
+      outdoors.labelPeak,
+      [[9, 9.5], [13, 11], [16, 12.5]],
+      {
+        minzoom: 9,
+        anchor: 'top',
+        maxWidth: 8,
+        haloWidth: 1.6,
+        sortKey: expr(['coalesce', ['get', 'rank'], 99]),
+        textField: expr([
+          'format',
+          '▲ ',
+          { 'font-scale': 0.8 },
+          ['get', 'name'],
+          {},
+          ['case', ['has', 'ele'], ['concat', '\n', ['to-string', ['get', 'ele']], ' m'], ''],
+          { 'font-scale': 0.85 },
+        ]),
+      },
+    );
+  }
 
   // The `park` source-layer's polygons get their name at the pole of
   // inaccessibility, which is why this is a point label over polygon geometry.

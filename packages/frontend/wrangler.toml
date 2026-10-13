@@ -35,10 +35,11 @@ main = "./worker/index.js"
 # it, and the remaining shape is a proxy with edge caching. A proxy is code.
 #
 # `run_worker_first` below is what keeps the old argument true anyway. It names
-# five map prefixes; every other request is answered by the asset pipeline
+# six map prefixes; every other request is answered by the asset pipeline
 # without this Worker executing a line, so the failure mode the old comment
 # warned about is bought only for `/map/tiles/*`, `/map/fonts/*`,
-# `/map/terrain/*`, `/map/city/*` and `/map/city-roads/*`, not for the app. The `env.ASSETS.fetch` at the bottom of `worker/index.js` is a safety
+# `/map/terrain/*`, `/map/contours/*`, `/map/city/*` and `/map/city-roads/*`,
+# not for the app. The `env.ASSETS.fetch` at the bottom of `worker/index.js` is a safety
 # net for a misconfiguration here, not the normal path.
 #
 # Consequence worth knowing before someone goes looking: the SPA fallback below
@@ -130,6 +131,7 @@ run_worker_first = [
   "/map/tiles/*",
   "/map/fonts/*",
   "/map/terrain/*",
+  "/map/contours/*",
   "/map/city/*",
   "/map/city-roads/*",
   "/map/satellite/*",

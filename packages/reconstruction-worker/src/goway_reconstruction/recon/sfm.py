@@ -30,6 +30,12 @@ they are paired and solved as a rig:
   own camera (with its exact intrinsics) instead of being placed in the rig
   on a guess.
 
+Features are one of ``FEATURE_SETS``: COLMAP's SIFT, or a learned set run on
+the worker's GPU (``features.py``: ALIKED + LightGlue, or RaCo + ALIKED +
+LightGlue+). ``FEATURES`` is the one jobs use; ``goway-worker bench-sfm``
+solves a scene with each to compare them. Whatever the set, COLMAP verifies
+the matches geometrically and the same mappers solve them.
+
 Feature extraction honours the privacy masks: no keypoint is detected on a
 masked person or vehicle.
 
@@ -44,7 +50,9 @@ map (``georeference``).
 
 from __future__ import annotations
 
+import dataclasses
 import functools
+import json
 import logging
 import math
 from dataclasses import dataclass
@@ -52,10 +60,17 @@ from pathlib import Path
 
 import numpy as np
 import pycolmap
+import torch
 
 from ..privacy.panorama import cam_from_pano
+from .features import LEARNED_SETS, FrameFeatures, LearnedFeatures
 
 log = logging.getLogger("goway.worker")
+
+# The feature set jobs solve with. Change it only on `goway-worker bench-sfm`
+# evidence (docs/STREET3D_PIPELINE.md, "Features").
+FEATURES = "sift"
+FEATURE_SETS = ("sift", *LEARNED_SETS)
 
 SEQUENTIAL_OVERLAP = 20
 SPATIAL_RADIUS_M = 60.0
@@ -112,6 +127,19 @@ class SfmFrame:
     # Measured gravity at the frame's instant: a unit vector pointing DOWN in the
     # frame's camera axes (x right, y down, z forward), from the phone's sensors.
     gravity: tuple[float, float, float] | None = None
+
+
+def write_frames(frames: list[SfmFrame], path: Path) -> None:
+    """The frames of a scene as JSON, so a job's scratch can be solved again (``bench-sfm``)."""
+    path.write_text(json.dumps([dataclasses.asdict(f) for f in frames]))
+
+
+def read_frames(path: Path) -> list[SfmFrame]:
+    frames = []
+    for raw in json.loads(path.read_text()):
+        rig, gravity = raw.pop("rig", None), raw.pop("gravity", None)
+        frames.append(SfmFrame(**raw, rig=RigView(**rig) if rig else None, gravity=tuple(gravity) if gravity else None))
+    return frames
 
 
 def frame_image_name(group: str, frame_id: str, width: int, height: int, rig: RigView | None) -> str:
@@ -353,32 +381,93 @@ def rig_configs(frames: list[SfmFrame]) -> list[pycolmap.RigConfig]:
     return configs
 
 
-def solve(frames: list[SfmFrame], images_dir: Path, masks_dir: Path, work_dir: Path, *, threads: int = -1) -> SfmResult:
+def _reader(members: list[SfmFrame], masks_dir: Path) -> pycolmap.ImageReaderOptions:
+    reader = pycolmap.ImageReaderOptions()
+    reader.camera_model = "SIMPLE_RADIAL"
+    reader.mask_path = str(masks_dir)
+    params = _camera_params(members[0])
+    if params:
+        reader.camera_params = params
+    return reader
+
+
+def extract(
+    database: Path,
+    frames: list[SfmFrame],
+    images_dir: Path,
+    masks_dir: Path,
+    learned: LearnedFeatures | None,
+    *,
+    threads: int = -1,
+) -> dict[str, FrameFeatures]:
+    """Cameras, images and keypoints into ``database``: SIFT when ``learned`` is None.
+
+    Returns the learned features by image name, for ``_match_learned``.
+    """
+    extraction = pycolmap.FeatureExtractionOptions()
+    extraction.num_threads = threads
+    extraction.sift.max_num_features = 8192
+    with pycolmap.Database.open(database):  # importing images needs it to exist
+        pass
+    for members in _camera_groups(frames):
+        names = [f.image_name for f in members]
+        reader = _reader(members, masks_dir)
+        if learned is None:
+            pycolmap.extract_features(
+                database,
+                images_dir,
+                image_names=names,
+                camera_mode=pycolmap.CameraMode.SINGLE,
+                reader_options=reader,
+                extraction_options=extraction,
+                device=pycolmap.Device.cpu,
+            )
+        else:
+            pycolmap.import_images(database, images_dir, camera_mode=pycolmap.CameraMode.SINGLE, image_names=names, options=reader)
+    if learned is None:
+        return {}
+    found = {f.image_name: learned.extract(images_dir / f.image_name, masks_dir / f"{f.image_name}.png") for f in frames}
+    with pycolmap.Database.open(database) as db:
+        for img in db.read_all_images():
+            db.write_keypoints(img.image_id, found[img.name].keypoints)
+    return found
+
+
+def _match_learned(database: Path, learned: LearnedFeatures, found: dict[str, FrameFeatures], pairs: list[tuple[str, str]]) -> None:
+    with pycolmap.Database.open(database) as db:
+        ids = {img.name: img.image_id for img in db.read_all_images()}
+        for a, b in pairs:
+            matches = learned.match(found[a], found[b])
+            if len(matches):
+                db.write_matches(ids[a], ids[b], matches)
+
+
+def solve(
+    frames: list[SfmFrame],
+    images_dir: Path,
+    masks_dir: Path,
+    work_dir: Path,
+    *,
+    threads: int = -1,
+    features: str = FEATURES,
+    models_dir: Path | None = None,
+    device: torch.device | None = None,
+) -> SfmResult:
+    """Solve the cameras. A learned ``features`` set needs ``models_dir`` and ``device``."""
+    if features not in FEATURE_SETS:
+        raise ValueError(f"unknown feature set {features!r}")
+    learned = None
+    if features != "sift":
+        if models_dir is None or device is None:
+            raise ValueError(f"the {features} features need the models directory and a device")
+        learned = LearnedFeatures(features, models_dir, device)
     work_dir.mkdir(parents=True, exist_ok=True)
     database = work_dir / "database.db"
     if database.exists():
         database.unlink()
 
     by_name = {f.image_name: f for f in frames}
-    extraction = pycolmap.FeatureExtractionOptions()
-    extraction.num_threads = threads
-    extraction.sift.max_num_features = 8192
-    for members in _camera_groups(frames):
-        reader = pycolmap.ImageReaderOptions()
-        reader.camera_model = "SIMPLE_RADIAL"
-        reader.mask_path = str(masks_dir)
-        params = _camera_params(members[0])
-        if params:
-            reader.camera_params = params
-        pycolmap.extract_features(
-            database,
-            images_dir,
-            image_names=[f.image_name for f in members],
-            camera_mode=pycolmap.CameraMode.SINGLE,
-            reader_options=reader,
-            extraction_options=extraction,
-            device=pycolmap.Device.cpu,
-        )
+    found = extract(database, frames, images_dir, masks_dir, learned, threads=threads)
 
     rigged = False
     configs = rig_configs(frames)
@@ -393,11 +482,15 @@ def solve(frames: list[SfmFrame], images_dir: Path, masks_dir: Path, work_dir: P
     pair_file = work_dir / "pairs.txt"
     pairs = _pairs(frames)
     pair_file.write_text("".join(f"{a} {b}\n" for a, b in pairs))
-    matching = pycolmap.FeatureMatchingOptions()
-    matching.num_threads = threads
-    pairing = pycolmap.ImportedPairingOptions()
-    pairing.match_list_path = str(pair_file)
-    pycolmap.match_image_pairs(database, matching_options=matching, pairing_options=pairing, device=pycolmap.Device.cpu)
+    if learned is None:
+        matching = pycolmap.FeatureMatchingOptions()
+        matching.num_threads = threads
+        pairing = pycolmap.ImportedPairingOptions()
+        pairing.match_list_path = str(pair_file)
+        pycolmap.match_image_pairs(database, matching_options=matching, pairing_options=pairing, device=pycolmap.Device.cpu)
+    else:
+        _match_learned(database, learned, found, pairs)
+        pycolmap.verify_matches(database, pair_file)
 
     # COLMAP 4's global mapper (GLOMAP) first: on a 400-frame street video it
     # registered 395 frames where the incremental mapper stopped at 298, with

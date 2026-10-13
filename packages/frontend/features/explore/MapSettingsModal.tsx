@@ -67,8 +67,14 @@ import { MAP_FEATURE_LABELS, MAP_SETTINGS_COPY } from '@/lib/map/mapFeatureLabel
 import type { MapFeatureId, MapFeatureState } from '@/lib/map/mapFeatures';
 import { type MapSettingsPageId, mapSettingsLayout } from '@/lib/map/mapSettingsPages';
 import { MAP_SETTINGS_TRIGGER_LABEL } from '@/lib/map/mapSettingsTriggerLabel';
+import { MAP_LIGHT_MODE_LABELS, MAP_STYLE_COPY, MAP_STYLE_LABELS } from '@/lib/map/mapStyleLabels';
 import type { PerformanceMode } from '@/lib/map/quality/profile';
+import { MAP_LIGHT_MODES, type MapLightMode, mapStyleDefinition } from '@/lib/map/style/catalogue';
 import { mapFeatureStore, useMapFeatures } from '@/lib/map/useMapFeatures';
+
+// The style picker ships in this chunk: one lazy chunk for the map's panels,
+// so the labels they share never land in the first-paint bundle.
+export { MapStylePicker } from './MapStylePicker';
 
 export interface MapSettingsModalProps {
   open: boolean;
@@ -84,6 +90,8 @@ export interface MapSettingsModalProps {
    * while the sky draws, so "Change time…" is offered only then.
    */
   onChangeTime?: () => void;
+  /** Close the modal and open the style picker on the map ("Style → Choose…"). */
+  onChooseStyle?: () => void;
 }
 
 type ViewMode = '2d' | '3d';
@@ -207,11 +215,13 @@ export function MapSettingsModal({
   tilted,
   onTiltChange,
   onChangeTime,
+  onChooseStyle,
 }: MapSettingsModalProps) {
   const { locale } = useTranslation();
   const router = useRouter();
   const { mode, setMode } = useBloomTheme();
-  const { features, labs, performance } = useMapFeatures();
+  const { features, labs, performance, style, light } = useMapFeatures();
+  const styleFixed = mapStyleDefinition(style).light === 'fixed';
   const landmarks = useLandmarkModels();
   const liveSources = useLiveSources(features.on('live'));
   const say = useCallback<Say>((labels) => localizedLabel(labels, locale), [locale]);
@@ -281,6 +291,51 @@ export function MapSettingsModal({
             </Fragment>
           ))}
         </SettingsCard>
+        <SettingsSection
+          description={say(styleFixed ? MAP_STYLE_COPY.fixedLight : MAP_STYLE_COPY.lightHint)}
+        >
+          <SettingsCard>
+            <SettingsRow
+              label={say(MAP_STYLE_COPY.style)}
+              description={say(MAP_STYLE_LABELS[style].name)}
+              testID="map-settings-style-row"
+            >
+              {onChooseStyle ? (
+                <Button
+                  size="sm"
+                  appearance="outline"
+                  onPress={onChooseStyle}
+                  testID="map-settings-choose-style"
+                >
+                  {say(MAP_STYLE_COPY.choose)}
+                </Button>
+              ) : null}
+            </SettingsRow>
+            <SettingsRow label={say(MAP_STYLE_COPY.light)} testID="map-settings-light-row">
+              <SegmentedControl<MapLightMode>
+                type="radio"
+                size="sm"
+                label={say(MAP_STYLE_COPY.light)}
+                value={light}
+                disabled={styleFixed}
+                onValueChange={(mode) => mapFeatureStore.setLight(mode)}
+                testID="map-settings-light"
+              >
+                {MAP_LIGHT_MODES.map((mode) => (
+                  <SegmentedControlItem
+                    key={mode}
+                    value={mode}
+                    testID={`map-settings-light-${mode}`}
+                  >
+                    <SegmentedControlItemText>
+                      {say(MAP_LIGHT_MODE_LABELS[mode])}
+                    </SegmentedControlItemText>
+                  </SegmentedControlItem>
+                ))}
+              </SegmentedControl>
+            </SettingsRow>
+          </SettingsCard>
+        </SettingsSection>
         <SettingsSection description={say(MAP_SETTINGS_COPY.performanceHint)}>
           <SettingsCard>
             <SettingsRow

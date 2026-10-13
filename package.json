@@ -39,6 +39,7 @@
     "worker:setup": "make -C packages/reconstruction-worker setup",
     "worker:doctor": "make -C packages/reconstruction-worker doctor",
     "worker:run": "make -C packages/reconstruction-worker run",
+    "worker:bench": "make -C packages/reconstruction-worker bench",
     "validate:agents-md": "bun ./scripts/check-agents-md-size.mjs && bun ./scripts/test-check-agents-md-size.mjs",
     "clean": "bun run --cwd packages/contracts clean && bun run --cwd packages/sdk clean && bun run --cwd packages/backend clean",
     "postinstall": "bun run build:contracts && bun run build:sdk",

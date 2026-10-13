@@ -72,14 +72,24 @@ import {
   GOWAY_MAP_ORIGIN,
   gowayMapEndpoints,
   OPENFREEMAP_ENDPOINTS,
-  type MapAppearance,
+  TERRAIN_SOURCE_LINK,
 } from '../lib/map/provider';
-import { MAP_IMAGERY_MODES, type MapImageryMode } from '../lib/map/imagery';
 import { buildGowayMapStyle } from '../lib/map/style';
-import { buildImageryStyle, IMAGERY_ID_PREFIX } from '../lib/map/style/imagery';
+import {
+  DEFAULT_MAP_STYLE,
+  MAP_STYLE_INDEX_PATH,
+  MAP_STYLES,
+  type MapStyleSelection,
+  mapStylePath,
+} from '../lib/map/style/catalogue';
 import { applyGroundOverrides } from '../lib/map/style/city3dGround';
+import { QUALITY_LOW_METADATA_KEY, type QualityOverride } from '../lib/map/style/qualityOverrides';
 import { CITY3D_GROUND_METADATA_KEY, type GroundOverride } from '../lib/map/style/palette3d';
-import { GOWAY_STYLE_LAYER_ID_LIST } from '../lib/map/style/layers';
+import {
+  CONTOUR_SOURCE_ID,
+  CONTOUR_SOURCE_LAYER,
+  GOWAY_STYLE_LAYER_ID_LIST,
+} from '../lib/map/style/layers';
 import {
   AVAILABLE_FONTS,
   LANDCOVER_CLASSES,
@@ -105,20 +115,59 @@ const FRONTEND_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
  * change reviewable as a colour change rather than as a code change.
  */
 const OUTPUT_DIR = join(FRONTEND_ROOT, 'public', 'map');
+const PUBLIC_DIR = join(FRONTEND_ROOT, 'public');
 
-const OUTPUTS: Record<MapAppearance, string> = {
-  light: join(OUTPUT_DIR, 'goway-light.json'),
-  dark: join(OUTPUT_DIR, 'goway-dark.json'),
-};
+/** Every (style, light) the catalogue publishes, in catalogue order. */
+const SELECTIONS: readonly MapStyleSelection[] = MAP_STYLES.flatMap((entry) =>
+  entry.presets.map((preset) => ({ style: entry.id, preset })),
+);
+
+/** `standard/day` — a document's name in messages. */
+const labelOf = (selection: MapStyleSelection): string => `${selection.style}/${selection.preset}`;
+
+/** Where a selection's document is written: its served path under `public/`. */
+const outputOf = (selection: MapStyleSelection): string =>
+  join(PUBLIC_DIR, ...mapStylePath(selection).split('/').filter(Boolean));
 
 /**
- * The imagery documents (`lib/map/style/imagery.ts`, `docs/MAP_SATELLITE.md`):
- * derived from the dark document, so they change exactly when it does.
+ * The two documents every native binary and integration made before the
+ * catalogue loads by name: Standard by day and by night, byte for byte. Kept
+ * as copies rather than redirects because MapLibre Native in the field
+ * follows whatever it was built against, and a copy cannot be misconfigured.
  */
-const IMAGERY_OUTPUTS: Record<MapImageryMode, string> = {
-  satellite: join(OUTPUT_DIR, 'goway-satellite.json'),
-  hybrid: join(OUTPUT_DIR, 'goway-hybrid.json'),
-};
+const LEGACY_OUTPUTS: readonly [MapStyleSelection, string][] = [
+  [{ style: 'standard', preset: 'day' }, join(OUTPUT_DIR, 'goway-light.json')],
+  [{ style: 'standard', preset: 'night' }, join(OUTPUT_DIR, 'goway-dark.json')],
+];
+
+/** The catalogue's own document (`/map/styles/index.json`). */
+const INDEX_OUTPUT = join(PUBLIC_DIR, ...MAP_STYLE_INDEX_PATH.split('/').filter(Boolean));
+
+/**
+ * The catalogue as a document an integrator can read: every style, the
+ * lights it is published in, and each one's absolute URL. Generated and
+ * drift-checked like the styles, so it cannot list a document that does not
+ * exist or miss one that does.
+ */
+function buildStyleIndex(): Record<string, unknown> {
+  const origin = GOWAY_MAP_ORIGIN.replace(/\/+$/, '');
+  return {
+    v: 1,
+    default: DEFAULT_MAP_STYLE,
+    styles: MAP_STYLES.map((entry) => ({
+      id: entry.id,
+      light: entry.light,
+      presets: entry.presets,
+      defaultPreset: entry.presets[0],
+      urls: Object.fromEntries(
+        entry.presets.map((preset) => [
+          preset,
+          `${origin}${mapStylePath({ style: entry.id, preset })}`,
+        ]),
+      ),
+    })),
+  };
+}
 
 /**
  * GoWay's TileJSON, emitted and drift-checked exactly like the styles.
@@ -147,6 +196,14 @@ const ENDPOINTS = {
   glyphs: gowayMapEndpoints(GOWAY_MAP_ORIGIN).glyphs,
   sprite: gowayMapEndpoints(GOWAY_MAP_ORIGIN).sprite,
   attribution: ATTRIBUTION_HTML,
+  // Only the satellite and hybrid styles read this (`lib/map/style/imagery.ts`).
+  imageryOrigin: GOWAY_MAP_ORIGIN,
+  // Only a style with its own relief (Outdoors) declares these.
+  terrain: {
+    tiles: gowayMapEndpoints(GOWAY_MAP_ORIGIN).terrain,
+    contours: gowayMapEndpoints(GOWAY_MAP_ORIGIN).contours,
+    attribution: `<a href="${TERRAIN_SOURCE_LINK.href}" target="_blank">${TERRAIN_SOURCE_LINK.label}</a>`,
+  },
 };
 
 /**
@@ -180,8 +237,6 @@ function buildTileJson(): Record<string, unknown> {
     attribution: ATTRIBUTION_HTML,
   };
 }
-
-const APPEARANCES: readonly MapAppearance[] = ['light', 'dark'];
 
 function serialise(style: StyleSpecification): string {
   return `${JSON.stringify(style, null, 2)}\n`;
@@ -247,8 +302,8 @@ function sourceLayerOf(layer: LayerSpecification): string | undefined {
   return 'source-layer' in layer ? layer['source-layer'] : undefined;
 }
 
-function checkOne(appearance: MapAppearance, style: StyleSpecification, problems: string[]): void {
-  const where = (message: string): string => `[${appearance}] ${message}`;
+function checkOne(name: string, style: StyleSpecification, problems: string[]): void {
+  const where = (message: string): string => `[${name}] ${message}`;
 
   // 1. The real spec.
   for (const error of validateStyleMin(style)) {
@@ -279,8 +334,13 @@ function checkOne(appearance: MapAppearance, style: StyleSpecification, problems
 
     // 2. Schema reality. This is the check that catches the failure mode with
     //    no symptom: a source-layer that does not exist renders nothing at all.
+    //    The contour source has one source-layer of its own (`worker/contours.js`).
     const sourceLayer = sourceLayerOf(layer);
-    if (sourceLayer !== undefined && !knownSourceLayers.has(sourceLayer)) {
+    const contourLayer =
+      'source' in layer && layer.source === CONTOUR_SOURCE_ID
+        ? sourceLayer === CONTOUR_SOURCE_LAYER
+        : false;
+    if (sourceLayer !== undefined && !contourLayer && !knownSourceLayers.has(sourceLayer)) {
       problems.push(
         where(
           `layer "${layer.id}" reads source-layer "${sourceLayer}", which is not in the OpenMapTiles v3 schema`,
@@ -396,12 +456,8 @@ function checkOne(appearance: MapAppearance, style: StyleSpecification, problems
  * they are unaffected by where the tiles are stored: GoWay building and
  * hosting its own tiles changed the origin, not the licence.
  */
-function checkFirstPartyOrigins(
-  appearance: MapAppearance | MapImageryMode,
-  style: StyleSpecification,
-  problems: string[],
-): void {
-  const where = (message: string): string => `[${appearance}] ${message}`;
+function checkFirstPartyOrigins(name: string, style: StyleSpecification, problems: string[]): void {
+  const where = (message: string): string => `[${name}] ${message}`;
   const allowed = new URL(GOWAY_MAP_ORIGIN).origin;
 
   const walk = (node: unknown, path: string): void => {
@@ -544,12 +600,8 @@ function unsafeOrderingOperand(operand: unknown): string | null {
  * `isOrderComparison` is true, so equality against a missing property is
  * already `true`/`false` and never throws.
  */
-function checkFilterSafety(
-  appearance: MapAppearance | MapImageryMode,
-  style: StyleSpecification,
-  problems: string[],
-): void {
-  const where = (message: string): string => `[${appearance}] ${message}`;
+function checkFilterSafety(name: string, style: StyleSpecification, problems: string[]): void {
+  const where = (message: string): string => `[${name}] ${message}`;
 
   const walk = (node: unknown, layerId: string, path: string): void => {
     if (!Array.isArray(node)) {
@@ -582,28 +634,47 @@ function checkFilterSafety(
   }
 }
 
-/** Light and dark must be the same map in two palettes. */
-function checkPair(light: StyleSpecification, dark: StyleSpecification, problems: string[]): void {
-  const lightIds = light.layers.map((layer) => layer.id);
-  const darkIds = dark.layers.map((layer) => layer.id);
-  if (lightIds.join('\u0000') !== darkIds.join('\u0000')) {
-    problems.push(
-      'light and dark do not emit the same layer ids in the same order — `beforeLabels` and every overlay anchor depend on that being true',
-    );
-  }
-
-  for (let i = 0; i < Math.min(light.layers.length, dark.layers.length); i += 1) {
-    const a = light.layers[i];
-    const b = dark.layers[i];
-    if (a.type !== b.type)
-      problems.push(`layer "${a.id}" is ${a.type} in light and ${b.type} in dark`);
-    if (sourceLayerOf(a) !== sourceLayerOf(b)) {
-      problems.push(`layer "${a.id}" reads different source-layers in light and dark`);
+/**
+ * Every document is ONE map: its layer ids are an ordered subset of the
+ * published catalogue (`GOWAY_STYLE_LAYER_IDS`), in the catalogue's order, so
+ * an overlay anchored by id lands in the same stratum in every style; a
+ * style's lights emit the same ids (only colour moves with the light); and no
+ * two documents are byte-identical — one that is means a theme is not being
+ * applied.
+ */
+function checkCatalogue(
+  built: readonly [MapStyleSelection, StyleSpecification][],
+  problems: string[],
+): void {
+  const order = new Map(GOWAY_STYLE_LAYER_ID_LIST.map((id, index) => [id, index]));
+  const idsByStyle = new Map<string, string>();
+  const bodies = new Map<string, string>();
+  for (const [selection, style] of built) {
+    const name = labelOf(selection);
+    let previous = -1;
+    for (const layer of style.layers) {
+      const index = order.get(layer.id);
+      if (index === undefined) continue; // reported by checkOne
+      if (index < previous) {
+        problems.push(
+          `[${name}] layer "${layer.id}" is out of the catalogue's order — every style draws its strata in the same order`,
+        );
+      }
+      previous = index;
     }
-  }
-
-  if (serialise(light) === serialise(dark)) {
-    problems.push('light and dark are byte-identical — one of the palettes is not being applied');
+    const ids = style.layers.map((layer) => layer.id).join('\u0000');
+    const sibling = idsByStyle.get(selection.style);
+    if (sibling === undefined) idsByStyle.set(selection.style, ids);
+    else if (sibling !== ids) {
+      problems.push(
+        `[${name}] emits different layer ids from the style's other lights — a light may change colour only`,
+      );
+    }
+    const body = JSON.stringify(style.layers);
+    const twin = bodies.get(body);
+    if (twin)
+      problems.push(`[${name}] draws exactly what [${twin}] draws — its theme is not applied`);
+    bodies.set(body, name);
   }
 }
 
@@ -643,16 +714,14 @@ async function checkOnline(problems: string[]): Promise<void> {
  * overrides only ever run in a browser, so this is the one place they meet
  * the spec before a user does.
  */
-function checkCity3dGround(
-  appearance: MapAppearance,
-  style: StyleSpecification,
-  problems: string[],
-): void {
-  const where = (message: string): string => `[${appearance}] city3d ground: ${message}`;
+function checkCity3dGround(name: string, style: StyleSpecification, problems: string[]): void {
+  const where = (message: string): string => `[${name}] city3d ground: ${message}`;
   const overrides = (style.metadata as Record<string, unknown> | undefined)?.[
     CITY3D_GROUND_METADATA_KEY
   ] as GroundOverride[] | undefined;
-  if (!Array.isArray(overrides) || overrides.length === 0) {
+  // Empty is allowed: a style whose ground is already its city ground (the
+  // data basemaps) leaves the ground alone under the 3D city.
+  if (!Array.isArray(overrides)) {
     problems.push(where('no overrides in the style metadata'));
     return;
   }
@@ -665,27 +734,42 @@ function checkCity3dGround(
 }
 
 /**
- * An imagery document: the spec, GoWay's origin only, every layer either one
- * the dark document has (same id) or an imagery raster, and the label anchor
- * kept — overlays are inserted against it on every style GoWay owns.
+ * The low tier's overrides (`metadata['goway:quality-low']`, see
+ * `lib/map/style/qualityOverrides.ts`): aimed only at layers that exist, and —
+ * applied as the web map applies them — still a style MapLibre accepts.
  */
-function checkImagery(
-  mode: MapImageryMode,
-  style: StyleSpecification,
-  dark: StyleSpecification,
-  problems: string[],
-): void {
-  const where = (message: string): string => `[${mode}] ${message}`;
-  for (const error of validateStyleMin(style)) problems.push(where(`style-spec: ${error.message}`));
-  const darkIds = new Set(dark.layers.map((layer) => layer.id));
-  for (const layer of style.layers) {
-    if (!darkIds.has(layer.id) && !layer.id.startsWith(IMAGERY_ID_PREFIX)) {
-      problems.push(where(`layer "${layer.id}" is neither the dark document's nor imagery`));
+function checkQualityOverrides(name: string, style: StyleSpecification, problems: string[]): void {
+  const where = (message: string): string => `[${name}] quality overrides: ${message}`;
+  const overrides = (style.metadata as Record<string, unknown> | undefined)?.[
+    QUALITY_LOW_METADATA_KEY
+  ] as QualityOverride[] | undefined;
+  if (!Array.isArray(overrides)) {
+    problems.push(where('missing from the style metadata'));
+    return;
+  }
+  const layers = style.layers.map((layer) => {
+    const o = overrides.find((override) => override.layer === layer.id);
+    if (!o) return layer;
+    const next = { ...layer } as Record<string, unknown>;
+    if (o.minzoom !== undefined) next.minzoom = o.minzoom;
+    if (o.filter !== undefined) next.filter = o.filter;
+    for (const part of ['layout', 'paint'] as const) {
+      if (!o[part]) continue;
+      const merged = { ...((next[part] as Record<string, unknown>) ?? {}) };
+      for (const [key, value] of Object.entries(o[part] ?? {})) {
+        if (value === undefined) delete merged[key];
+        else merged[key] = value;
+      }
+      next[part] = merged;
+    }
+    return next as LayerSpecification;
+  });
+  for (const o of overrides) {
+    if (!style.layers.some((layer) => layer.id === o.layer)) {
+      problems.push(where(`override for missing layer "${o.layer}"`));
     }
   }
-  if (!style.layers.some((layer) => layer.id === GOWAY_LABEL_ANCHOR_LAYER_ID)) {
-    problems.push(where(`the label anchor "${GOWAY_LABEL_ANCHOR_LAYER_ID}" is missing`));
-  }
+  for (const error of validateStyleMin({ ...style, layers })) problems.push(where(error.message));
 }
 
 // ---------------------------------------------------------------------------
@@ -697,42 +781,41 @@ async function main(): Promise<void> {
   const checkOnly = argv.includes('--check');
   const online = argv.includes('--online');
 
-  const built = Object.fromEntries(
-    APPEARANCES.map((appearance) => [appearance, buildGowayMapStyle(appearance, ENDPOINTS)]),
-  ) as Record<MapAppearance, StyleSpecification>;
+  const built: [MapStyleSelection, StyleSpecification][] = SELECTIONS.map((selection) => [
+    selection,
+    buildGowayMapStyle(selection, ENDPOINTS),
+  ]);
 
   const problems: string[] = [];
-  for (const appearance of APPEARANCES) {
-    checkOne(appearance, built[appearance], problems);
-    checkFirstPartyOrigins(appearance, built[appearance], problems);
-    checkFilterSafety(appearance, built[appearance], problems);
+  for (const [selection, style] of built) {
+    const name = labelOf(selection);
+    checkOne(name, style, problems);
+    checkFirstPartyOrigins(name, style, problems);
+    checkFilterSafety(name, style, problems);
+    checkCity3dGround(name, style, problems);
   }
-  checkPair(built.light, built.dark, problems);
-  const imagery = Object.fromEntries(
-    MAP_IMAGERY_MODES.map((mode) => [mode, buildImageryStyle(built.dark, mode, GOWAY_MAP_ORIGIN)]),
-  ) as Record<MapImageryMode, StyleSpecification>;
-  for (const mode of MAP_IMAGERY_MODES) {
-    checkImagery(mode, imagery[mode], built.dark, problems);
-    checkFirstPartyOrigins(mode, imagery[mode], problems);
-    checkFilterSafety(mode, imagery[mode], problems);
-  }
-  for (const appearance of APPEARANCES) checkCity3dGround(appearance, built[appearance], problems);
+  checkCatalogue(built, problems);
+  for (const [selection, style] of built)
+    checkQualityOverrides(labelOf(selection), style, problems);
   if (online) await checkOnline(problems);
 
-  const tileJson = `${JSON.stringify(buildTileJson(), null, 2)}\n`;
+  const documentOf = (selection: MapStyleSelection): StyleSpecification => {
+    const hit = built.find(([s]) => s.style === selection.style && s.preset === selection.preset);
+    if (!hit) throw new Error(`map style: ${labelOf(selection)} is not in the catalogue`);
+    return hit[1];
+  };
+
+  const expected: [string, string][] = [
+    ...built.map(([selection, style]): [string, string] => [outputOf(selection), serialise(style)]),
+    ...LEGACY_OUTPUTS.map(([selection, path]): [string, string] => [
+      path,
+      serialise(documentOf(selection)),
+    ]),
+    [INDEX_OUTPUT, `${JSON.stringify(buildStyleIndex(), null, 2)}\n`],
+    [TILEJSON_OUTPUT, `${JSON.stringify(buildTileJson(), null, 2)}\n`],
+  ];
 
   if (checkOnly) {
-    const expected: [string, string][] = [
-      ...APPEARANCES.map((appearance): [string, string] => [
-        OUTPUTS[appearance],
-        serialise(built[appearance]),
-      ]),
-      ...MAP_IMAGERY_MODES.map((mode): [string, string] => [
-        IMAGERY_OUTPUTS[mode],
-        serialise(imagery[mode]),
-      ]),
-      [TILEJSON_OUTPUT, tileJson],
-    ];
     for (const [path, want] of expected) {
       let committed: string;
       try {
@@ -755,28 +838,17 @@ async function main(): Promise<void> {
   }
 
   if (checkOnly) {
-    const layerCount = built.light.layers.length;
     console.log(
-      `map style: OK — ${layerCount} layers, light + dark in step${online ? ', live schema verified' : ''}`,
+      `map style: OK — ${built.length} documents (${MAP_STYLES.length} styles), one map in every light${online ? ', live schema verified' : ''}`,
     );
     return;
   }
 
-  await mkdir(OUTPUT_DIR, { recursive: true });
-  for (const appearance of APPEARANCES) {
-    await writeFile(OUTPUTS[appearance], serialise(built[appearance]), 'utf8');
-    console.log(
-      `map style: wrote ${OUTPUTS[appearance]} (${built[appearance].layers.length} layers)`,
-    );
+  for (const [path, body] of expected) {
+    await mkdir(dirname(path), { recursive: true });
+    await writeFile(path, body, 'utf8');
+    console.log(`map style: wrote ${path}`);
   }
-  for (const mode of MAP_IMAGERY_MODES) {
-    await writeFile(IMAGERY_OUTPUTS[mode], serialise(imagery[mode]), 'utf8');
-    console.log(
-      `map style: wrote ${IMAGERY_OUTPUTS[mode]} (${imagery[mode].layers.length} layers)`,
-    );
-  }
-  await writeFile(TILEJSON_OUTPUT, tileJson, 'utf8');
-  console.log(`map style: wrote ${TILEJSON_OUTPUT}`);
 }
 
 await main();

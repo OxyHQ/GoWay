@@ -1,0 +1,57 @@
+{
+  "v": 1,
+  "view": {
+    "latitude": 41.3872,
+    "longitude": 2.1862,
+    "zoom": 13.4
+  },
+  "views": {
+    "outdoors": {
+      "latitude": 41.5975,
+      "longitude": 1.8325,
+      "zoom": 12.6
+    }
+  },
+  "thumbs": {
+    "standard/day": {
+      "file": "/map/styles/thumbs/standard-day.jpg",
+      "layers": "6825889aa36579d6"
+    },
+    "standard/night": {
+      "file": "/map/styles/thumbs/standard-night.jpg",
+      "layers": "f8950263c7b56623"
+    },
+    "streets/day": {
+      "file": "/map/styles/thumbs/streets-day.jpg",
+      "layers": "1dee9df47cd19af1"
+    },
+    "streets/night": {
+      "file": "/map/styles/thumbs/streets-night.jpg",
+      "layers": "e09929c5c70a603a"
+    },
+    "outdoors/day": {
+      "file": "/map/styles/thumbs/outdoors-day.jpg",
+      "layers": "e3ec8e2472afc4ef"
+    },
+    "outdoors/night": {
+      "file": "/map/styles/thumbs/outdoors-night.jpg",
+      "layers": "f4fb37755691014f"
+    },
+    "satellite/day": {
+      "file": "/map/styles/thumbs/satellite-day.jpg",
+      "layers": "c319b0770b0b6355"
+    },
+    "hybrid/day": {
+      "file": "/map/styles/thumbs/hybrid-day.jpg",
+      "layers": "9b287766e8b7976f"
+    },
+    "light/day": {
+      "file": "/map/styles/thumbs/light-day.jpg",
+      "layers": "96c3b39b258fb13b"
+    },
+    "dark/night": {
+      "file": "/map/styles/thumbs/dark-night.jpg",
+      "layers": "f6a6db0aefa0b76e"
+    }
+  }
+}

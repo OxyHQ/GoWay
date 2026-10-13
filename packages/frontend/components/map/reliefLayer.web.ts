@@ -59,6 +59,7 @@ import {
 } from '@/lib/map/style/relief';
 
 import { createGlobeNightLayer, GLOBE_NIGHT_LAYER_ID } from './globeNightLayer.web';
+import { STYLE_HILLSHADE_LAYER_ID } from '@/lib/map/style/layers';
 import { reportMapDefect } from './shared';
 
 export interface AttachReliefOptions {
@@ -208,7 +209,9 @@ export function attachRelief(map: MapLibreMap, options: AttachReliefOptions): Re
       : [RELIEF_SOURCE_IDS.terrain]) {
       if (!map.getSource(id)) map.addSource(id, reliefDemSource(tiles));
     }
-    if (shaded && !map.getLayer(HILLSHADE_LAYER_ID)) {
+    // A style that carries its own hillshade (Outdoors, `docs/MAP_STYLES.md`)
+    // keeps it: a second one over it would double the shading.
+    if (shaded && !map.getLayer(HILLSHADE_LAYER_ID) && !map.getLayer(STYLE_HILLSHADE_LAYER_ID)) {
       map.addLayer(hillshadeLayer(appearance), HILLSHADE_BEFORE_LAYER_ID);
     }
     terrainReady = true;

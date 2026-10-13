@@ -12,8 +12,9 @@ import type { StyleSpecification } from '@maplibre/maplibre-gl-style-spec';
 import { encodeCoverageTree } from '@/worker/coverageTree.js';
 import { cellsTree } from '@/scripts/imagery/cells';
 
+import { contrastRatio, flattenColour } from '../colour';
 import { CREDIT_SECTIONS } from '../credits';
-import { IMAGERY_TIER_IDS, IMAGERY_TIERS, resolveImageryMode } from '../imagery';
+import { IMAGERY_TIER_IDS, IMAGERY_TIERS } from '../imagery';
 import { imagerySourcesInView, parseImageryCoverage, tierZoom } from '../imageryCoverage';
 import { IMAGERY_SOURCES } from '../imagerySources';
 import {
@@ -21,40 +22,41 @@ import {
   IMAGERY_ATTRIBUTION_HREF,
   resolveMapStyleUrl,
 } from '../provider';
-import { buildImageryStyle, IMAGERY_METADATA_KEY, imageryLayerId } from '../style/imagery';
+import { parseEmbedParams } from '../embed';
+import { isMapStyleOffered, mapStyleDefinition, mapStylePath } from '../style/catalogue';
+import { IMAGERY_METADATA_KEY, imageryLayerId } from '../style/imagery';
 
-const PUBLIC_MAP = join(import.meta.dir, '..', '..', '..', 'public', 'map');
-const read = (name: string) =>
-  JSON.parse(readFileSync(join(PUBLIC_MAP, name), 'utf8')) as StyleSpecification;
-const dark = read('goway-dark.json');
+const PUBLIC = join(import.meta.dir, '..', '..', '..', 'public');
+/** A document as committed: `map:style:check` pins it to what the engine renders. */
+const document = (style: 'satellite' | 'hybrid') =>
+  JSON.parse(
+    readFileSync(join(PUBLIC, ...mapStylePath({ style, preset: 'day' }).split('/')), 'utf8'),
+  ) as StyleSpecification;
 
-describe('the mode a page draws', () => {
-  const production = { development: false, search: '?imagery=satellite' };
-  const development = { development: true, search: '?imagery=hybrid' };
-  test("the screen's choice wins; null is no imagery", () => {
-    expect(resolveImageryMode('satellite', development)).toBe('satellite');
-    expect(resolveImageryMode(null, development)).toBeNull();
+describe('satellite and hybrid in the style catalogue', () => {
+  test('two catalogue styles, one light, served where every style is', () => {
+    expect(mapStyleDefinition('satellite')).toMatchObject({ imagery: 'satellite', light: 'fixed' });
+    expect(mapStyleDefinition('hybrid')).toMatchObject({ imagery: 'hybrid', light: 'fixed' });
+    expect(resolveMapStyleUrl({ style: 'satellite', preset: 'day' })).toEndWith(
+      '/map/styles/satellite/day.json',
+    );
   });
-  test('the address is read in a development build only', () => {
-    expect(resolveImageryMode(undefined, development)).toBe('hybrid');
-    expect(resolveImageryMode(undefined, production)).toBeNull();
-    expect(
-      resolveImageryMode(undefined, { development: true, search: '?imagery=bing' }),
-    ).toBeNull();
-  });
-  test('each mode has its own document on GoWay’s origin', () => {
-    expect(resolveMapStyleUrl('light', 'satellite')).toEndWith('/map/goway-satellite.json');
-    expect(resolveMapStyleUrl('dark', 'hybrid')).toEndWith('/map/goway-hybrid.json');
-    expect(resolveMapStyleUrl('light', null)).toEndWith('/map/goway-light.json');
+  test('offered in a development build only, until the imagery is published', () => {
+    expect(isMapStyleOffered('satellite', false)).toBe(false);
+    expect(isMapStyleOffered('hybrid', true)).toBe(true);
+    expect(isMapStyleOffered('standard', false)).toBe(true);
+    // The embed is somebody else's page: never an unpublished style.
+    expect(parseEmbedParams({ style: 'satellite' }).style).toBeUndefined();
+    expect(parseEmbedParams({ style: 'satellite' }, { development: true }).style).toBe('satellite');
+    expect(parseEmbedParams({ style: 'streets' }).style).toBe('streets');
   });
 });
 
 describe('the imagery documents', () => {
   for (const mode of ['satellite', 'hybrid'] as const) {
-    const style = buildImageryStyle(dark, mode, 'https://goway.to');
-    test(`${mode}: valid, committed, imagery directly over the background`, () => {
+    const style = document(mode);
+    test(`${mode}: valid, imagery directly over the background`, () => {
       expect(validateStyleMin(style)).toEqual([]);
-      expect(read(`goway-${mode}.json`)).toEqual(JSON.parse(JSON.stringify(style)));
       expect(style.layers.slice(0, 4).map((layer) => layer.id)).toEqual([
         'background',
         ...IMAGERY_TIER_IDS.map(imageryLayerId),
@@ -83,14 +85,15 @@ describe('the imagery documents', () => {
   }
 
   test('satellite is the imagery alone', () => {
-    const style = buildImageryStyle(dark, 'satellite', 'https://goway.to');
     expect(
-      style.layers.filter((layer) => layer.type === 'symbol' || layer.type === 'line'),
+      document('satellite').layers.filter(
+        (layer) => layer.type === 'symbol' || layer.type === 'line',
+      ),
     ).toEqual([]);
   });
 
   test('hybrid keeps the roads (no casings) and the labels, legible over a photo', () => {
-    const style = buildImageryStyle(dark, 'hybrid', 'https://goway.to');
+    const style = document('hybrid');
     const ids = style.layers.map((layer) => layer.id);
     expect(ids).toContain('road-motorway');
     expect(ids).toContain('label-place-city');
@@ -98,6 +101,10 @@ describe('the imagery documents', () => {
     const city = style.layers.find((layer) => layer.id === 'label-place-city');
     const paint = (city?.paint ?? {}) as Record<string, unknown>;
     expect(paint['text-halo-color']).toBe('rgba(0,0,0,0.78)');
+    // Over any photograph: white on the halo flattened over white (its worst case).
+    expect(contrastRatio('#ffffff', flattenColour('rgba(0,0,0,0.78)', '#ffffff'))).toBeGreaterThan(
+      4.5,
+    );
   });
 });
 

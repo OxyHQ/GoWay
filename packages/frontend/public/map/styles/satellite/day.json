@@ -1,8 +1,10 @@
 {
   "version": 8,
-  "name": "GoWay Satellite",
+  "name": "GoWay Satellite · Day",
   "metadata": {
-    "goway:appearance": "dark",
+    "goway:style": "satellite",
+    "goway:light": "day",
+    "goway:appearance": "light",
     "goway:schema": "openmaptiles-v3",
     "goway:anchor:beforeLabels": "goway:anchor:labels",
     "goway:layers": [
@@ -13,6 +15,8 @@
       "goway:anchor:labels"
     ],
     "goway:generator": "packages/frontend/scripts/build-map-style.ts",
+    "goway:city3d-ground": [],
+    "goway:quality-low": [],
     "goway:imagery": "satellite"
   },
   "light": {
@@ -23,7 +27,7 @@
       30
     ],
     "color": "#ffffff",
-    "intensity": 0.45
+    "intensity": 0.2
   },
   "glyphs": "https://goway.to/map/fonts/{fontstack}/{range}.pbf",
   "sprite": "https://goway.to/map/sprites/goway",

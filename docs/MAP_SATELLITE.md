@@ -11,9 +11,8 @@ published.** The owner's decisions are at the end ([Decisions](#decisions)).
 | --- | --- |
 | Sources GoWay may serve (the licence decision) | `packages/frontend/lib/map/imagerySources.ts` |
 | Modes, tiers, tile paths | `lib/map/imagery.ts` |
-| Style documents (pure, generated) | `lib/map/style/imagery.ts` → `public/map/goway-{satellite,hybrid}.json` (`map:style`, checked by `map:style:check`) |
-| Style URL | `resolveMapStyleUrl(appearance, imagery)` (`lib/map/provider.ts`) |
-| Map hook | `MapCanvasProps.imagery` (`components/map/types.ts`), both canvases |
+| Styles: `satellite` and `hybrid` in the one style catalogue | `lib/map/style/catalogue.ts` (`imagery`, `offer`), `themes.ts` (recipes), `options.ts` (`imagery`), `imagery.ts` (`applyImageryStyle`, called by `buildGowayMapStyle`) → `public/map/styles/{satellite,hybrid}/day.json` (`map:style`, `map:style:check`), thumbnails (`map:thumbs --only=`) |
+| Picker, embed | the layers picker and `/frame?style=` list them through `isMapStyleOffered` |
 | Credit while on screen | `lib/map/imageryCoverage.ts`, `components/map/useImageryCredits.ts`, `/attribution#imagery` (`lib/map/credits.ts`) |
 | Sets (what is built, from what) | `scripts/imagery/catalogue.ts` |
 | Build one set's cells | `scripts/build-satellite-set.ts` (`map:satellite-set`); `scripts/imagery/{cells,pmtilesStream}.ts`; GDAL pinned in `scripts/imagery/environment.yml` |
@@ -223,10 +222,17 @@ and is what MapLibre's raster sources and the DEM already use.
 
 ### Styles: satellite and hybrid
 
-Generated from GoWay's dark document by `buildImageryStyle`
-(`lib/map/style/imagery.ts`) and committed beside light and dark
-(`map:style:check` keeps all four in step; light and dark are byte-identical
-to before):
+Two entries of the style catalogue (#197, `docs/MAP_STYLES.md`), drawn by the
+one engine: their recipes (`themes.ts`) are Standard's options with
+`imagery: 'satellite' | 'hybrid'` over the night palette (its light type), and
+`buildGowayMapStyle` hands that document to `applyImageryStyle`
+(`lib/map/style/imagery.ts`), which puts the imagery under it and keeps what
+reads over a photograph. One light each (`day`, `light: 'fixed'`): a
+photograph has one, and a fixed style skips the globe's night pass. The
+imagery layers are in the published id contract (`GOWAY_STYLE_LAYER_IDS.imagery`,
+just above `background`), so every catalogue check holds them as it holds
+every style; every other document is unchanged but for that list in its
+metadata.
 
 - **satellite**: background (Blue Marble's deep-sea blue, `#0d244f`, sampled at
   5°E 39°N, so the z8+ transparent sea meets the z0–7 Blue Marble ocean
@@ -245,30 +251,19 @@ to before):
   terrain (not its hillshade — a photograph has its own shadows) to an
   imagery style (`reliefLayer.web.ts`), and the photograph drapes over it.
 
-### The hook (for the style system)
+### Choosing it
 
-```ts
-<MapCanvas imagery="hybrid" … />      // 'satellite' | 'hybrid' | null
-resolveMapStyleUrl(appearance, mode)  // the document URL, both engines
-```
-
-The style picker passes `imagery`; the canvas loads the document (web
-rebuilds the engine as for an appearance change; native swaps `mapStyle` in
-place), credits the imagery, and suppresses the native hillshade. A
-development build also reads `?imagery=satellite|hybrid` (production never
-does). A picker should offer imagery only where
-`/map/satellite/coverage.json` lists sets (it lists none until published).
-A 404 from an imagery tier is a normal answer and never raises "Map data
-unavailable"; any other imagery failure is reported once and the map stays up.
-
-**Hand-off to the style engine (#197).** Its recipe (`docs/MAP_STYLES.md` →
-"Imagery plugs in as one more style") makes satellite and hybrid catalogue
-entries. Everything such an entry needs is here: the tier sources
-(`imageryRasterSource`, `IMAGERY_TIER_IDS`, `imageryLayerId`), the ocean
-colour, the hybrid line/label treatment (`buildImageryStyle`, which becomes
-that entry's theme), the credit hook and the Worker. Until then,
-`buildImageryStyle` over the dark document and the `imagery` prop are the
-interim hook; after it, the prop maps onto the style ids.
+The one layers picker shows Satellite and Hybrid beside every other style (its
+thumbnails are of the Catalonia proof), and `/frame?style=satellite` embeds
+one. Both are **`offer: 'development'`** in the catalogue until the imagery is
+published: a development build offers them, production does not (the picker
+and the embed ask `isMapStyleOffered`), so nobody on goway.to can choose a map
+that would draw only ocean. Publishing the first sets is followed by one line:
+`offer` removed from the two entries. The canvas (both) reads the style's
+`imagery` from the catalogue, credits the imagery, and keeps the native
+hillshade off. A 404 from an imagery tier is a normal answer and never raises
+"Map data unavailable"; any other imagery failure is reported once and the
+map stays up.
 
 ### The credit
 
@@ -495,11 +490,9 @@ allow z11–z12 cells and a quarter of the objects.
    and Uruguay (bulk access / licence text), NYC 2024 (terms conflict).
 6. **3D buildings over imagery**: off in this change (reasons above). Want
    untextured clay as an option in the picker, or wait for true orthophotos?
-7. **Merge order with #197** (the style engine): its `MAP_STYLES` recipe takes
-   imagery as a catalogue entry; this PR's pieces (tiers and sources, the
-   Worker, the credit hook, the transform) are what that entry is built from.
-   Whichever merges second rebases; the `imagery` prop becomes the catalogue's
-   `satellite`/`hybrid` style ids.
+7. **Offer the styles**: after the first published run, remove
+   `offer: 'development'` from the two catalogue entries (picker and embed
+   then list them for everyone).
 
 ## Limits and next
 

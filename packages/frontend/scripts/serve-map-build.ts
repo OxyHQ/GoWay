@@ -71,7 +71,7 @@ const UPSTREAM_PATH = /^\/(map|landmarks)\//;
  * (`docs/MAP_SATELLITE.md` → Local proof).
  */
 const satelliteDir = arg('satellite', '');
-const SATELLITE_STYLES = /^\/map\/goway-(satellite|hybrid)\.json$/;
+const SATELLITE_STYLES = /^\/map\/styles\/(satellite|hybrid)\/[a-z]+\.json$/;
 
 /** An R2 bucket over a directory: what `worker/satellite.js` reads (get with a range, head). */
 function directoryBucket(dir: string) {
@@ -140,6 +140,53 @@ async function proxy(path: string, search: string, response: ServerResponse): Pr
   }
 }
 
+/**
+ * `/map/contours/…`, made HERE by the production Worker's own module
+ * (`worker/contours.js`) from the elevation tiles `--upstream` serves, decoded
+ * by the same WebAssembly libwebp — so a local export draws the contours
+ * goway.to will, before the route is deployed.
+ */
+let contourService: { tile(z: number, x: number, y: number): Promise<Uint8Array> } | null = null;
+async function contours(path: string, response: ServerResponse): Promise<void> {
+  try {
+    const { contourTileOf, createContourService } = await import('../worker/contours.js');
+    const tile = contourTileOf(path);
+    if (!tile) {
+      response.writeHead(404, { 'content-type': 'text/plain' });
+      response.end('Not a contour tile GoWay makes (z9–14).');
+      return;
+    }
+    if (!contourService) {
+      const { default: decode, init } = await import('@jsquash/webp/decode.js');
+      const wasm = await WebAssembly.compile(
+        readFileSync(require.resolve('@jsquash/webp/codec/dec/webp_dec.wasm')),
+      );
+      await init(wasm);
+      contourService = createContourService({
+        fetchDem: async (z: number, x: number, y: number) => {
+          const answer = await fetch(`${upstream}/map/terrain/${z}/${x}/${y}.webp`);
+          if (answer.status === 404) return null;
+          if (!answer.ok) throw new Error(`elevation tile ${z}/${x}/${y}: HTTP ${answer.status}`);
+          return new Uint8Array(await answer.arrayBuffer());
+        },
+        decode: async (bytes: Uint8Array) => {
+          const image = await decode(bytes.slice().buffer);
+          return { width: image.width, height: image.height, data: image.data };
+        },
+      });
+    }
+    const bytes = await contourService.tile(tile.z, tile.x, tile.y);
+    response.writeHead(200, {
+      'content-type': 'application/x-protobuf',
+      'access-control-allow-origin': '*',
+    });
+    response.end(Buffer.from(bytes));
+  } catch (cause) {
+    response.writeHead(502, { 'content-type': 'text/plain' });
+    response.end(`contours: ${String(cause)}`);
+  }
+}
+
 const files: Handler = (request, response) => {
   const [rawPath, query = ''] = (request.url ?? '/').split('?');
   const path = decodeURIComponent(rawPath);
@@ -164,6 +211,10 @@ const files: Handler = (request, response) => {
   // Inside the export, never a sibling directory that merely shares its prefix.
   const inside = file === root || file.startsWith(root.endsWith(sep) ? root : `${root}${sep}`);
   const held = inside && existsSync(file) && !statSync(file).isDirectory();
+  if (upstream && path.startsWith('/map/contours/')) {
+    void contours(path, response);
+    return;
+  }
   if (!held && upstream && UPSTREAM_PATH.test(path)) {
     void proxy(rawPath, query ? `?${query}` : '', response);
     return;

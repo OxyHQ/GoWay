@@ -1,12 +1,12 @@
 /**
- * The satellite and hybrid style documents, derived from GoWay's own
- * (`docs/MAP_SATELLITE.md` → Styles).
+ * The satellite and hybrid styles' imagery (`docs/MAP_SATELLITE.md` → Styles).
  *
- * Pure: `scripts/build-map-style.ts` calls {@link buildImageryStyle} on the
- * dark document and writes `public/map/goway-{satellite,hybrid}.json` beside
- * the light and dark ones, checked by `map:style:check` like them. A style
- * system composing its own variants calls the same function; nothing about
- * imagery lives anywhere else in the style.
+ * Satellite and hybrid are catalogue styles like any other
+ * (`catalogue.ts`, `themes.ts`): `buildGowayMapStyle` renders their theme
+ * from the one layer list, and when the theme's options say `imagery` it
+ * hands the document to {@link applyImageryStyle}, which puts the imagery
+ * under it and keeps what reads over a photograph. Pure, so the documents are
+ * written and drift-checked by `map:style` like every other.
  *
  * - **satellite**: the imagery alone. Every basemap layer goes except the
  *   background (the ocean the base tier leaves transparent beyond z7) and
@@ -35,6 +35,8 @@ import type {
   StyleSpecification,
 } from '@maplibre/maplibre-gl-style-spec';
 
+import { CITY3D_GROUND_METADATA_KEY } from './palette3d';
+import { QUALITY_LOW_METADATA_KEY } from './qualityOverrides';
 import {
   IMAGERY_ID_PREFIX,
   IMAGERY_TIER_IDS,
@@ -65,11 +67,6 @@ export const IMAGERY_METADATA_KEY = 'goway:imagery';
  * so the first Sentinel-2 zoom meets the last Blue Marble one without a step.
  */
 export const IMAGERY_OCEAN = '#0d244f';
-
-const STYLE_NAMES: Record<MapImageryMode, string> = {
-  satellite: 'GoWay Satellite',
-  hybrid: 'GoWay Hybrid',
-};
 
 /** The raster source of one tier, on GoWay's origin, crediting GoWay's attribution page. */
 export function imageryRasterSource(
@@ -180,7 +177,7 @@ function hybridSymbol(layer: LayerSpecification): LayerSpecification | null {
  * The imagery document for `mode`, from GoWay's own document (the dark one:
  * its light-on-dark labels are the ones that read over a photo).
  */
-export function buildImageryStyle(
+export function applyImageryStyle(
   base: StyleSpecification,
   mode: MapImageryMode,
   origin: string,
@@ -210,16 +207,21 @@ export function buildImageryStyle(
   }
 
   const metadata = { ...((base.metadata as Record<string, unknown> | undefined) ?? {}) };
-  // The detailed 3D city's ground overrides aim at fills this document no longer has.
-  for (const key of Object.keys(metadata)) {
-    if (key.startsWith('goway:city3d')) delete metadata[key];
+  const kept = new Set(layers.map((layer) => layer.id));
+  // No 3D city over imagery, so no ground for it to switch to; and the low
+  // tier's density overrides only for the layers this document still draws.
+  metadata[CITY3D_GROUND_METADATA_KEY] = [];
+  const quality = metadata[QUALITY_LOW_METADATA_KEY];
+  if (Array.isArray(quality)) {
+    metadata[QUALITY_LOW_METADATA_KEY] = quality.filter((o: { layer?: string }) =>
+      kept.has(String(o.layer)),
+    );
   }
   metadata[IMAGERY_METADATA_KEY] = mode;
   metadata['goway:layers'] = layers.map((layer) => layer.id);
 
   return {
     ...base,
-    name: STYLE_NAMES[mode],
     metadata,
     sources: {
       ...base.sources,

@@ -20,8 +20,8 @@ import type { ReactNode } from 'react';
 import type { StyleProp, ViewStyle } from 'react-native';
 import type { ModelPlacementInput } from '@goway.to/sdk';
 
-import type { MapImageryMode } from '@/lib/map/imagery';
 import type { MapAppearance } from '@/lib/map/provider';
+import type { MapLightPreset, MapStyleId } from '@/lib/map/style/catalogue';
 
 export type { MapAppearance };
 
@@ -467,17 +467,19 @@ export interface MapInteractionOptions {
 export interface MapCanvasProps {
   /** Camera on first render. Uncontrolled afterwards — move it via {@link MapApi}. */
   initialViewport?: MapViewport;
-  /** Cartographic appearance. Defaults to following the Bloom theme. */
+  /**
+   * Day or night, as the older spelling of {@link lightPreset}. Absent with
+   * `lightPreset`, the light is this device's choice (`useMapStyle.ts`).
+   */
   appearance?: MapAppearance;
   /**
-   * Satellite imagery: `satellite` (the imagery alone) or `hybrid` (under
-   * GoWay's roads and labels); `null` for the map. The style system's choice
-   * (`lib/map/imagery.ts`, `docs/MAP_SATELLITE.md`): the canvas loads that
-   * style document and names each imagery source while it is on screen.
-   * Absent, a DEVELOPMENT build reads `?imagery=` from the page; production
-   * never does.
+   * The map style (`lib/map/style/catalogue.ts`). Absent, the person's
+   * choice on this device — set from the layers picker. A screen that must
+   * not follow the visitor (the embed) passes its own.
    */
-  imagery?: MapImageryMode | null;
+  mapStyle?: MapStyleId;
+  /** The light: day, dawn, dusk or night. Absent, this device's choice. */
+  lightPreset?: MapLightPreset;
   markers?: readonly MapMarker[];
   /**
    * Custom marker body. Receives the marker and returns Bloom UI; the renderer

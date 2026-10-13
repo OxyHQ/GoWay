@@ -26,10 +26,10 @@
  * is its own compression, and a gzip layer or a declared encoding on it is
  * the same class of wire bug as above.
  */
-import { cpSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { cpSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { request as httpRequest } from 'node:http';
-import { join, resolve } from 'node:path';
+import { dirname, join, resolve } from 'node:path';
 import { gunzipSync } from 'node:zlib';
 
 import { convertV4MiniflareOptions, Miniflare } from 'miniflare';
@@ -45,6 +45,8 @@ const args = Object.fromEntries(
   }),
 );
 const workerDir = resolve(args.worker ?? join(import.meta.dir, '..', 'worker'));
+/** Where the Worker's npm dependencies are installed. */
+const FRONTEND_DIR = join(import.meta.dir, '..');
 
 /** The deployed Worker's compatibility date, so the runtime behaves as it does. */
 const COMPATIBILITY_DATE = (() => {
@@ -114,17 +116,62 @@ const SAT_MANIFEST = mergeManifest(
 ).manifest;
 
 /** A fresh runtime (empty edge cache, empty bucket) holding the archives. */
+/**
+ * The Worker as wrangler deploys it: ONE bundle of `index.js` and everything
+ * it imports — the npm modules the contour route uses (`maplibre-contour`,
+ * `@jsquash/webp`) included — with each WebAssembly import kept as its own
+ * `CompiledWasm` module, as wrangler's default rule does. Loading `worker/`'s
+ * files one by one instead fails at the first bare npm import.
+ */
+async function bundle(
+  workerDir: string,
+): Promise<{ dir: string; modules: { type: 'ESModule' | 'CompiledWasm'; path: string }[] }> {
+  const dir = mkdtempSync(join(tmpdir(), 'worker-wire-bundle-'));
+  const built = await Bun.build({
+    entrypoints: [join(workerDir, 'index.js')],
+    target: 'browser',
+    format: 'esm',
+    outdir: dir,
+    naming: 'index.js',
+    // npm modules resolve from this package, wherever the worker dir under
+    // test was copied to (the control below is a copy in a temp dir); a
+    // `.wasm` import stays an import, of the module listed next to the bundle.
+    plugins: [
+      {
+        name: 'frontend-node-modules',
+        setup(build) {
+          build.onResolve({ filter: /^[^./]/ }, (args) =>
+            args.path.endsWith('.wasm')
+              ? { path: args.path, external: true }
+              : { path: Bun.resolveSync(args.path, FRONTEND_DIR) },
+          );
+        },
+      },
+    ],
+  });
+  if (!built.success) throw new Error(`worker bundle: ${built.logs.join('\n')}`);
+  const code = readFileSync(join(dir, 'index.js'), 'utf8');
+  const modules: { type: 'ESModule' | 'CompiledWasm'; path: string }[] = [
+    { type: 'ESModule', path: join(dir, 'index.js') },
+  ];
+  for (const [, specifier] of code.matchAll(/from\s*["']([^"']+\.wasm)["']/g)) {
+    const target = join(dir, specifier);
+    mkdirSync(dirname(target), { recursive: true });
+    cpSync(Bun.resolveSync(specifier, FRONTEND_DIR), target);
+    modules.push({ type: 'CompiledWasm', path: target });
+  }
+  return { dir, modules };
+}
+
+/** A fresh runtime (empty edge cache, empty bucket) holding the archive. */
 async function runtime(workerDir: string) {
+  const bundled = await bundle(workerDir);
   const mf = new Miniflare(
     // Miniflare 5 takes its options in a new shape; the v4 shape, converted,
     // is the documented one (and what the reviewer's rig used).
     convertV4MiniflareOptions({
-      // Every module of the Worker, entry first (the dir differs per version).
-      modules: [
-        'index.js',
-        ...readdirSync(workerDir).filter((f) => f.endsWith('.js') && f !== 'index.js'),
-      ].map((file) => ({ type: 'ESModule' as const, path: join(workerDir, file) })),
-      modulesRoot: workerDir,
+      modules: bundled.modules,
+      modulesRoot: bundled.dir,
       // wrangler.toml's, so the runtime behaves as the deployed Worker does.
       compatibilityDate: COMPATIBILITY_DATE,
       r2Buckets: ['MAP_TILES'],

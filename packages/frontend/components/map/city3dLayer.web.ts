@@ -76,7 +76,8 @@ import {
   BUILDINGS_3D_FADE,
   buildingHeightRamp,
 } from '@/lib/map/style/buildings3d';
-import { CARTOGRAPHY_PALETTES } from '@/lib/map/style/palette';
+import { appearancePreset, type MapStyleSelection } from '@/lib/map/style/catalogue';
+import { styleTheme } from '@/lib/map/style/themes';
 import { streetPaletteInput } from '@/lib/map/style/streetPalette';
 import { OPENMAPTILES_SOURCE_LAYERS } from '@/lib/map/style/schema';
 import type { QualityProfile } from '@/lib/map/quality/profile';
@@ -339,6 +340,13 @@ function modelsLayerBefore(map: MapLibreMap): string | undefined {
 export interface AttachCity3dOptions {
   appearance: MapAppearance;
   /**
+   * The map style and its light (`lib/map/style/catalogue.ts`): the
+   * buildings' ramp, the trees, the detailed clay and the street detail all
+   * come from its theme (`themes.ts`), so the 3D city matches the style it
+   * stands on. Absent, Standard in the appearance's light.
+   */
+  style?: MapStyleSelection;
+  /**
    * The light `MapCanvas.web.tsx` gives `building-3d`: `useSunLight`'s sun
    * light, or `null` when GoWay leaves the style document's own light alone
    * (`resolveOwnsStyleDocument`) — in which case this follows `map.getLight()`,
@@ -556,7 +564,10 @@ export async function attachCity3d(
     coverage,
   );
 
-  const cartography = CARTOGRAPHY_PALETTES[options.appearance];
+  const theme = styleTheme(
+    options.style ?? { style: 'standard', preset: appearancePreset(options.appearance) },
+  );
+  const cartography = theme.palette;
   const trees = treeColours(cartography);
   // The art-directed look (the registry's `detailedCity`).
   const detailed = buildings && options.detailed === true;
@@ -717,7 +728,7 @@ export async function attachCity3d(
           roadCoverage,
           glyphTemplate: absoluteGlyphs(host.getStyle()?.glyphs, origin),
           fontstack: STREET_FONTSTACK,
-          palette: streetPaletteInput(),
+          palette: streetPaletteInput(theme.streets),
           quality: options.quality.streets,
           requestRepaint: () => host.triggerRepaint(),
           // One name on a street, not two: the map's flat label yields where
@@ -807,7 +818,7 @@ export async function attachCity3d(
       },
       sky: sky ? { appearance: options.appearance } : undefined,
       // The detailed response; the night seam blends its day and night.
-      material: detailed ? cityMaterials() : undefined,
+      material: detailed ? cityMaterials(theme.materials) : undefined,
     });
     engine.setNightFactor(night);
     updateSun();

@@ -6,7 +6,10 @@
  *   bun run --cwd packages/frontend bench:map --url=http://localhost:8119 \
  *     [--scenes=eixample,manhattan] [--device=desktop|laptop|laptop-2x|pixel6a|iphone12] \
  *     [--dpr=3] [--gpu=real|software] [--quality=low|medium|high] [--tier=…] \
- *     [--no-counters] [--profile] [--out=bench.json]
+ *     [--style=standard|streets|…[:day|night|dawn|dusk]] [--no-counters] [--profile] [--out=bench.json]
+ *
+ * `--style` stores a map style and light as the picker would
+ * (`docs/MAP_STYLES.md`), so every style is measured on the same paths.
  *
  * Time a production export served with the city and road archives
  * (`scripts/serve-map-build.ts`, `docs/MAP_PERFORMANCE.md` → "The
@@ -43,6 +46,14 @@ import { type Browser, type BrowserContext, chromium, type Page } from 'playwrig
 import { createGlCounterState, instrumentWebGl2 } from '../components/map/perf/glCounters';
 import { summarise } from '../components/map/perf/frameStats';
 import { MAP_FEATURES, type MapFeatureDefinition } from '../lib/map/mapFeatures';
+
+/** `--style=streets` or `--style=streets:night`: the stored style and light mode. */
+function styleArg(): { style: string; light: string } | null {
+  const hit = process.argv.find((a) => a.startsWith('--style='));
+  if (!hit) return null;
+  const [style, light = 'day'] = hit.slice('--style='.length).split(':');
+  return { style, light };
+}
 
 interface Device {
   viewport: { width: number; height: number };
@@ -224,6 +235,8 @@ function pageProbe(args: {
   at: string | null;
   tier: string | null;
   choices: Record<string, boolean>;
+  /** The stored style and light, or `null` for the defaults. */
+  style: { style: string; light: string } | null;
   counters: boolean;
 }) {
   const w = window as unknown as Record<string, unknown>;
@@ -265,7 +278,13 @@ function pageProbe(args: {
   try {
     localStorage.setItem(
       'goway.mapFeatures',
-      JSON.stringify({ v: 1, choices: args.choices, labs: false, ...(gpu ? { gpu } : {}) }),
+      JSON.stringify({
+        v: 1,
+        choices: args.choices,
+        labs: false,
+        ...(args.style ?? {}),
+        ...(gpu ? { gpu } : {}),
+      }),
     );
   } catch {
     // No storage: only a development build's address switches features on.
@@ -661,6 +680,7 @@ async function benchScene(
     at: scene.at ?? null,
     tier: arg('tier', '') || null,
     choices: sceneChoices(scene),
+    style: styleArg(),
     counters: !process.argv.includes('--no-counters'),
   });
   const cdp = await context.newCDPSession(page);

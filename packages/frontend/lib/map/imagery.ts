@@ -2,16 +2,14 @@
  * GoWay's satellite imagery: the two ways a map can draw it, the zoom tiers it
  * is served in, and the sources it may be made of (`docs/MAP_SATELLITE.md`).
  *
- * ## The contract with the style system
+ * ## Imagery is a style
  *
- * Imagery is a STYLE, not a layer a screen adds: `satellite` is the imagery
- * alone, `hybrid` is the imagery under GoWay's own roads, boundaries and
- * labels. Both are generated style documents (`lib/map/style/imagery.ts`,
- * written by `scripts/build-map-style.ts` beside the light and dark ones), so
- * a style picker chooses one by URL (`resolveMapStyleUrl(appearance, mode)`)
- * and both engines — maplibre-gl and MapLibre Native, which can only take a
- * URL — draw exactly the same document. `MapCanvas` takes the choice as its
- * `imagery` prop and draws the per-source credit itself.
+ * `satellite` (the imagery alone) and `hybrid` (the imagery under GoWay's
+ * roads, boundaries and labels) are entries of the style catalogue
+ * (`lib/map/style/catalogue.ts`), chosen in the one layers picker and drawn
+ * from documents the one engine renders (`lib/map/style/imagery.ts`). Both
+ * engines load them by URL like every other style; `MapCanvas` credits each
+ * imagery source while it is on screen.
  *
  * ## Tiers
  *
@@ -40,12 +38,6 @@
 
 /** How the map draws imagery: alone, or under GoWay's roads and labels. */
 export type MapImageryMode = 'satellite' | 'hybrid';
-
-export const MAP_IMAGERY_MODES: readonly MapImageryMode[] = ['satellite', 'hybrid'];
-
-export function isMapImageryMode(value: unknown): value is MapImageryMode {
-  return value === 'satellite' || value === 'hybrid';
-}
 
 /** The two tiers, by zoom (see the module docs). Fixed: the style documents and the Worker share them. */
 export const IMAGERY_TIERS = {
@@ -80,21 +72,4 @@ export const IMAGERY_COVERAGE_PATH = '/map/satellite/coverage.json';
 /** A tier's `{z}/{x}/{y}` path on GoWay's origin. */
 export function imageryTilePath(tier: ImageryTierId): string {
   return `/map/satellite/${tier}/{z}/{x}/{y}.webp`;
-}
-
-/**
- * The mode this page draws: the screen's `imagery` prop when it passes one
- * (`null` is "no imagery"); otherwise, in a DEVELOPMENT build only,
- * `?imagery=satellite|hybrid` in the page's address — the same per-tab rule
- * as the map features (`mapFeatures.ts` → `pageOverride`), so a goway.to link
- * never changes what somebody else's map draws.
- */
-export function resolveImageryMode(
-  requested: MapImageryMode | null | undefined,
-  page: { development: boolean; search: string },
-): MapImageryMode | null {
-  if (requested !== undefined) return isMapImageryMode(requested) ? requested : null;
-  if (!page.development) return null;
-  const value = new URLSearchParams(page.search).get('imagery');
-  return isMapImageryMode(value) ? value : null;
 }

@@ -70,6 +70,7 @@
  */
 
 import { serveCity } from './city.js';
+import { createContourService, serveContours } from './contours.js';
 import { archiveSource, serveArchiveTile } from './tiles.js';
 import { serveSatellite } from './satellite.js';
 
@@ -519,6 +520,28 @@ async function serveGlyphs(url, request, env) {
   return reissue(upstream, GLYPH_EDGE_TTL_SECONDS);
 }
 
+/**
+ * The contour maker for this isolate: its DEM is the terrain route itself
+ * (archive or upstream, whichever this deployment serves), its WebP decoder
+ * the lazily loaded WebAssembly one. Made on the first contour request and
+ * kept, so its small DEM cache serves the neighbouring tiles a pan asks for.
+ */
+let contours = null;
+function contourService(env, ctx) {
+  if (contours) return contours;
+  contours = createContourService({
+    fetchDem: async (z, x, y) => {
+      const url = new URL(`https://goway.internal/map/terrain/${z}/${x}/${y}.webp`);
+      const response = await serveTerrain(url, new Request(url), env, ctx);
+      if (response.status === 404) return null;
+      if (!response.ok) throw new Error(`elevation tile ${z}/${x}/${y}: HTTP ${response.status}`);
+      return new Uint8Array(await response.arrayBuffer());
+    },
+    decode: async (bytes) => (await import('./webpDecode.js')).decodeWebp(bytes),
+  });
+  return contours;
+}
+
 export default {
   /**
    * Only the prefixes named by `run_worker_first` ever arrive here; every
@@ -541,6 +564,11 @@ export default {
     if (url.pathname.startsWith('/map/tiles/')) return serveTile(url, request, env, ctx);
     if (url.pathname.startsWith('/map/fonts/')) return serveGlyphs(url, request, env);
     if (url.pathname.startsWith('/map/terrain/')) return serveTerrain(url, request, env, ctx);
+    // Contour lines for the Outdoors style, traced here from the elevation
+    // tiles above and cached at the edge (`contours.js`).
+    if (url.pathname.startsWith('/map/contours/')) {
+      return serveContours(url, request, env, ctx, contourService(env, ctx), publicHeaders);
+    }
     // GoWay's 3D city tiles and their road graph, per region, by manifest
     // (`city.js`). Inert until `MAP_CITY_MANIFEST` is set.
     if (url.pathname.startsWith('/map/city/') || url.pathname.startsWith('/map/city-roads/')) {

@@ -54,7 +54,7 @@ import * as Location from 'expo-location';
 import { useTheme } from '@oxy.so/bloom/theme';
 import { parseModelPlacement, type ModelPlacement } from '@goway.to/sdk';
 
-import { isImageryId, resolveImageryMode } from '@/lib/map/imagery';
+import { isImageryId } from '@/lib/map/imagery';
 import type { ImageryView } from '@/lib/map/imageryCoverage';
 import { isReliefId, mapStyleLoading } from '@/lib/map/reliefFlag';
 import { mapFeatureStore, useMapFeature } from '@/lib/map/useMapFeatures';
@@ -71,6 +71,7 @@ import {
   resolveMapStyleUrl,
 } from '@/lib/map/provider';
 import { boundsOf, isDegenerateBounds } from '@/lib/map/geo';
+import { mapStyleDefinition, presetAppearance } from '@/lib/map/style/catalogue';
 
 import type { City3dHandle } from './city3dLayer.web';
 import type { LiveLayerHandle } from './liveLayer.web';
@@ -136,6 +137,8 @@ import {
 } from './types';
 import { useCompactCredit } from './useCompactCredit';
 import { useImageryCredits } from './useImageryCredits';
+import { useMapStyle } from './useMapStyle';
+import { applyQualityOverrides, type QualityHost } from './qualityOverrides';
 import { useSunLight } from './useSunLight';
 
 /**
@@ -209,7 +212,8 @@ export const MapCanvas = forwardRef<MapApi, MapCanvasProps>(function MapCanvas(
   {
     initialViewport = DEFAULT_VIEWPORT,
     appearance,
-    imagery,
+    mapStyle,
+    lightPreset,
     markers,
     renderMarker,
     overlays,
@@ -271,9 +275,9 @@ export const MapCanvas = forwardRef<MapApi, MapCanvasProps>(function MapCanvas(
   const [runtime, setRuntime] = useState<{ handle: MapRuntime | null } | null>(null);
   /**
    * What the last engine was built for, and where its camera was when it went.
-   * A rebuild for a RELIEF toggle (same style, same retry) starts where the
-   * person was looking; an appearance change or a retry still starts at
-   * `initialViewport`, as before — `useSunLight` is keyed on exactly those two.
+   * A rebuild for a relief toggle, a new style or a new light starts where the
+   * person was looking — changing the map's look never moves the map; only a
+   * retry starts again at `initialViewport`.
    */
   const lastEngine = useRef<{
     styleUrl: string;
@@ -301,16 +305,27 @@ export const MapCanvas = forwardRef<MapApi, MapCanvasProps>(function MapCanvas(
   // when the marker set changes.
   const [slots, setSlots] = useState<readonly MarkerSlot[]>([]);
 
-  const resolvedAppearance = appearance ?? (theme.isDark ? 'dark' : 'light');
-  // Satellite or hybrid (`lib/map/imagery.ts`): the screen's choice; absent,
-  // a development build's `?imagery=`. A change of it is a change of style.
-  const imageryMode = useMemo(
-    () => resolveImageryMode(imagery, { development: __DEV__, search: window.location.search }),
-    [imagery],
+  // The style and its light (`useMapStyle.ts`): the screen's, or this
+  // device's choice. The appearance everything else reads — the buildings'
+  // light, the relief, the 3D city — is the light's.
+  const mapStyleState = useMapStyle(
+    { style: mapStyle, lightPreset, appearance },
+    isDrawableCoordinate(initialViewport) ? initialViewport : DEFAULT_VIEWPORT,
   );
+  const { style: styleId, preset: stylePreset } = mapStyleState.selection;
+  const settleMapStyle = mapStyleState.settle;
+  const resolvedAppearance = presetAppearance(stylePreset);
+  const styleFollowsLight = mapStyleDefinition(styleId).light === 'follows';
+  // A style with its own relief (Outdoors) shows elevation data whatever the
+  // Terrain switch says, so its credit rides along.
+  const styleDrawsRelief = mapStyleDefinition(styleId).relief === true;
+  // Satellite and hybrid are catalogue styles drawn over GoWay's imagery
+  // (`docs/MAP_SATELLITE.md`): the canvas credits each imagery source while
+  // it is on screen.
+  const imageryMode = mapStyleDefinition(styleId).imagery ?? null;
   const styleUrl = useMemo(
-    () => resolveMapStyleUrl(resolvedAppearance, imageryMode),
-    [resolvedAppearance, imageryMode],
+    () => resolveMapStyleUrl({ style: styleId, preset: stylePreset }),
+    [styleId, stylePreset],
   );
   const gestures = resolveInteraction(interaction);
   const accent = theme.colors.primary;
@@ -413,8 +428,7 @@ export const MapCanvas = forwardRef<MapApi, MapCanvasProps>(function MapCanvas(
     // A relief toggle rebuilds the engine (the globe is part of how the style
     // is loaded); it must not also move the camera.
     const previous = lastEngine.current;
-    const resume =
-      previous?.styleUrl === styleUrl && previous.reloadKey === reloadKey ? previous.camera : null;
+    const resume = previous && previous.reloadKey === reloadKey ? previous.camera : null;
     const containerBackground = container.style.background;
 
     // A camera the engine cannot build is not a reason to have no map: the
@@ -465,6 +479,9 @@ export const MapCanvas = forwardRef<MapApi, MapCanvasProps>(function MapCanvas(
     }
 
     mapRef.current = map;
+    // A resumed engine starts where the old one was, not at `initialViewport`,
+    // which is where the sun tracker was just restarted: aim it here.
+    if (resume) settleSunLight({ latitude: start.latitude, longitude: start.longitude });
 
     // The ONE animation clock (`perf/animationClock.ts`): everything that moves
     // by itself asks it for frames; it pauses when the tab is hidden or the
@@ -522,7 +539,9 @@ export const MapCanvas = forwardRef<MapApi, MapCanvasProps>(function MapCanvas(
               appearance: resolvedAppearance,
               terrain3d: qualityRef.current.relief.terrain3d,
               terrainTextureScale: qualityRef.current.relief.terrainTextureScale,
-              globeNight: qualityRef.current.relief.globeNight,
+              // A style with a fixed light (the data basemaps) is not darkened
+              // by the sun: its night side would be a different map.
+              globeNight: qualityRef.current.relief.globeNight && styleFollowsLight,
               at: skyAtRef.current,
             });
             reliefRef.current = reliefHandle;
@@ -564,6 +583,7 @@ export const MapCanvas = forwardRef<MapApi, MapCanvasProps>(function MapCanvas(
       runEngineCommand('getCenter', () => {
         const centre = map.getCenter();
         settleSunLight({ latitude: centre.lat, longitude: centre.lng });
+        settleMapStyle({ latitude: centre.lat, longitude: centre.lng });
       });
     };
 
@@ -835,7 +855,16 @@ export const MapCanvas = forwardRef<MapApi, MapCanvasProps>(function MapCanvas(
     };
     // `initialViewport` is initial by contract — re-reading it here would make
     // a parent's inline object literal reset the camera on every render.
-  }, [styleUrl, reloadKey, relief, emitError, settleSunLight, noteCreditInteraction]);
+  }, [
+    styleUrl,
+    styleFollowsLight,
+    reloadKey,
+    relief,
+    emitError,
+    settleSunLight,
+    settleMapStyle,
+    noteCreditInteraction,
+  ]);
 
   // --- Buildings light ----------------------------------------------------
 
@@ -1109,6 +1138,22 @@ export const MapCanvas = forwardRef<MapApi, MapCanvasProps>(function MapCanvas(
       map.off('pitch', check);
     };
   }, [city3dFeature, cityZoomReached, ready]);
+  // The low tier draws a dense style (Streets) at Standard's density: the
+  // loaded document's own overrides (`qualityOverrides.ts`), applied while
+  // the profile asks for them and undone when it stops, with no rebuild.
+  const standardDensity = quality.basemap.density === 'standard';
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !ready || !standardDensity) return;
+    let undo: (() => void) | null = null;
+    runEngineCommand('qualityOverrides', () => {
+      undo = applyQualityOverrides(map as unknown as QualityHost);
+    });
+    return () => {
+      if (mapRef.current === map) runEngineCommand('qualityOverrides', () => undo?.());
+    };
+  }, [ready, standardDensity]);
+
   const needsEngine = city3d || wantsModelEngine;
   // The quality profile reaches the attached engine by TIER: a new tier is a
   // new attach (budgets, shadow map, shaders); the rest of it is live below.
@@ -1128,6 +1173,7 @@ export const MapCanvas = forwardRef<MapApi, MapCanvasProps>(function MapCanvas(
           ? null
           : attachCity3d(map, {
               appearance: resolvedAppearance,
+              style: { style: styleId, preset: stylePreset },
               light: city3dLightRef.current,
               quality: qualityRef.current,
               clock,
@@ -1209,6 +1255,8 @@ export const MapCanvas = forwardRef<MapApi, MapCanvasProps>(function MapCanvas(
     runtime,
     qualityTier,
     resolvedAppearance,
+    styleId,
+    stylePreset,
     needsEngine,
     city3d,
     cityTiles,
@@ -1654,6 +1702,7 @@ export const MapCanvas = forwardRef<MapApi, MapCanvasProps>(function MapCanvas(
           credits of data the city-3D layer is drawing right now. */}
       <MapBrand />
       <MapAttribution
+        elevation={styleDrawsRelief}
         extra={credits}
         disclosure={cityLifeDisclosure}
         expanded={credit.expanded}
