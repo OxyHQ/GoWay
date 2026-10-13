@@ -42,6 +42,7 @@ import pycolmap
 import torch
 import torch.nn.functional as F
 from gsplat import DefaultStrategy, MCMCStrategy, rasterization
+from gsplat.utils import normalized_quat_to_rotmat
 
 from .bilagrid import BilateralGrid, slice as bilagrid_slice, total_variation_loss
 from .spz import FRACTIONAL_BITS, GaussianCloud
@@ -65,6 +66,25 @@ DROP_RATE = 0.0
 MAX_ANISOTROPY, ANISOTROPY_WEIGHT = 10.0, 0.1
 SKY_POINTS = 60_000
 OUTLIER_CAMERA_NEIGHBOURS, OUTLIER_CAMERA_FACTOR = 10, 20.0
+# The air around a camera must stay clear. A Gaussian crowds a camera when:
+# - it holds the camera within CAMERA_CLEARANCE_SIGMAS standard deviations.
+#   No surface does that, because cameras stand in open air, and splatting
+#   cannot draw one: its linearised projection is invalid with the eye inside
+#   the ellipsoid. Or:
+# - it is haze: fainter than HAZE_OPACITY, yet seen from the camera it would
+#   span more than HAZE_SPAN of the view's long side.
+# Either way it adds little or nothing to the image and costs a screenful of
+# tile work. MCMC makes them in bulk. A relocation step leaves copies at its
+# minimum opacity with large scales, and its position noise grows with σ²
+# and with transparency, so they scatter through the air the cameras stand
+# in. On a 360° sequence they carried 80-98% of all tile work and pushed one
+# step to 28 GB. So every render leaves out the Gaussians that crowd its own
+# camera, and every CAMERA_CLEARANCE_EVERY steps (just after MCMC's refine
+# step) the ones that crowd any camera are cleared for MCMC to place elsewhere.
+CAMERA_CLEARANCE_SIGMAS = 3.0
+HAZE_OPACITY, HAZE_SPAN = 0.05, 0.5
+CAMERA_CLEARANCE_EVERY = 100
+CLEARED_OPACITY_LOGIT = -14.0  # sigmoid ≈ 1e-6: culled by the rasteriser, relocated by MCMC as dead
 SPZ_MAX_COORDINATE = float((1 << (23 - FRACTIONAL_BITS)) - 1)  # world units from the origin
 
 try:  # MIT, ~5x faster; optional so the worker still trains without the extension
@@ -247,6 +267,44 @@ def inlier_cameras(centers: np.ndarray, k: int = OUTLIER_CAMERA_NEIGHBOURS, fact
     return d <= factor * max(float(np.percentile(d, 90)), 1e-6)
 
 
+def crowds_camera(
+    means: torch.Tensor,
+    scales: torch.Tensor,
+    quats: torch.Tensor,
+    opacities: torch.Tensor,
+    cameras: torch.Tensor,
+    focal_per_size: float,
+    chunk: int = 1 << 16,
+) -> torch.Tensor:
+    """Which Gaussians crowd any of ``cameras`` (see CAMERA_CLEARANCE_SIGMAS and HAZE_SPAN).
+
+    ``scales`` are per-axis standard deviations (not their logs), ``quats`` are
+    wxyz and ``opacities`` are activated. ``focal_per_size`` is a view's focal
+    length over its long side, in pixels. Holding is measured in each
+    Gaussian's own axes, so a wide, thin patch of ground under a camera does
+    not hold it, and an opaque one is never haze.
+    """
+    crowded = torch.zeros(means.shape[0], dtype=torch.bool, device=means.device)
+    if not len(cameras):
+        return crowded
+    sigma = scales.max(1).values
+    faint = opacities < HAZE_OPACITY
+    for start in range(0, means.shape[0], chunk):
+        end = start + chunk
+        dist = torch.cdist(means[start:end], cameras)
+        # Haze: the span 2·3σ·f/d against the view's long side, from the nearest camera.
+        span = 6.0 * sigma[start:end] * focal_per_size / dist.min(1).values.clamp(min=1e-9)
+        crowded[start:end] |= faint[start:end] & (span > HAZE_SPAN)
+        # Holding: only a camera within the largest 3σ can be inside the ellipsoid.
+        near = (dist < CAMERA_CLEARANCE_SIGMAS * sigma[start:end, None]).nonzero()
+        if near.numel():
+            g = near[:, 0] + start
+            rot = normalized_quat_to_rotmat(F.normalize(quats[g], dim=1))
+            local = (rot.transpose(1, 2) @ (cameras[near[:, 1]] - means[g])[..., None])[..., 0] / scales[g]
+            crowded[g[(local**2).sum(1) < CAMERA_CLEARANCE_SIGMAS**2]] = True
+    return crowded
+
+
 def affine_colour_fit(pred: torch.Tensor, target: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
     """Least-squares ``target ≈ pred @ M.T + b`` over (N, 3) colour samples.
 
@@ -358,6 +416,10 @@ class Trainer:
         views = [v for i, v in enumerate(views) if inlier[i]]
 
         centers = np.array([v.center for v in views])
+        # Every camera, held-out ones included; a 360° panorama's views share one centre.
+        self.cameras = torch.tensor(np.unique(centers.round(6), axis=0), dtype=torch.float32, device=device)
+        # The narrowest view makes a Gaussian look largest.
+        self.focal_per_size = max(float(v.K[0, 0]) / max(v.image.shape[:2]) for v in views)
         self.scene_center = centers.mean(0)
         self.scene_scale = float(np.linalg.norm(centers - self.scene_center, axis=1).max() * 1.1) or 1.0
 
@@ -496,7 +558,7 @@ class Trainer:
 
     def render(self, view_K: torch.Tensor, viewmat: torch.Tensor, w: int, h: int, sh_degree: int, mode: str = "RGB", drop: float = 0.0):
         s = self.splats
-        opacities = torch.sigmoid(s["opacities"])
+        opacities = self._outside(viewmat, view_K, w, h, torch.sigmoid(s["opacities"]))
         if drop > 0:
             # DropGaussian (structural regularisation for sparse views): no single
             # Gaussian may be needed to explain a frame on its own.
@@ -518,6 +580,18 @@ class Trainer:
             rasterize_mode="antialiased",
             render_mode=mode,
         )
+
+    def _outside(self, viewmat: torch.Tensor, view_K: torch.Tensor, w: int, h: int, opacities: torch.Tensor) -> torch.Tensor:
+        """``opacities`` with every Gaussian that crowds this view's camera made transparent."""
+        s = self.splats
+        with torch.no_grad():
+            eye = -(viewmat[:3, :3].T @ viewmat[:3, 3])
+            focal_per_size = float(view_K[0, 0]) / max(w, h)
+            # One camera: one pass, no chunks.
+            crowded = crowds_camera(
+                s["means"], torch.exp(s["scales"]), s["quats"], opacities.detach(), eye[None].detach(), focal_per_size, chunk=s["means"].shape[0]
+            )
+        return opacities.masked_fill(crowded, 0.0)
 
     def _compensate(self, rgb: torch.Tensor, index: int) -> torch.Tensor:
         if self.bilagrid is None:
@@ -579,11 +653,21 @@ class Trainer:
                 self.strategy.step_post_backward(self.splats, self.optimizers, self.state, self.step, info, packed=False)
                 if self.splats["means"].shape[0] >= self.max_gaussians and self.strategy.refine_stop_iter > self.step:
                     self.strategy.refine_stop_iter = self.step
+            if self.step % CAMERA_CLEARANCE_EVERY == 0:
+                self.clear_cameras()
             self.step += 1
             if self.step % CHECKPOINT_EVERY == 0:
                 self.save()
             if self.step % 100 == 0:
                 on_progress(self.step / self.iterations)
+
+    @torch.no_grad()
+    def clear_cameras(self) -> int:
+        """Clear every Gaussian that crowds a camera (see CAMERA_CLEARANCE_SIGMAS); returns how many."""
+        s = self.splats
+        crowded = crowds_camera(s["means"], torch.exp(s["scales"]), s["quats"], torch.sigmoid(s["opacities"]), self.cameras, self.focal_per_size)
+        s["opacities"].data[crowded] = CLEARED_OPACITY_LOGIT
+        return int(crowded.sum())
 
     @torch.no_grad()
     def evaluate(self) -> tuple[float, float, float]:
@@ -633,7 +717,7 @@ class Trainer:
             h, w = view.image.shape[:2]
             op = opacity.clone().requires_grad_(True)
             rgb, _, _ = rasterization(
-                means=s["means"].detach(), quats=s["quats"].detach(), scales=torch.exp(s["scales"]).detach(), opacities=op,
+                means=s["means"].detach(), quats=s["quats"].detach(), scales=torch.exp(s["scales"]).detach(), opacities=self._outside(view.viewmat, view.K, w, h, op),
                 colors=torch.cat([s["sh0"], s["shN"]], 1).detach(), viewmats=view.viewmat[None], Ks=view.K[None],
                 width=w, height=h, sh_degree=self.sh_degree, packed=False, rasterize_mode="antialiased",
             )
