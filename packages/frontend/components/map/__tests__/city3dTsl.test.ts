@@ -145,7 +145,6 @@ describe('the TSL building material', () => {
     uLightPosition: { value: new Vector3(0.5, 0.5, 1) },
     uLightIntensity: { value: 0.2 },
     uLightColor: { value: new Vector3(1, 1, 1) },
-    uOpacity: { value: 1 },
     uGrounded: { value: 0 },
   });
 

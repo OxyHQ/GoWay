@@ -51,7 +51,7 @@ import { Z_UNITS_PER_METRE } from '../packing';
 import type { CityTileFormat } from '../protocol';
 import { cityTileSurface, rampAt, temperedTag } from './buildingSurface';
 import type { BuildingUniforms } from './buildingMaterial';
-import { dithered, type Float, mapBlending, premultiplied, terrainLift, type Vec3 } from './common';
+import { dithered, type Float, mapBlending, opaque, terrainLift, type Vec3 } from './common';
 import { rolloff } from './detailedMaterial';
 import type { SkyNodes } from './skyNodes';
 
@@ -267,7 +267,7 @@ function buildMaterial(
   };
   const lit = max(response(surface, light), vec3(0)).pow(1 / 2.2);
   // Aerial perspective, the same as the ground pass's.
-  const color = premultiplied(sky.aerial(lit, vWorld), u.uOpacity);
+  const color = opaque(sky.aerial(lit, vWorld));
 
   const material = mapBlending(new MeshBasicNodeMaterial());
   material.positionNode = local;

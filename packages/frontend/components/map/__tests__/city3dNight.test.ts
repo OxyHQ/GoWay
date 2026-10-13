@@ -239,7 +239,6 @@ function spyMaterials() {
     uLightPosition: { value: new Vector3(0, 0, 1) },
     uLightIntensity: { value: 0.5 },
     uLightColor: { value: new Vector3(1, 1, 1) },
-    uOpacity: { value: 1 },
     uGrounded: { value: 0 },
   };
   const sky = createSkyNodes(skyRefs(true), 12);

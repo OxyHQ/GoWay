@@ -223,7 +223,15 @@ tile the camera sees**, each at the level of detail its distance affords
   (`cityMeshes.ts` → `groundTileFor`); a tile is not drawn until it is lifted.
 - **Fade.** The meshes grow in over exactly the zooms `building-3d` does
   (`BUILDINGS_3D_FADE`, 15.5 → 16.5), so switching renderers changes how
-  buildings look, never *when* they appear.
+  buildings look, never *when* they appear. The fade is the same screen door
+  as a level's (`tsl/common.ts` → `dithered`): at z16 half the screen's
+  pixels draw the city and half the map. Each pixel is the front surface of
+  the city or the map, never a blend. The buildings stay opaque and keep
+  their depth, so no wall or street shows through another surface. Blended
+  at the fade's alpha (as until main @52dde03), 37% of the city's pixels at
+  z16 mixed in a surface behind the front one: walls and streets through the
+  blocks (Madrid, owner report). Checked by the visibility gate's mid-fade
+  view (`check-city3d-visible`, nosky leg).
 
 #### Measured per tile (worker, Bun, one core)
 

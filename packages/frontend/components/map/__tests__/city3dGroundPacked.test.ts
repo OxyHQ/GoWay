@@ -74,7 +74,6 @@ const light = {
   uLightPosition: v(),
   uLightIntensity: n(0.5),
   uLightColor: v(),
-  uOpacity: n(1),
   uGrounded: n(0),
 };
 const context = () => ({
