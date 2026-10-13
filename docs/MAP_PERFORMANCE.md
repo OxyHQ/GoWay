@@ -182,6 +182,7 @@ holds are under [The CI gate](#the-ci-gate).
 | Street detail: cut along the terrain's lattice (lines per DEM pixel, `MAP_STREETS.md` → Terrain and depth) | 1 | 1 | 2 |
 | 3D terrain (textures: the 2D layers MapLibre caches per terrain tile) | on, textures 1× the terrain tile (1,024²) | on, 2× (2,048², MapLibre's own) | on, 2× |
 | Animation clock | 20 Hz, idle pause 20 s (battery: 15 Hz, 10 s) | 30 Hz, 45 s | 30 Hz, 120 s |
+| Basemap density (`MAP_STYLES.md` → Performance) | Standard's: a denser style (Streets) applies its `goway:quality-low` overrides | the style's | the style's |
 
 High is exactly what the engine drew before this profile existed, so a
 capable machine loses nothing.

@@ -77,8 +77,14 @@ export const MARKING_CONTRAST = {
   night: { paint: 4.5, yellow: 3 },
 } as const;
 
-/** The renderer's input: sRGB triples in its slot order (`meshBuffers.ts` → `SURFACE`, `PAINT`). */
-export function streetPaletteInput(): {
+/**
+ * The renderer's input: sRGB triples in its slot order (`meshBuffers.ts` →
+ * `SURFACE`, `PAINT`). A map style hands its own day and night
+ * (`themes.ts` → `streets`); absent, these.
+ */
+export function streetPaletteInput(
+  colours: { day: StreetColours; night: StreetColours } = STREET_PALETTES,
+): {
   surfaces: { day: Rgb[]; night: Rgb[] };
   paint: { day: Rgb[]; night: Rgb[] };
 } {
@@ -87,7 +93,7 @@ export function streetPaletteInput(): {
   const paint = (c: StreetColours) =>
     [c.paint, c.yellow, c.bus, c.cycle, c.crossing].map((c) => hexToRgb(c));
   return {
-    surfaces: { day: surfaces(DAY), night: surfaces(NIGHT) },
-    paint: { day: paint(DAY), night: paint(NIGHT) },
+    surfaces: { day: surfaces(colours.day), night: surfaces(colours.night) },
+    paint: { day: paint(colours.day), night: paint(colours.night) },
   };
 }

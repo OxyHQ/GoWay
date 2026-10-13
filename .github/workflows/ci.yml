@@ -120,6 +120,14 @@ jobs:
         # endpoint and has no business deciding whether a pull request is green.
         run: bun run --cwd packages/frontend map:style:check
 
+      - name: Check the style picker's thumbnails are of the current styles
+        # Each thumbnail is a photograph of one style document by the real
+        # renderer (`scripts/build-map-thumbs.ts`), pinned to a hash of that
+        # document's layers. A style that changed without a new photograph
+        # would show the person a map they do not get. No browser here: the
+        # hash is the check; `bun run map:thumbs` retakes them.
+        run: bun run --cwd packages/frontend map:thumbs:check
+
       - name: Validate the generated glyphs and sprite
         # The style document names `/map/fonts/{fontstack}/{range}.pbf` and
         # `/map/sprites/goway`, and both are GENERATED, COMMITTED artefacts.

@@ -57,6 +57,7 @@ import {
   RELIEF_SOURCE_IDS,
 } from '@/lib/map/style/relief';
 import { boundsOf, isDegenerateBounds } from '@/lib/map/geo';
+import { presetAppearance } from '@/lib/map/style/catalogue';
 import { LABEL_LAYER_IDS, TAP_LAYER_IDS } from '@/lib/map/tapLayers';
 
 import { DefaultMapMarker } from './DefaultMapMarker';
@@ -103,6 +104,7 @@ import {
   type MapMarker,
   type ResolvedMapViewport,
 } from './types';
+import { useMapStyle } from './useMapStyle';
 import { useSunLight } from './useSunLight';
 
 /** Zoom used when a "fit" has nothing with area to fit — see `isDegenerateBounds`. */
@@ -115,6 +117,8 @@ export const MapCanvas = forwardRef<MapApi, MapCanvasProps>(function MapCanvas(
   {
     initialViewport = DEFAULT_VIEWPORT,
     appearance,
+    mapStyle,
+    lightPreset,
     markers,
     renderMarker,
     overlays,
@@ -186,8 +190,15 @@ export const MapCanvas = forwardRef<MapApi, MapCanvasProps>(function MapCanvas(
     );
   }
 
-  const resolvedAppearance = appearance ?? (theme.isDark ? 'dark' : 'light');
-  const styleUrl = useMemo(() => resolveMapStyleUrl(resolvedAppearance), [resolvedAppearance]);
+  // The style and its light (`useMapStyle.ts`), exactly as on the web.
+  const mapStyleState = useMapStyle({ style: mapStyle, lightPreset, appearance }, start);
+  const { style: styleId, preset: stylePreset } = mapStyleState.selection;
+  const settleMapStyle = mapStyleState.settle;
+  const resolvedAppearance = presetAppearance(stylePreset);
+  const styleUrl = useMemo(
+    () => resolveMapStyleUrl({ style: styleId, preset: stylePreset }),
+    [styleId, stylePreset],
+  );
   // `undefined` when the loaded style makes no anchor promise; `<Layer>`
   // then appends on top, which is what native did before GoWay owned a style.
   const overlayAnchor = useMemo(() => resolveMapAnchors().beforeLabels, []);
@@ -594,6 +605,7 @@ export const MapCanvas = forwardRef<MapApi, MapCanvasProps>(function MapCanvas(
           // never on `onRegionIsChanging`. Unconditional, unlike the label
           // report — the embed passes no callbacks and is lit all the same.
           sunLight.settle({ latitude, longitude });
+          settleMapStyle({ latitude, longitude });
         }}
         onDidFinishLoadingStyle={handleStyleLoaded}
         onDidFailLoadingMap={handleStyleFailed}

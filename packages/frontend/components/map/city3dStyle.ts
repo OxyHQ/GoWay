@@ -23,13 +23,16 @@ import {
 } from '@/lib/map/style/palette3d';
 
 /**
- * The detailed material's day and night, as plain data for the engine. How
+ * The detailed material's day and night — the map style's (`themes.ts` →
+ * `materials`), Standard's by default — as plain data for the engine. How
  * much of each is drawn is the engine's night seam (`setNightFactor`, fed by
  * `lib/map/landmarks/night.ts` or the city sky's time of day), blended on the
  * GPU — this file keeps no night factor of its own.
  */
-export function cityMaterials(): { day: CityMaterial; night: CityMaterial } {
-  return CITY_MATERIALS;
+export function cityMaterials(
+  materials: { day: CityMaterial; night: CityMaterial } = CITY_MATERIALS,
+): { day: CityMaterial; night: CityMaterial } {
+  return materials;
 }
 
 /** The slice of MapLibre's `Map` the ground needs (so the tests can fake it). */
