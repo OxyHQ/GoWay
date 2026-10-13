@@ -311,7 +311,7 @@ export function meshStreetTile(input: StreetMeshInput): StreetMesh {
       const a = nodeOf(first[0], first[1]);
       const b = nodeOf(last[0], last[1]);
       const points = piece.points.map(([gx, gy]) => toMetres(gx, gy));
-      if (!piece.car) {
+      if (!piece.car && !piece.motorOnly) {
         if (piece.footway === 'crossing') {
           for (const [end, from, to] of [
             [a, points[0], points[1]],

@@ -61,6 +61,7 @@ import {
   resolveProperties,
   type Tags,
 } from './tags';
+import { assembleRings, insideRing } from './rings';
 import { TREE_KEYS, treeProperties } from './treeTags';
 
 /** The tags a city tile can use. Everything else is dropped on read. */
@@ -207,49 +208,6 @@ function mercY(lat: number): number {
 const latFromMercY = (y: number) => (Math.atan(Math.sinh(Math.PI * (1 - 2 * y))) * 180) / Math.PI;
 
 type Ring = Float64Array; // [mx0, my0, mx1, my1, …], open (no closing duplicate)
-
-/** Join way segments into closed rings by matching endpoints. Unclosable pieces are dropped. */
-export function assembleRings(segments: number[][]): number[][] {
-  const rings: number[][] = [];
-  const remaining = segments.filter((s) => s.length >= 2).map((s) => s.slice());
-  while (remaining.length > 0) {
-    const ring = remaining.pop() as number[];
-    let progress = true;
-    while (ring[0] !== ring[ring.length - 1] && progress) {
-      progress = false;
-      const end = ring[ring.length - 1];
-      for (let i = 0; i < remaining.length; i++) {
-        const candidate = remaining[i];
-        if (candidate[0] === end) {
-          ring.push(...candidate.slice(1));
-        } else if (candidate[candidate.length - 1] === end) {
-          ring.push(...candidate.slice(0, -1).reverse());
-        } else {
-          continue;
-        }
-        remaining.splice(i, 1);
-        progress = true;
-        break;
-      }
-    }
-    if (ring.length >= 4 && ring[0] === ring[ring.length - 1]) rings.push(ring);
-  }
-  return rings;
-}
-
-/** Point-in-ring (even–odd), on an open interleaved ring. */
-function insideRing(ring: Ring, x: number, y: number): boolean {
-  let inside = false;
-  const n = ring.length / 2;
-  for (let i = 0, j = n - 1; i < n; j = i++) {
-    const xi = ring[i * 2];
-    const yi = ring[i * 2 + 1];
-    const xj = ring[j * 2];
-    const yj = ring[j * 2 + 1];
-    if (yi > y !== yj > y && x < ((xj - xi) * (y - yi)) / (yj - yi) + xi) inside = !inside;
-  }
-  return inside;
-}
 
 function ringArea(ring: Ring): number {
   let sum = 0;

@@ -9,6 +9,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { deflateSync } from 'node:zlib';
 
+import { parseAccessOverrides, roadAccessOf } from '@goway.to/sdk/road-access';
 import { PbfWriter } from 'pbf';
 
 import { decodeRoadTile } from '../../components/map/engine/roads/roadTiles';
@@ -24,6 +25,25 @@ import {
 } from '../citygen/roads';
 
 describe('road tags', () => {
+  test('access beyond cars: a bus-only street is kept for buses, a closed road for nobody', () => {
+    // Only buses may drive it: not a car's road, but a road.
+    const busOnly = roadProperties({
+      highway: 'residential',
+      motor_vehicle: 'no',
+      bus: 'designated',
+    });
+    expect(busOnly).toMatchObject({ car: false, foot: false });
+    expect(parseAccessOverrides(busOnly?.access)).toMatchObject({ car: 'no', bus: 'designated' });
+    // Cars keep it where nothing else is said, and the tile carries no access then.
+    expect(roadProperties({ highway: 'residential' })?.access).toBeUndefined();
+    // A footway tagged for motor traffic is still a footway.
+    expect(roadProperties({ highway: 'footway', motor_vehicle: 'yes' })).toMatchObject({
+      car: false,
+    });
+    // Restricted purposes are not a through road for anyone.
+    expect(roadProperties({ highway: 'residential', access: 'agricultural' })).toBeNull();
+  });
+
   test('classes, access and what a car or a person may use', () => {
     expect(roadProperties({ highway: 'residential' })).toMatchObject({ car: true, foot: false });
     expect(roadProperties({ highway: 'footway' })).toMatchObject({ car: false, foot: true });
@@ -268,6 +288,7 @@ beforeAll(() => {
       tags: { highway: 'crossing', crossing: 'zebra', 'crossing:markings': 'Zebra' },
     },
     { id: 9, x: 80, y: 15 },
+    { id: 10, x: 0, y: 250 },
   ];
   const ways: Way[] = [
     {
@@ -296,6 +317,8 @@ beforeAll(() => {
       },
     },
     { id: 400, refs: [5, 1], tags: { highway: 'rail' } },
+    // A street only buses may drive: kept, for them.
+    { id: 500, refs: [6, 10], tags: { highway: 'residential', motor_vehicle: 'no', bus: 'yes' } },
   ];
   const relations: Relation[] = [
     {
@@ -315,7 +338,7 @@ afterAll(() => rmSync(dir, { recursive: true, force: true }));
 describe('compileRoads', () => {
   test('splits at junctions and tagged nodes, keeps tags, writes restrictions', () => {
     const result = compileRoads({ pbf, zoom: CITY_TILE_ZOOM });
-    expect(result.coverage.ways).toBe(4);
+    expect(result.coverage.ways).toBe(5);
     expect(result.coverage.carWays).toBe(3);
     expect(result.coverage.nodes).toEqual({ signals: 1, crossing: 1 });
     expect(result.coverage.restrictions).toBe(1);
@@ -333,6 +356,13 @@ describe('compileRoads', () => {
     expect(new Set(pieces.map((p) => p.way))).toEqual(new Set([100, 201, 0]));
     const oneway = pieces.filter((p) => p.highway === 'residential' && p.oneway === 1);
     expect(oneway.length).toBeGreaterThanOrEqual(1);
+    // Access survives the tile: the bus street is not a car's, and says whose it is.
+    const busStreet = pieces.filter((p) => p.access?.car === 'no');
+    expect(busStreet.length).toBeGreaterThanOrEqual(1);
+    expect(busStreet.every((p) => !p.car && roadAccessOf(p.highway, p.access).bus === 'yes')).toBe(
+      true,
+    );
+    expect(pieces.filter((p) => p.car).every((p) => p.access?.car === undefined)).toBe(true);
     const crossing = pieces.filter((p) => p.footway === 'crossing');
     expect(crossing.length).toBeGreaterThanOrEqual(2);
     expect(crossing.every((p) => p.foot && !p.car)).toBe(true);
@@ -357,5 +387,77 @@ describe('compileRoads', () => {
     ).toBe(true);
     const zebra = decoded.flatMap((t) => t.nodes).find((n) => n.kind === 'crossing');
     expect(zebra?.crossingMarkings).toBe('zebra');
+  });
+});
+
+describe('service roads through parks', () => {
+  let parkPbf = '';
+  beforeAll(() => {
+    parkPbf = join(dir, 'parks.osm.pbf');
+    const square = (id: number, x: number, y: number, w: number): Node[] => [
+      { id, x, y },
+      { id: id + 1, x: x + w, y },
+      { id: id + 2, x: x + w, y: y + w },
+      { id: id + 3, x, y: y + w },
+    ];
+    const nodes: Node[] = [
+      ...square(1, 0, 0, 200), // a park, a closed way
+      { id: 5, x: 50, y: 100 },
+      { id: 6, x: 150, y: 100 },
+      { id: 7, x: 300, y: 100 },
+      { id: 8, x: 400, y: 100 },
+      ...square(20, 500, 0, 200), // a park, a multipolygon: outer in two ways
+      ...square(30, 550, 50, 100), // its hole
+      { id: 9, x: 580, y: 100 }, // in the hole
+      { id: 10, x: 620, y: 100 },
+      { id: 11, x: 510, y: 100 }, // in the park proper
+      { id: 12, x: 540, y: 100 },
+      { id: 13, x: 60, y: 150 },
+      { id: 14, x: 140, y: 150 },
+    ];
+    const road = (id: number, refs: number[], highway: string, speed: number): Way => ({
+      id,
+      refs,
+      tags: { highway, maxspeed: String(speed) },
+    });
+    const ways: Way[] = [
+      { id: 100, refs: [1, 2, 3, 4, 1], tags: { leisure: 'park' } },
+      road(101, [5, 6], 'service', 11), // inside the park
+      road(102, [7, 8], 'service', 12), // outside
+      { id: 200, refs: [20, 21, 22], tags: {} },
+      { id: 201, refs: [22, 23, 20], tags: {} },
+      { id: 202, refs: [30, 31, 32, 33, 30], tags: {} },
+      road(103, [9, 10], 'service', 13), // in the hole
+      road(104, [11, 12], 'service', 14), // in the ring
+      road(105, [13, 14], 'residential', 15), // inside the first park but not a service road
+    ];
+    const relations: Relation[] = [
+      {
+        id: 900,
+        tags: { type: 'multipolygon', leisure: 'park' },
+        members: [
+          { id: 200, type: 1, role: 'outer' },
+          { id: 201, type: 1, role: 'outer' },
+          { id: 202, type: 1, role: 'inner' },
+        ],
+      },
+    ];
+    writeFileSync(parkPbf, writePbf(nodes, ways, relations));
+  });
+
+  test('flags a service road inside a park, in a multipolygon ring, and not in its hole, outside, or on another class', () => {
+    const result = compileRoads({ pbf: parkPbf, zoom: CITY_TILE_ZOOM });
+    const pieces = [...result.tiles.entries()].flatMap(([key, tile]) => {
+      const [, x, y] = key.split('/').map(Number);
+      return decodeRoadTile(encodeTileLayers(roadLayers(tile)), { x, y }).pieces;
+    });
+    const parkOf = (speed: number) =>
+      pieces.filter((p) => p.maxspeed === speed).map((p) => p.park === true);
+    expect(parkOf(11)).toEqual([true]);
+    expect(parkOf(12)).toEqual([false]);
+    expect(parkOf(13)).toEqual([false]);
+    expect(parkOf(14)).toEqual([true]);
+    expect(parkOf(15)).toEqual([false]);
+    expect(result.coverage.parkPieces).toBe(2);
   });
 });

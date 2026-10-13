@@ -40,6 +40,9 @@
  *  6. **Footways.** Walkable pieces as they are, plus a virtual sidewalk on
  *     each side of a road whose `sidewalk` tag says there is one.
  */
+import { roadAccessOf } from '@goway.to/sdk/road-access';
+
+import { busLaneFlags } from '../../roads/busLanes';
 import type { DrivingSide } from '../../roads/drivingSide';
 import {
   chainPieces,
@@ -53,6 +56,7 @@ import {
 } from '../../roads/roadGraph';
 import type { DecodedRoadTile, RoadPiece } from '../../roads/roadTiles';
 import { createRng } from './rng';
+import { ALL_USERS, BUS_LANE_USERS, GENERAL_USERS, userMasks } from './vehicleAccess';
 
 const EXTENT = 4096;
 
@@ -85,6 +89,40 @@ export const DEFAULT_SPEED_KMH: Record<string, number> = {
   road: 30,
 };
 
+/**
+ * How much traffic a lane of each class carries, relative to a primary road
+ * (1): the spawn density of a lane is its class's weight, so a service lane
+ * holds a fraction of an avenue's cars. A simulation parameter, not a measured
+ * flow.
+ */
+export const SPAWN_WEIGHT: Record<string, number> = {
+  motorway: 1.3,
+  motorway_link: 0.7,
+  trunk: 1.2,
+  trunk_link: 0.7,
+  primary: 1,
+  primary_link: 0.6,
+  secondary: 0.8,
+  secondary_link: 0.5,
+  tertiary: 0.55,
+  tertiary_link: 0.35,
+  unclassified: 0.3,
+  residential: 0.25,
+  road: 0.25,
+  living_street: 0.06,
+  service: 0.06,
+};
+
+/**
+ * What a service road inside a park, garden or cemetery keeps of its class's
+ * weight (`ROAD_PROPS.park`): a path for maintenance and the odd delivery, not
+ * a lane of a block. A simulation parameter, like the weights above.
+ */
+export const PARK_LANE_FACTOR = 0.1;
+
+/** The share of a lane's weight that a user who may only reach it (not pass) is given. */
+export const LOCAL_ENTRY_WEIGHT = 0.15;
+
 export interface CrossingStop {
   s: number;
   crossing: number;
@@ -104,6 +142,12 @@ export interface Path extends Polyline {
   speed: number;
   /** Drawn hidden (tunnels). */
   hidden: boolean;
+  /** Lanes: the road users (`vehicleAccess.ts` bits) that may drive through it; connectors: all. */
+  users: number;
+  /** Lanes: the users that may enter only to reach somewhere on it. */
+  local: number;
+  /** Lanes: spawn weight, `SPAWN_WEIGHT` of its class. */
+  weight: number;
   /** Lanes: the connectors it may continue onto. Connectors: its one target lane. */
   next: number[];
   /** Stops for people on crossings along it. */
@@ -299,6 +343,14 @@ interface CarPiece {
   highway: string;
   speedKmh: number;
   tunnel: boolean;
+  /** Road users that may drive / only enter this piece (`userMasks`). */
+  users: number;
+  local: number;
+  /** A service road inside a park-like area. */
+  park: boolean;
+  /** Per lane of each direction, in the traveller's left-to-right order: a bus lane. */
+  busFwd: boolean[];
+  busBwd: boolean[];
   way: number;
   /** Sidewalks relative to the piece's (possibly reversed) direction. */
   walkLeft: boolean;
@@ -316,6 +368,11 @@ interface Link {
   highway: string;
   speed: number;
   tunnel: boolean;
+  users: number;
+  local: number;
+  park: boolean;
+  busFwd: boolean[];
+  busBwd: boolean[];
   wayAtA: number;
   wayAtB: number;
   walkLeft: boolean;
@@ -382,7 +439,9 @@ export function buildNetwork(input: NetworkInput): Network {
   for (const tile of input.tiles) {
     for (const piece of tile.data.pieces) {
       // A separate cycle track (schema 3) is drawn, never simulated.
-      if (!piece.car && !piece.foot) continue;
+      const masks = userMasks(roadAccessOf(piece.highway, piece.access));
+      const drivable = masks.through !== 0 || masks.local !== 0;
+      if (!drivable && !piece.foot) continue;
       const first = piece.points[0];
       const last = piece.points[piece.points.length - 1];
       let a = nodeAt(first[0], first[1]);
@@ -396,7 +455,7 @@ export function buildNetwork(input: NetworkInput): Network {
           crossingPieceNodes.add(b);
         }
       }
-      if (!piece.car) continue;
+      if (!drivable) continue;
       const oneway = piece.oneway !== undefined || piece.roundabout;
       let reversed = false;
       if (piece.oneway === -1) {
@@ -423,16 +482,25 @@ export function buildNetwork(input: NetworkInput): Network {
       let walkLeft = sidewalk === 'both' || sidewalk === 'left';
       let walkRight = sidewalk === 'both' || sidewalk === 'right';
       if (reversed) [walkLeft, walkRight] = [walkRight, walkLeft];
+      const lanesFwd = Math.min(4, Math.max(1, fwd));
+      const lanesBwd = oneway ? 0 : Math.min(4, Math.max(1, bwd));
+      // Traffic runs against the drawn direction on a `oneway=-1` piece.
+      const trafficDir = reversed ? -1 : 1;
       carPieces.push({
         a,
         b,
         points,
         oneway,
-        fwd: Math.min(4, Math.max(1, fwd)),
-        bwd: oneway ? 0 : Math.min(4, Math.max(1, bwd)),
+        fwd: lanesFwd,
+        bwd: lanesBwd,
         highway: piece.highway,
         speedKmh: piece.maxspeed ?? DEFAULT_SPEED_KMH[piece.highway] ?? 30,
         tunnel: piece.tunnel,
+        users: masks.through,
+        local: masks.local,
+        park: piece.park === true,
+        busFwd: busLaneFlags(piece, trafficDir, drivingSide, lanesFwd),
+        busBwd: busLaneFlags(piece, trafficDir === 1 ? -1 : 1, drivingSide, lanesBwd),
         way: piece.way,
         walkLeft,
         walkRight,
@@ -449,6 +517,8 @@ export function buildNetwork(input: NetworkInput): Network {
     points: p.points.slice().reverse(),
     fwd: p.bwd,
     bwd: p.fwd,
+    busFwd: p.busBwd,
+    busBwd: p.busFwd,
     walkLeft: p.walkRight,
     walkRight: p.walkLeft,
   });
@@ -457,6 +527,11 @@ export function buildNetwork(input: NetworkInput): Network {
     p.fwd === q.fwd &&
     p.bwd === q.bwd &&
     p.tunnel === q.tunnel &&
+    p.users === q.users &&
+    p.local === q.local &&
+    p.park === q.park &&
+    p.busFwd.join() === q.busFwd.join() &&
+    p.busBwd.join() === q.busBwd.join() &&
     p.walkLeft === q.walkLeft &&
     p.walkRight === q.walkRight;
 
@@ -483,6 +558,11 @@ export function buildNetwork(input: NetworkInput): Network {
       highway: first.highway,
       speed: first.speedKmh / 3.6,
       tunnel: first.tunnel,
+      users: first.users,
+      local: first.local,
+      park: first.park,
+      busFwd: first.busFwd,
+      busBwd: first.busBwd,
       wayAtA: first.way,
       wayAtB: last.way,
       walkLeft: first.walkLeft,
@@ -548,6 +628,9 @@ export function buildNetwork(input: NetworkInput): Network {
       kind,
       speed,
       hidden,
+      users: ALL_USERS,
+      local: 0,
+      weight: 0,
       next: [],
       crossings: [],
       signals: [],
@@ -585,6 +668,13 @@ export function buildNetwork(input: NetworkInput): Network {
         const s1 = line.length - setback(endNode, link);
         const trimmed = s1 - s0 > 0.5 ? polyline(slice(line, s0, s1)) : line;
         const path = newPath('lane', trimmed, link.speed, link.tunnel);
+        // A recorded bus lane is the buses' alone: lane 0 is the kerb lane,
+        // which is the traveller's rightmost where traffic keeps right.
+        const busLanes = dir === 0 ? link.busFwd : link.busBwd;
+        const bus = busLanes[drivingSide === 'left' ? i : count - 1 - i] === true;
+        path.users = bus ? link.users & BUS_LANE_USERS : link.users;
+        path.local = bus ? 0 : link.local;
+        path.weight = (SPAWN_WEIGHT[link.highway] ?? 0.25) * (link.park ? PARK_LANE_FACTOR : 1);
         path.link = linkIndex;
         path.endNode = endNode;
         path.laneIndex = i;
@@ -655,7 +745,14 @@ export function buildNetwork(input: NetworkInput): Network {
         if (options.length !== before) restrictionsApplied++;
       }
       const laneCount = inc.lanes.length;
+      // Lanes shut to ordinary traffic (a bus lane at the kerb) come first:
+      // ordinary traffic's own kerb lane is the first one open to it, so a car
+      // still turns kerb-side from beside a bus lane, never from inside it.
+      const general = (id: number) => ((paths[id].users | paths[id].local) & GENERAL_USERS) !== 0;
+      const base = Math.max(0, inc.lanes.findIndex(general));
+      const generalCount = laneCount - base;
       for (let i = 0; i < laneCount; i++) {
+        const rel = Math.max(0, i - base);
         const fromPath = paths[inc.lanes[i]];
         const h0 = heading(fromPath, true);
         const end: [number, number] = [
@@ -679,11 +776,11 @@ export function buildNetwork(input: NetworkInput): Network {
         }
         // Lane discipline: kerb lane turns kerb-side, inner lane far-side.
         let allowed = candidates;
-        if (laneCount > 1) {
+        if (generalCount > 1) {
           allowed = candidates.filter((c) =>
-            i === 0
+            rel === 0
               ? c.kind !== 'far'
-              : i === laneCount - 1
+              : rel === generalCount - 1
                 ? c.kind !== 'kerb'
                 : c.kind === 'straight',
           );
@@ -691,7 +788,10 @@ export function buildNetwork(input: NetworkInput): Network {
         }
         for (const { out, kind } of allowed) {
           const m = out.lanes.length;
-          const j = kind === 'kerb' ? 0 : kind === 'far' ? m - 1 : Math.min(i, m - 1);
+          // A kerb-side turn lands in the target's kerb lane, or — from an
+          // ordinary lane — its first lane open to ordinary traffic.
+          const kerbTarget = i < base ? 0 : Math.max(0, out.lanes.findIndex(general));
+          const j = kind === 'kerb' ? kerbTarget : kind === 'far' ? m - 1 : Math.min(i, m - 1);
           const target = paths[out.lanes[j]];
           const start: [number, number] = [target.xs[0], target.ys[0]];
           const uTurn = out.link === inc.link && out.dir !== inc.dir;

@@ -58,3 +58,12 @@ export function drivingSideAt(lng: number, lat: number): DrivingSide {
   }
   return 'right';
 }
+
+/**
+ * The DRAWN side (`left`/`right` of the way's drawn direction) a traveller's
+ * kerb is on, travelling with (`dir` 1) or against (`-1`) it.
+ */
+export function kerbSideOf(dir: 1 | -1, drivingSide: DrivingSide): 'left' | 'right' {
+  // Travelling with the drawn direction, the traveller's right is the drawn right.
+  return (dir === 1) === (drivingSide === 'right') ? 'right' : 'left';
+}

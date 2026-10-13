@@ -33,6 +33,7 @@ import type { TaxiLivery } from './liveries';
 import { createRng, type Rng } from './rng';
 import { pointAt, project } from '../../roads/roadGraph';
 import type { Network, Path } from './network';
+import { modelBit } from './vehicleAccess';
 import {
   CAR_MODEL_SPECS,
   CAR_MODELS,
@@ -71,10 +72,13 @@ export const FADE_S = 0.6;
 /** Simulated seconds run before the first frame of a fresh network. */
 export const WARMUP_S = 12;
 
-/** Cars per kilometre of lane inside the active radius, at full density. */
+/** Cars per kilometre of lane of a primary road inside the active radius, at full density (`SPAWN_WEIGHT` scales it per class). */
 export const CAR_DENSITY_PER_KM = 22;
 /** People per kilometre of footway inside the active radius, at full density. */
 export const PEOPLE_DENSITY_PER_KM = 26;
+
+/** A bus is spawned only on lanes at least this heavy (`SPAWN_WEIGHT`): through roads, not service lanes. */
+const BUS_MIN_LANE_WEIGHT = 0.25;
 
 /** Most agents spawned (or sent away) per step, so changes ramp rather than pop. */
 const SPAWN_PER_STEP = 30;
@@ -452,8 +456,8 @@ export class CitySimulation {
     let total = 0;
     for (const id of network.lanes) {
       const lane = network.paths[id];
-      if (lane.hidden || lane.length < 12 || !within(lane)) continue;
-      total += lane.length;
+      if (lane.hidden || lane.length < 12 || lane.weight === 0 || !within(lane)) continue;
+      total += lane.length * lane.weight;
       this.spawnLanes.push(id);
       this.spawnLaneCum.push(total);
     }
@@ -506,7 +510,10 @@ export class CitySimulation {
       const laneId = this.sample(this.spawnLanes, this.spawnLaneCum);
       if (laneId < 0) return false;
       const lane = network.paths[laneId];
-      if (model === 'bus' && lane.speed < 8) continue;
+      // Only a user the lane admits, even just to arrive (a bus lane is the buses').
+      if (!((lane.users | lane.local) & modelBit(model))) continue;
+      // A bus runs the roads that carry through traffic, not the service lanes.
+      if (model === 'bus' && lane.weight < BUS_MIN_LANE_WEIGHT) continue;
       if (lane.length < length * 2 + 8) continue;
       const s = rng.range(length + 2, lane.length - length - 4);
       pointAt(lane, s, this.scratch);

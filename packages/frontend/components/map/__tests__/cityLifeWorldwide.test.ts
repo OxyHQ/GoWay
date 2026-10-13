@@ -56,6 +56,13 @@ describe('classifying the basemap', () => {
     expect(classifyOmt({ class: 'secondary', oneway: -1 })?.oneway).toBe(-1);
     expect(classifyOmt({ class: 'motorway' })?.oneway).toBe(1);
     expect(classifyOmt({ class: 'service', service: 'parking_aisle' })).toBeNull();
+    // The basemap's `access` and `service` are read by the one road-access reader.
+    expect(classifyOmt({ class: 'service', service: 'emergency_access' })).toBeNull();
+    expect(classifyOmt({ class: 'minor', access: 'private' })).toBeNull();
+    expect(classifyOmt({ class: 'service', service: 'alley' })).not.toBeNull();
+    expect(classifyOmt({ class: 'minor', access: 'customers' })?.access).toMatchObject({
+      car: 'customers',
+    });
     expect(classifyOmt({ class: 'path', subclass: 'footway' })).toMatchObject({
       car: false,
       foot: true,
