@@ -77,6 +77,11 @@ This directory will hold product, SDK, API, data-model, privacy and integration 
   tiles each owns, dated archives in R2 chosen per tile by a manifest in the
   Worker, the CI workflow, what it measured and costs, and the owner's
   approval steps (nothing is published yet).
+- [`MAP_SATELLITE.md`](MAP_SATELLITE.md) — satellite and hybrid maps: the
+  open imagery sources (licences quoted, global and national), the tiers and
+  per-cell archives in R2 behind a manifest in the Worker, WebP measured
+  against AVIF, the style hook and the credit while on screen, the Catalonia
+  proof, the costs, and the planet rollout plan (nothing is published yet).
 - [`MAP_CITY_LIFE.md`](MAP_CITY_LIFE.md) — simulated traffic and people on the
   real street network (off by default): why the road graph is compiled from OSM
   rather than read from the basemap, the lane graph, IDM car-following and

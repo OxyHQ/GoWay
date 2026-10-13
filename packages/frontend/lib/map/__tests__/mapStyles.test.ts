@@ -22,6 +22,7 @@ import {
   MAP_LIGHT_MODES,
   MAP_STYLE_IDS,
   MAP_STYLES,
+  mapStyleDefinition,
   mapStylePath,
   type MapStyleSelection,
   presetAppearance,
@@ -54,6 +55,7 @@ const ENDPOINTS = {
     contours: 'https://goway.to/map/contours/{z}/{x}/{y}.pbf',
     attribution: '© Mapterhorn',
   },
+  imageryOrigin: 'https://goway.to',
 };
 
 const label = (s: MapStyleSelection) => `${s.style}/${s.preset}`;
@@ -275,6 +277,9 @@ describe('type holds 4.5:1 in every derived style', () => {
       (selection.preset === 'day' || selection.preset === 'night')
     )
       continue; // measured, and held by its own tests (palette3d.test.ts, the README's table)
+    // Over a photograph the type is white on a near-black halo
+    // (`imagery.ts`, held by `imagery.test.ts`), never on the palette's ground.
+    if (mapStyleDefinition(selection.style).imagery) continue;
     test(label(selection), () => {
       const p = styleTheme(selection).palette;
       const halo = flattenColour(p.halo, p.land);
@@ -318,10 +323,14 @@ test('mixColours is the identity at its ends', () => {
   expect(mixColours('#f6f4eb', '#34445b', 1)).toBe('#34445b');
 });
 
-test('the published catalogue document is what the SDK reads, and lists every document', () => {
+test('the published catalogue document is what the SDK reads, and lists every offered document', () => {
   const raw = readFileSync(join(import.meta.dir, '../../../public/map/styles/index.json'), 'utf8');
   const index = parseMapStyleIndex(JSON.parse(raw));
-  expect(index.styles.map((s) => s.id)).toEqual([...MAP_STYLE_IDS]);
+  // A style whose data is unpublished (`offer: 'development'`: the imagery) is
+  // built but not listed until it is offered.
+  expect(index.styles.map((s) => s.id)).toEqual(
+    MAP_STYLES.filter((entry) => entry.offer !== 'development').map((entry) => entry.id),
+  );
   for (const entry of index.styles) {
     for (const preset of entry.presets) {
       expect(entry.urls[preset]).toBe(

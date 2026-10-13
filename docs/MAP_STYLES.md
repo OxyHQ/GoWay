@@ -221,25 +221,26 @@ Every style keeps the mark bottom-left and the compact credit bottom-right:
   new maplibregl.Map({ container, style: goway.links.mapStyle('streets', 'night') });
   ```
 
-## Imagery plugs in as one more style
+## Imagery: Satellite and Hybrid
 
-The satellite/hybrid work adds imagery as a style, not as a mode beside the
-catalogue:
+Imagery is a style, not a mode beside the catalogue (`docs/MAP_SATELLITE.md`):
 
-1. a `MAP_STYLES` entry (`satellite`, `hybrid`), its labels in
-   `mapStyleLabels.ts`, and a recipe in `themes.ts`;
-2. an option in `options.ts` that makes `buildLayers` emit a `raster` layer
-   from an imagery source at the bottom of the ground stratum (a new id in
-   `GOWAY_STYLE_LAYER_IDS`, before `landuse-built-up`) and skip the ground
-   fills it replaces, keeping water lines, roads (hybrid), boundaries, the
-   anchor and every label — the strata order is already the contract;
-3. the imagery source in `MapStyleEndpoints` from `provider.ts` (the one place
-   a vendor is named) and its credit through `MapAttribution`;
-4. a theme whose type has dark halos for photographs (`enforceTypeContrast`
-   against the imagery's typical luminance).
+1. `satellite` and `hybrid` are `MAP_STYLES` entries (`imagery`, one fixed
+   `day` light, `offer: 'development'` until the imagery is published), with
+   labels in `mapStyleLabels.ts` and recipes in `themes.ts` (Standard's options
+   plus `imagery`, over the night palette's light type);
+2. `buildGowayMapStyle` hands a recipe with `options.imagery` to
+   `applyImageryStyle` (`lib/map/style/imagery.ts`): the three imagery rasters
+   (`GOWAY_STYLE_LAYER_IDS.imagery`, right above `background`) under the
+   document, the ground fills it replaces dropped, and for hybrid the roads
+   (thinned), boundaries and labels kept with dark halos for photographs;
+3. the imagery origin comes in `MapStyleEndpoints.imageryOrigin`, and the
+   credit through `MapAttribution` (`useImageryCredits`);
+4. the picker and the embed ask `isMapStyleOffered`, so production lists them
+   once the `offer` line goes.
 
-Nothing else changes: the picker, the store, the embed, the URLs and the
-thumbnails pick it up from the catalogue.
+The store, the URLs and the thumbnails pick them up from the catalogue
+(`map:thumbs --only=satellite,hybrid` takes just theirs).
 
 ## Data gaps
 

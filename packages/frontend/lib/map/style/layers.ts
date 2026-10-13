@@ -94,6 +94,12 @@ export const STYLE_HILLSHADE_LAYER_ID = 'hillshade';
 export const GOWAY_STYLE_LAYER_IDS = {
   /** The paint under everything. */
   base: ['background'],
+  /**
+   * GoWay's satellite imagery, one raster layer a zoom tier, finest on top
+   * (`docs/MAP_SATELLITE.md`). Only the satellite and hybrid styles draw them
+   * (`imagery.ts`), and there the fills above give way to the photograph.
+   */
+  imagery: ['goway:imagery:base', 'goway:imagery:detail', 'goway:imagery:fine'],
   /** `landcover` + `landuse` + `park` fills. */
   ground: [
     'landuse-built-up',

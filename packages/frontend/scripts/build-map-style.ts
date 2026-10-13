@@ -154,7 +154,9 @@ function buildStyleIndex(): Record<string, unknown> {
   return {
     v: 1,
     default: DEFAULT_MAP_STYLE,
-    styles: MAP_STYLES.map((entry) => ({
+    // A style not offered yet (its data unpublished: the imagery) is left out
+    // of the public index; its documents are still built and checked.
+    styles: MAP_STYLES.filter((entry) => entry.offer !== 'development').map((entry) => ({
       id: entry.id,
       light: entry.light,
       presets: entry.presets,
@@ -196,6 +198,8 @@ const ENDPOINTS = {
   glyphs: gowayMapEndpoints(GOWAY_MAP_ORIGIN).glyphs,
   sprite: gowayMapEndpoints(GOWAY_MAP_ORIGIN).sprite,
   attribution: ATTRIBUTION_HTML,
+  // Only the satellite and hybrid styles read this (`lib/map/style/imagery.ts`).
+  imageryOrigin: GOWAY_MAP_ORIGIN,
   // Only a style with its own relief (Outdoors) declares these.
   terrain: {
     tiles: gowayMapEndpoints(GOWAY_MAP_ORIGIN).terrain,

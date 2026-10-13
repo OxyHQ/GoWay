@@ -26,6 +26,7 @@ const ENDPOINTS = {
   sprite: origin.sprite,
   attribution: '© OpenMapTiles © OpenStreetMap contributors',
   terrain: { tiles: origin.terrain, contours: origin.contours, attribution: '© Mapterhorn' },
+  imageryOrigin: 'https://goway.to',
 };
 
 const OUTDOOR_LAYERS = [

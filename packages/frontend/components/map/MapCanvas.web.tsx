@@ -54,6 +54,8 @@ import * as Location from 'expo-location';
 import { useTheme } from '@oxy.so/bloom/theme';
 import { parseModelPlacement, type ModelPlacement } from '@goway.to/sdk';
 
+import { isImageryId } from '@/lib/map/imagery';
+import type { ImageryView } from '@/lib/map/imageryCoverage';
 import { isReliefId, mapStyleLoading } from '@/lib/map/reliefFlag';
 import { mapFeatureStore, useMapFeature } from '@/lib/map/useMapFeatures';
 import { clampPixelRatio } from '@/lib/map/quality/profile';
@@ -135,6 +137,7 @@ import {
   type ResolvedMapViewport,
 } from './types';
 import { useCompactCredit } from './useCompactCredit';
+import { useImageryCredits } from './useImageryCredits';
 import { useMapStyle } from './useMapStyle';
 import { applyQualityOverrides, type QualityHost } from './qualityOverrides';
 import { useSunLight } from './useSunLight';
@@ -317,6 +320,10 @@ export const MapCanvas = forwardRef<MapApi, MapCanvasProps>(function MapCanvas(
   // A style with its own relief (Outdoors) shows elevation data whatever the
   // Terrain switch says, so its credit rides along.
   const styleDrawsRelief = mapStyleDefinition(styleId).relief === true;
+  // Satellite and hybrid are catalogue styles drawn over GoWay's imagery
+  // (`docs/MAP_SATELLITE.md`): the canvas credits each imagery source while
+  // it is on screen.
+  const imageryMode = mapStyleDefinition(styleId).imagery ?? null;
   const styleUrl = useMemo(
     () => resolveMapStyleUrl({ style: styleId, preset: stylePreset }),
     [styleId, stylePreset],
@@ -765,6 +772,20 @@ export const MapCanvas = forwardRef<MapApi, MapCanvasProps>(function MapCanvas(
       // Elevation tiles are decoration: a failed one leaves flat ground, which
       // is still a map, and the relief layer reports it itself.
       if (isReliefId(event.sourceId)) return;
+      // An imagery tier answers 404 wherever nothing finer is published (the
+      // tier below shows through: `worker/satellite.js`), so a 404 there is a
+      // normal answer. Anything else is reported, and the map stays up: the
+      // roads, labels and the tier below still draw.
+      if (isImageryId(event.sourceId)) {
+        const status = (event.error as { status?: number } | undefined)?.status;
+        if (status !== 404) {
+          reportMapDefect(
+            'imagery:tiles',
+            `imagery: a tile failed (${event.error?.message ?? 'unknown'}).`,
+          );
+        }
+        return;
+      }
       // A source id means a tile/source request failed; without one the style
       // document itself did not load. Both are product failures, and the user
       // gets a different sentence for each.
@@ -1059,14 +1080,44 @@ export const MapCanvas = forwardRef<MapApi, MapCanvasProps>(function MapCanvas(
   const [city3dCredits, setCity3dCredits] = useState<readonly MapAttributionLink[]>(NO_CREDITS);
   // Credits for the GoWay Live data on screen (set by the live effect below).
   const [liveCredits, setLiveCredits] = useState<readonly MapCreditLink[]>(NO_CREDITS);
-  // Everything owed while it is drawn: landmark authors, official building
-  // data, live feeds.
+  // The imagery sources on screen, re-read at every settled camera while
+  // imagery is drawn (`useImageryCredits`, `docs/MAP_SATELLITE.md`).
+  const [imageryView, setImageryView] = useState<ImageryView | null>(null);
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!imageryMode || !map || !ready) {
+      setImageryView(null);
+      return;
+    }
+    const settle = () =>
+      runEngineCommand('getBounds', () => {
+        const bounds = map.getBounds();
+        setImageryView({
+          zoom: map.getZoom(),
+          west: bounds.getWest(),
+          south: bounds.getSouth(),
+          east: bounds.getEast(),
+          north: bounds.getNorth(),
+        });
+      });
+    settle();
+    map.on('moveend', settle);
+    return () => {
+      map.off('moveend', settle);
+    };
+  }, [imageryMode, ready]);
+  const imageryCredits = useImageryCredits(imageryMode, imageryView);
+  // Everything owed while it is drawn: imagery sources, landmark authors,
+  // official building data, live feeds.
   const credits = useMemo(
     () =>
-      landmarkCredits.length === 0 && city3dCredits.length === 0 && liveCredits.length === 0
+      imageryCredits.length === 0 &&
+      landmarkCredits.length === 0 &&
+      city3dCredits.length === 0 &&
+      liveCredits.length === 0
         ? NO_CREDITS
-        : [...landmarkCredits, ...city3dCredits, ...liveCredits],
-    [landmarkCredits, city3dCredits, liveCredits],
+        : [...imageryCredits, ...landmarkCredits, ...city3dCredits, ...liveCredits],
+    [imageryCredits, landmarkCredits, city3dCredits, liveCredits],
   );
   useEffect(() => {
     city3dLightRef.current = sunLight.light;

@@ -9,6 +9,9 @@
     "goway:anchor:beforeLabels": "goway:anchor:labels",
     "goway:layers": [
       "background",
+      "goway:imagery:base",
+      "goway:imagery:detail",
+      "goway:imagery:fine",
       "landuse-built-up",
       "landcover-farmland",
       "landcover-natural",

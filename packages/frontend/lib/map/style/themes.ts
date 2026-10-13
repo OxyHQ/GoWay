@@ -806,6 +806,19 @@ const RECIPES: Record<MapStyleId, StyleRecipe> = {
       night: mapStreets(base.night, (hex) => mapColour(hex, monochrome)),
     }),
   },
+  // Over a photograph (`docs/MAP_SATELLITE.md`): the night palette's light
+  // type, whose halos `imagery.ts` darkens to read over any photo. No 3D
+  // city is drawn over imagery, so the ground is Standard's, unused.
+  satellite: {
+    options: { ...STANDARD_OPTIONS, imagery: 'satellite' },
+    palette: () => DARK_PALETTE,
+    cityGround: () => STANDARD_GROUND.night,
+  },
+  hybrid: {
+    options: { ...STANDARD_OPTIONS, imagery: 'hybrid' },
+    palette: () => DARK_PALETTE,
+    cityGround: () => STANDARD_GROUND.night,
+  },
   light: {
     options: DATA_OPTIONS,
     palette: () => dataPalette('light'),

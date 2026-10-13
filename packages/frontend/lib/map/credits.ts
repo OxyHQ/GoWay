@@ -9,6 +9,7 @@
  * licences and are never translated or reworded here; the screen's headings
  * are (`lib/messages/credits.ts`).
  */
+import { IMAGERY_SOURCES } from './imagerySources';
 import { ATTRIBUTION_LINKS, TERRAIN_SOURCE_LINK } from './provider';
 
 /**
@@ -88,6 +89,20 @@ const MODEL_LINKS: readonly CreditLink[] = [
   { label: 'Kenney — Watercraft Kit', href: 'https://kenney.nl/assets/watercraft-kit' },
 ];
 
+/**
+ * Every imagery source GoWay may serve (`lib/map/imagerySources.ts`), with
+ * its notice. Listed whether or not a set of it is published yet: the page is
+ * the registry's, and the map draws each credit only while that source is on
+ * screen (`components/map/useImageryCredits.ts`).
+ */
+const IMAGERY_LINKS: readonly CreditLink[] = Object.values(IMAGERY_SOURCES).map((source) => ({
+  label: source.credit,
+  href: source.href,
+}));
+const IMAGERY_NOTICES: readonly string[] = Object.values(IMAGERY_SOURCES).map(
+  (source) => source.notice,
+);
+
 export interface CreditLink {
   label: string;
   href: string;
@@ -95,7 +110,7 @@ export interface CreditLink {
 
 export interface CreditSection {
   /** Stable anchor (`/attribution#elevation`) and the i18n key suffix. */
-  id: 'basemap' | 'elevation' | 'buildings' | 'cityData' | 'models';
+  id: 'basemap' | 'elevation' | 'imagery' | 'buildings' | 'cityData' | 'models';
   links: readonly CreditLink[];
   /** Licence notices, verbatim. */
   notices: readonly string[];
@@ -112,6 +127,7 @@ export const CREDIT_SECTIONS: readonly CreditSection[] = [
       COPERNICUS_NOTICES.endorsement,
     ],
   },
+  { id: 'imagery', links: IMAGERY_LINKS, notices: IMAGERY_NOTICES },
   {
     id: 'buildings',
     links: BUILDING_DATA_LINKS,

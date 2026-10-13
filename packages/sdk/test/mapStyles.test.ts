@@ -72,11 +72,11 @@ describe('map styles', () => {
           urls: { day: 'https://goway.to/map/styles/standard/day.json' },
         },
         {
-          id: 'satellite',
+          id: 'aurora',
           light: 'follows',
           presets: ['day'],
           defaultPreset: 'day',
-          urls: { day: 'https://goway.to/map/styles/satellite/day.json' },
+          urls: { day: 'https://goway.to/map/styles/aurora/day.json' },
         },
       ],
     });

@@ -44,6 +44,7 @@ import {
 } from './layers';
 import { CITY3D_GROUND_METADATA_KEY } from './palette3d';
 import { buildQualityOverrides, QUALITY_LOW_METADATA_KEY } from './qualityOverrides';
+import { applyImageryStyle } from './imagery';
 import { styleTheme } from './themes';
 
 export { LABEL_ANCHOR_LAYER_ID, GOWAY_STYLE_LAYER_IDS, GOWAY_STYLE_LAYER_ID_LIST } from './layers';
@@ -84,6 +85,12 @@ export interface MapStyleEndpoints {
    * that draws its own relief (Outdoors).
    */
   terrain?: { tiles: string; contours: string; attribution: string };
+  /**
+   * The origin GoWay's satellite imagery is served from
+   * (`/map/satellite/<tier>/{z}/{x}/{y}.webp`) — read only by the satellite
+   * and hybrid styles (`imagery.ts`).
+   */
+  imageryOrigin?: string;
 }
 
 /**
@@ -119,6 +126,8 @@ const STYLE_NAMES: Record<MapStyleId, string> = {
   outdoors: 'GoWay Outdoors',
   navigation: 'GoWay Navigation',
   monochrome: 'GoWay Monochrome',
+  satellite: 'GoWay Satellite',
+  hybrid: 'GoWay Hybrid',
   light: 'GoWay Light',
   dark: 'GoWay Dark',
 };
@@ -149,8 +158,11 @@ export function buildGowayMapStyle(
       `map style ${selection.style}: draws its own relief, so it needs the terrain endpoints`,
     );
   }
+  if (options.imagery && !endpoints.imageryOrigin) {
+    throw new Error(`map style ${selection.style}: draws imagery, so it needs the imagery origin`);
+  }
 
-  return {
+  const style: StyleSpecification = {
     version: 8,
     name: `${STYLE_NAMES[selection.style]} · ${LIGHT_NAMES[selection.preset]}`,
     // Read by nothing at runtime; present so that a style document found on
@@ -197,4 +209,8 @@ export function buildGowayMapStyle(
     },
     layers: buildLayers(palette, endpoints.sourceId, options),
   };
+  // Satellite and hybrid: the same document over GoWay's imagery (`imagery.ts`).
+  return options.imagery && endpoints.imageryOrigin
+    ? applyImageryStyle(style, options.imagery, endpoints.imageryOrigin)
+    : style;
 }

@@ -80,6 +80,7 @@ import { MERCATOR_MAX_LATITUDE } from './geo';
 import {
   isMapLightPreset,
   isMapStyleId,
+  isMapStyleOffered,
   type MapLightPreset,
   type MapStyleId,
 } from './style/catalogue';
@@ -291,7 +292,10 @@ function parseSpan(
 const MAX_PLACE_ID_LENGTH = 128;
 
 /** Read everything the map routes understand out of a query string. Never throws. */
-export function parseEmbedParams(params: RawParams): EmbedParams {
+export function parseEmbedParams(
+  params: RawParams,
+  build: { development: boolean } = { development: false },
+): EmbedParams {
   const center = parseLatLon(first(params, 'center')) ?? latLngPair(params);
 
   const markers: GeoCoordinate[] = [];
@@ -308,7 +312,12 @@ export function parseEmbedParams(params: RawParams): EmbedParams {
   const themeRaw = first(params, 'theme');
   const appearance = themeRaw === 'light' || themeRaw === 'dark' ? themeRaw : undefined;
   const styleRaw = first(params, 'style');
-  const style = isMapStyleId(styleRaw) ? styleRaw : undefined;
+  // Only a style this build offers (`MapStyleDefinition.offer`): an embed is
+  // somebody else's page, and a style whose data is unpublished (imagery, for
+  // now) would draw nothing there. A development build offers it — which is
+  // how `map:thumbs` photographs it.
+  const style =
+    isMapStyleId(styleRaw) && isMapStyleOffered(styleRaw, build.development) ? styleRaw : undefined;
   const lightRaw = first(params, 'light');
   const lightPreset = isMapLightPreset(lightRaw) ? lightRaw : undefined;
 

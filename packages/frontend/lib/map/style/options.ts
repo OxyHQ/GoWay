@@ -33,6 +33,12 @@ export interface StyleOptions {
    */
   outdoors: boolean;
   /**
+   * Over GoWay's satellite imagery (`lib/map/style/imagery.ts`): `satellite`
+   * keeps only the anchors, `hybrid` the roads, boundaries and labels over a
+   * photograph. Absent, the map draws its own ground.
+   */
+  imagery?: 'satellite' | 'hybrid';
+  /**
    * Every road a share wider than Standard's (Navigation: 1.25), casings
    * included, so the network reads at a glance from a moving car.
    */

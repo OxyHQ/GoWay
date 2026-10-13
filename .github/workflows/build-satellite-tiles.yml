@@ -1,0 +1,252 @@
+# Build GoWay's satellite imagery, set by set and cell by cell, and — only
+# when asked — publish it to R2.
+#
+# Design, sources and licences, measurements, cost and the approval steps:
+# docs/MAP_SATELLITE.md.
+#
+# ## What a job does
+#
+# A set (packages/frontend/scripts/imagery/catalogue.ts) is cut into cells,
+# one PMTiles archive each; a job builds a batch of one set's cells: the
+# pixels warped to the cell's grid in parallel strips (retried whole), cut into
+# 512 px WebP tiles by `gdal raster tile`, packed, read back with the Worker's
+# own reader, and described by a receipt. GDAL is conda-forge's, pinned in
+# packages/frontend/scripts/imagery/environment.yml — the same as locally.
+#
+# ## Dry run by default
+#
+# `publish` is off unless set. Off, every cell is built and verified and the
+# entries, receipts and the manifest the run WOULD write are kept as
+# artifacts; nothing leaves GitHub. On, archives go up under dated keys that
+# are never overwritten (`city-r2.sh`, shared with the city tiles), then the
+# manifest — the dated copy first, the live one last. Serving is a further,
+# separate switch: `MAP_SATELLITE_MANIFEST` in packages/frontend/wrangler.toml.
+#
+# ## The sources' servers
+#
+# Every byte is read from the publishers' own bulk endpoints (ICGC's datacloud,
+# the AWS Open Data bucket of ESA WorldCover, NASA's Visible Earth), never from
+# a viewing service (WMS/WMTS), with retries and a User-Agent naming GoWay.
+name: Build satellite tiles
+
+on:
+  workflow_dispatch:
+    inputs:
+      sets:
+        description: >-
+          Imagery sets (comma-separated ids from packages/frontend/scripts/imagery/catalogue.ts),
+          e.g. "icgc-ortofoto-2025" or "blue-marble-2004,worldcover-2021"
+        required: true
+        default: blue-marble-2004
+      box:
+        description: Only cells meeting this lon/lat box (w,s,e,n), e.g. "2.05,41.3,2.25,41.47" for Barcelona; empty for the whole set
+        required: false
+        default: ''
+      cells_per_job:
+        description: Cells per job (a z13 orthophoto cell is ~5–9 min on this runner; a job may run 6 h)
+        required: false
+        default: '24'
+      publish:
+        description: Upload the archives to R2 and rewrite the manifest (off = a dry run that publishes nothing)
+        type: boolean
+        default: false
+      keep_archives:
+        description: Dry run only — keep the built archives as workflow artifacts for 3 days
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: goway-satellite-tiles
+  cancel-in-progress: false
+
+env:
+  R2_BUCKET: goway-map-tiles
+  MANIFEST_KEY: satellite/manifest.json
+  OBJECT_PREFIXES: satellite
+  MICROMAMBA_URL: https://conda.anaconda.org/conda-forge/linux-64/micromamba-2.9.0-0.tar.bz2
+
+jobs:
+  plan:
+    name: Plan the jobs
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    outputs:
+      batches: ${{ steps.plan.outputs.batches }}
+      stamp: ${{ steps.plan.outputs.stamp }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        with:
+          bun-version-file: package.json
+      - run: bun install --frozen-lockfile --ignore-scripts
+      - id: plan
+        env:
+          SETS: ${{ inputs.sets }}
+          BOX: ${{ inputs.box }}
+          PER: ${{ inputs.cells_per_job }}
+        run: |
+          set -euo pipefail
+          box=()
+          [ -n "$BOX" ] && box=("--box=$BOX")
+          bun packages/frontend/scripts/build-satellite-set.ts --plan --set="$SETS" \
+            --cells-per-job="$PER" "${box[@]}" >> "$GITHUB_OUTPUT"
+          # One stamp for the run; `r` + run number keeps CI's apart from
+          # hand-published ones (the city run's lesson, city-r2.sh).
+          echo "stamp=$(date -u +%Y%m%d)-r${{ github.run_number }}" >> "$GITHUB_OUTPUT"
+
+  build:
+    name: Build ${{ matrix.batch.index }} (${{ matrix.batch.set }})
+    needs: plan
+    runs-on: ubuntu-24.04
+    timeout-minutes: 350
+    strategy:
+      fail-fast: false
+      max-parallel: 20
+      matrix:
+        batch: ${{ fromJSON(needs.plan.outputs.batches) }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        with:
+          bun-version-file: package.json
+      - run: bun install --frozen-lockfile --ignore-scripts
+      - name: Work on the large volume
+        # ~14 GB free on /, ~70 GB on /mnt: a z13 orthophoto cell's warp is
+        # ~0.6 GB, its archive ≤ ~110 MB.
+        run: |
+          sudo mkdir -p /mnt/sat && sudo chown "$USER" /mnt/sat
+          df -h / /mnt
+      - name: GDAL (pinned, conda-forge)
+        run: |
+          set -euo pipefail
+          cd /mnt/sat
+          curl -fsSL --retry 5 "$MICROMAMBA_URL" | tar -xj bin/micromamba
+          MAMBA_ROOT_PREFIX=/mnt/sat/mamba ./bin/micromamba create -y -q -p /mnt/sat/gdal \
+            -f "$GITHUB_WORKSPACE/packages/frontend/scripts/imagery/environment.yml"
+          /mnt/sat/gdal/bin/gdalinfo --version
+
+      - name: Build the cells
+        env:
+          SET: ${{ matrix.batch.set }}
+          CELLS: ${{ matrix.batch.cells }}
+          STAMP: ${{ needs.plan.outputs.stamp }}
+          PART: ${{ matrix.batch.index }}
+        run: |
+          set -euo pipefail
+          bun run --cwd packages/frontend map:satellite-set --set="$SET" --stamp="$STAMP" \
+            --cells="$CELLS" --out=/mnt/sat/out --cache=/mnt/sat/cache --gdal=/mnt/sat/gdal/bin \
+            --jobs=4 --strips=4 --part="$PART"
+          rm -rf /mnt/sat/out/.work
+          # wrangler r2 object put stops at 300 MiB: the catalogue sizes cells under it.
+          big=$(find /mnt/sat/out -name '*.pmtiles' -size +314572800c)
+          if [ -n "$big" ]; then
+            echo "::error::over wrangler's 300 MiB: $big — give the set a finer cellZoom"
+            exit 1
+          fi
+          du -sh /mnt/sat/out
+
+      - name: Keep the archives (dry run, on request)
+        if: ${{ inputs.keep_archives && !inputs.publish }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v4
+        with:
+          name: satellite-archives-${{ matrix.batch.index }}
+          path: /mnt/sat/out/satellite/
+          retention-days: 3
+
+      - name: Upload to R2 (publish only; dated keys, never overwritten, read back)
+        if: ${{ inputs.publish }}
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          set -euo pipefail
+          if [[ -z "${CLOUDFLARE_API_TOKEN:-}" || -z "${CLOUDFLARE_ACCOUNT_ID:-}" ]]; then
+            echo "::error::CLOUDFLARE_API_TOKEN or CLOUDFLARE_ACCOUNT_ID is empty."
+            exit 1
+          fi
+          if [ -d /mnt/sat/out/satellite ]; then
+            bash packages/frontend/scripts/city-r2.sh put-tree /mnt/sat/out
+          else
+            echo "no cell of this batch had pixels; nothing to upload"
+          fi
+
+      # LAST: the manifest job reads these entries, and an entry must never
+      # name an archive that did not reach R2.
+      - name: Keep the entries and receipts
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v4
+        with:
+          name: satellite-entries-${{ matrix.batch.index }}
+          path: |
+            /mnt/sat/out/entries/
+            /mnt/sat/out/**/*.receipt.json
+          if-no-files-found: ignore
+          retention-days: 30
+
+  manifest:
+    name: Manifest
+    needs: [plan, build]
+    # Also after a partly failed build: a failed job has no entry, so its
+    # cells keep whatever the manifest named for them before.
+    if: ${{ !cancelled() && needs.plan.result == 'success' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        with:
+          bun-version-file: package.json
+      - run: bun install --frozen-lockfile --ignore-scripts
+      - uses: actions/download-artifact@fa0a91b85d4f404e444e00e005971372dc801d16 # v4.1.8
+        with:
+          pattern: satellite-entries-*
+          path: entries-download
+          merge-multiple: true
+
+      - name: The manifest now in R2 (publish only)
+        if: ${{ inputs.publish }}
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          set -euo pipefail
+          # Exit 3 is "none yet"; any other failure stops the run.
+          status=0
+          bash packages/frontend/scripts/city-r2.sh get-manifest "$PWD/previous.json" || status=$?
+          if [ "$status" -ne 0 ] && [ "$status" -ne 3 ]; then exit "$status"; fi
+
+      - name: Assemble
+        env:
+          STAMP: ${{ needs.plan.outputs.stamp }}
+        run: |
+          set -euo pipefail
+          mkdir -p "$PWD/entries-download/entries"
+          previous=""
+          [ -f "$PWD/previous.json" ] && previous="--previous=$PWD/previous.json"
+          bun run --cwd packages/frontend map:satellite-manifest \
+            --entries="$PWD/entries-download/entries" $previous --out="$PWD/manifest.json"
+          {
+            echo "### Satellite manifest $STAMP"
+            echo "Retired (still in R2; delete after the new manifest has been live a while):"
+            sed 's/^/    /' "$PWD/manifest.json.retired.txt"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v4
+        with:
+          name: satellite-manifest
+          path: |
+            manifest.json
+            manifest.json.retired.txt
+          retention-days: 30
+
+      - name: Publish the manifest (publish only; the dated copy first, then the live one)
+        if: ${{ inputs.publish }}
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          STAMP: ${{ needs.plan.outputs.stamp }}
+        run: |
+          set -euo pipefail
+          bash packages/frontend/scripts/city-r2.sh publish-manifest "$PWD/manifest.json" "$STAMP"

@@ -58,6 +58,15 @@ export type { MapLightPreset, MapStyleDefinition, MapStyleId, MapStyleSelection 
 export const MAP_STYLES: readonly MapStyleDefinition[] = MAP_STYLE_CATALOGUE;
 
 /**
+ * Whether a style is offered on this build (`MapStyleDefinition.offer`): a
+ * style whose data is not published yet (the imagery) only in a development
+ * build. The picker and the embed ask this; the documents exist either way.
+ */
+export function isMapStyleOffered(id: MapStyleId, development: boolean): boolean {
+  return mapStyleDefinition(id).offer !== 'development' || development;
+}
+
+/**
  * The cartographic appearance a light belongs to: everything but night is
  * the light map. The 3D city, the sky and the buildings' light read this,
  * so the dawn and dusk documents are lit as the day map is.

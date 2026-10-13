@@ -69,8 +69,11 @@ import {
   pickLabelFeature,
   type QueriedLabel,
 } from './labels';
+import type { ImageryView } from '@/lib/map/imageryCoverage';
+
 import { MapAttribution } from './MapAttribution';
 import { useCompactCredit } from './useCompactCredit';
+import { useImageryCredits } from './useImageryCredits';
 import { MapBrand } from './MapBrand';
 import { MapErrorState } from './MapErrorState';
 import { drawableModels, modelFallbackMarker, modelIdOfMarker } from './models';
@@ -200,6 +203,11 @@ export const MapCanvas = forwardRef<MapApi, MapCanvasProps>(function MapCanvas(
     () => resolveMapStyleUrl({ style: styleId, preset: stylePreset }),
     [styleId, stylePreset],
   );
+  // Satellite and hybrid are catalogue styles over GoWay's imagery: the
+  // credit names each imagery source while it is on screen.
+  const imageryMode = mapStyleDefinition(styleId).imagery ?? null;
+  const [imageryView, setImageryView] = useState<ImageryView | null>(null);
+  const imageryCredits = useImageryCredits(imageryMode, imageryView);
   // `undefined` when the loaded style makes no anchor promise; `<Layer>`
   // then appends on top, which is what native did before GoWay owned a style.
   const overlayAnchor = useMemo(() => resolveMapAnchors().beforeLabels, []);
@@ -210,11 +218,13 @@ export const MapCanvas = forwardRef<MapApi, MapCanvasProps>(function MapCanvas(
   const { terrain } = useMapRelief();
   const hillshade = useMemo(
     () =>
-      // A style with its own relief (Outdoors) already shades the ground.
-      terrain && resolveOwnsStyleDocument() && !styleDrawsRelief
+      // A style with its own relief (Outdoors) already shades the ground; a
+      // photograph (satellite, hybrid) has its own shadows, and its document
+      // has no `water` to go under.
+      terrain && resolveOwnsStyleDocument() && !styleDrawsRelief && !imageryMode
         ? hillshadeLayer(resolvedAppearance)
         : null,
-    [terrain, resolvedAppearance, styleDrawsRelief],
+    [terrain, resolvedAppearance, styleDrawsRelief, imageryMode],
   );
   const gestures = resolveInteraction(interaction);
 
@@ -605,6 +615,10 @@ export const MapCanvas = forwardRef<MapApi, MapCanvasProps>(function MapCanvas(
           // The settled frame is also when the basemap's labels are worth
           // re-reading — see `reportLabels`.
           const [longitude, latitude] = event.nativeEvent.center;
+          if (imageryMode) {
+            const [west, south, east, north] = event.nativeEvent.bounds;
+            setImageryView({ zoom: event.nativeEvent.zoom, west, south, east, north });
+          }
           reportLabels({ latitude, longitude });
           // And when the sun is re-read for the new centre: once per settle,
           // never on `onRegionIsChanging`. Unconditional, unlike the label
@@ -738,6 +752,7 @@ export const MapCanvas = forwardRef<MapApi, MapCanvasProps>(function MapCanvas(
           somebody else's page. See MapBrand.tsx. */}
       <MapBrand />
       <MapAttribution
+        extra={imageryCredits}
         elevation={styleDrawsRelief}
         expanded={credit.expanded}
         onToggle={credit.toggle}

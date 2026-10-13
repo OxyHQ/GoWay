@@ -41,6 +41,7 @@ import { resolveMapStyleThumbnailUrl } from '@/lib/map/provider';
 import {
   MAP_LIGHT_MODES,
   MAP_STYLES,
+  isMapStyleOffered,
   type MapLightMode,
   type MapStyleDefinition,
   resolveMapStyle,
@@ -62,7 +63,10 @@ export function MapStylePicker({ open, onClose }: MapStylePickerProps) {
   const themeDark = useTheme().isDark;
   const { width } = useWindowDimensions();
   const columns = width < 640 ? 2 : 4;
-  const current = MAP_STYLES.find((entry) => entry.id === style) ?? MAP_STYLES[0];
+  // A style whose data is not published yet (imagery) is offered in a
+  // development build only (`MapStyleDefinition.offer`).
+  const offered = MAP_STYLES.filter((entry) => isMapStyleOffered(entry.id, __DEV__));
+  const current = offered.find((entry) => entry.id === style) ?? offered[0];
   // The tiles show the light the map is drawn in: night thumbnails on a dark
   // map, day ones otherwise. The sun's dawn and dusk show as day.
   const darkNow = light === 'night' || (light !== 'day' && themeDark);
@@ -84,7 +88,7 @@ export function MapStylePicker({ open, onClose }: MapStylePickerProps) {
         <View className="gap-space-8">
           <Text className="text-caption text-muted-foreground">{say(MAP_STYLE_COPY.style)}</Text>
           <View accessibilityRole="radiogroup" className="flex-row flex-wrap gap-space-12">
-            {MAP_STYLES.map((entry) => (
+            {offered.map((entry) => (
               <StyleTile
                 key={entry.id}
                 entry={entry}

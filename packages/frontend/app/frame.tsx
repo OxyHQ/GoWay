@@ -110,7 +110,7 @@ const GOWAY_ORIGIN = 'https://goway.to';
 
 export default function FrameRoute() {
   const params = useLocalSearchParams<Record<string, string | string[]>>();
-  const parsed = parseEmbedParams(params);
+  const parsed = parseEmbedParams(params, { development: __DEV__ });
   // The embed's light is the embedder's (`light=`, `theme=`) or the page's
   // theme — never this device's own map setting, which belongs to goway.to.
   const themeDark = useTheme().isDark;

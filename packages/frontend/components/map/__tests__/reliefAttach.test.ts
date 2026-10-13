@@ -175,6 +175,18 @@ describe('attachRelief', () => {
     expect(map.calls.map((call) => call[0])).toContain('addLayer');
   });
 
+  test('an imagery style gets the terrain the photograph drapes over, and no hillshade', () => {
+    const map = fakeMap({
+      layers: ['background', 'goway:imagery:base', 'goway:imagery:detail', 'labels'],
+      loaded: true,
+      pitch: 60,
+    });
+    attachRelief(asMap(map), { flags: { globe: true, terrain: true }, appearance: 'dark' });
+    const kinds = map.calls.map((call) => call[0]);
+    expect(kinds).toEqual(['setSky', 'setProjection', 'addSource', 'setTerrain']);
+    expect(map.calls.some((call) => call[0] === 'addLayer')).toBe(false);
+  });
+
   test('a style with no water anchor gets the globe, but no hillshade and no terrain', () => {
     const map = fakeMap({ layers: ['background', 'roads', 'labels'], loaded: true, pitch: 60 });
     attachRelief(asMap(map), { flags: { globe: true, terrain: true }, appearance: 'light' });

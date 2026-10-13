@@ -15,6 +15,13 @@
     // file a program imports has to be in that program.
     "worker/pmtiles.js",
     "worker/coverageTree.js",
+    // The satellite manifest builder checks what it writes with the Worker's
+    // own parser (`scripts/build-satellite-manifest.ts`), which reads its
+    // archives with the city route's byte source.
+    "worker/satellite.js",
+    "worker/city.js",
+    "worker/tiles.js",
+    "worker/budget.js",
     // The contour maker, likewise: `scripts/serve-map-build.ts` runs the
     // edge's own module so a local export draws the contours goway.to will.
     "worker/contours.js",

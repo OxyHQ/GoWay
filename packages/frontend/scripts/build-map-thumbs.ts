@@ -129,8 +129,23 @@ async function render(): Promise<void> {
     viewport: { width: SIZE.width, height: SIZE.height },
     deviceScaleFactor: SIZE.scale,
   });
-  const thumbs: Manifest['thumbs'] = {};
+  // `--only=satellite,hybrid`: take just those styles' thumbnails and keep
+  // every other one as it is (a new style needs no re-shoot of the rest).
+  const only = arg('only', '')
+    .split(',')
+    .map((id) => id.trim())
+    .filter(Boolean);
+  let previous: Manifest['thumbs'] = {};
+  if (only.length > 0) {
+    try {
+      previous = (JSON.parse(await readFile(MANIFEST, 'utf8')) as Manifest).thumbs;
+    } catch {
+      previous = {};
+    }
+  }
+  const thumbs: Manifest['thumbs'] = { ...previous };
   for (const selection of THUMBNAILS) {
+    if (only.length > 0 && !only.includes(selection.style)) continue;
     let attempt = 0;
     for (;;) {
       attempt += 1;
@@ -211,7 +226,13 @@ async function render(): Promise<void> {
     }
   }
   await browser.close();
-  const manifest: Manifest = { v: 1, view: VIEW, views: VIEWS, thumbs };
+  // In catalogue order, whichever were taken this run.
+  const ordered = Object.fromEntries(
+    THUMBNAILS.map((selection) => `${selection.style}/${selection.preset}`)
+      .filter((key) => thumbs[key])
+      .map((key) => [key, thumbs[key]]),
+  );
+  const manifest: Manifest = { v: 1, view: VIEW, views: VIEWS, thumbs: ordered };
   await writeFile(MANIFEST, `${JSON.stringify(manifest, null, 2)}\n`, 'utf8');
   console.log(`map thumbs: wrote ${MANIFEST}`);
 }

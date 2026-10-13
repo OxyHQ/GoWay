@@ -154,6 +154,21 @@ export function intersectCoverageTrees(a, b) {
 }
 
 /**
+ * Tiles owned by `a` and NOT by `b`. Both must have the same `maxZoom`. (The
+ * satellite manifest takes a rebuild's cells out of the stamp it replaces.)
+ *
+ * @param {CoverageNode} a
+ * @param {CoverageNode} b
+ * @returns {CoverageNode}
+ */
+export function subtractCoverageTrees(a, b) {
+  if (a === EMPTY || b === FULL) return EMPTY;
+  if (b === EMPTY) return a;
+  const children = a === FULL ? [FULL, FULL, FULL, FULL] : a;
+  return normalise(children.map((child, i) => subtractCoverageTrees(child, b[i])));
+}
+
+/**
  * The same tree with its leaves at `zoom` (≤ its own): a tile at `zoom` is
  * owned only if EVERY tile under it was. Conservative by construction, which
  * is the direction a client's coverage must err in — a tile it thinks is

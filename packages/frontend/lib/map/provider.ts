@@ -580,6 +580,22 @@ export function resolveMapStyleUrl(selection: MapStyleSelection): string {
 }
 
 /**
+ * A path on GoWay's map origin (`/map/satellite/coverage.json`) as both
+ * engines' hosts can fetch it — resolved exactly as a style document is
+ * ({@link absoluteStyleUrl}).
+ */
+export function resolveMapAssetUrl(path: string): string {
+  return absoluteStyleUrl(path);
+}
+
+/**
+ * The imagery credit's link: GoWay's attribution page, which lists every
+ * imagery source with the notice its licence asks for
+ * (`lib/map/imagerySources.ts`). Each source's own short credit is the label.
+ */
+export const IMAGERY_ATTRIBUTION_HREF = `${GOWAY_ORIGIN}/attribution#imagery`;
+
+/**
  * The attribution GoWay must display for the active source — plus the
  * elevation credit while the relief prototype draws terrain or a hillshade.
  */

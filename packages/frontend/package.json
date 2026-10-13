@@ -35,6 +35,8 @@
     "map:city-region": "bun scripts/build-city-region.ts",
     "map:city-manifest": "bun scripts/build-city-manifest.ts",
     "check:worker-wire": "bun scripts/check-worker-wire.ts",
+    "map:satellite-set": "bun scripts/build-satellite-set.ts",
+    "map:satellite-manifest": "bun scripts/build-satellite-manifest.ts",
     "bench:map": "bun scripts/bench-map.ts",
     "check:city3d-visible": "bun scripts/check-city3d-visible.ts",
     "landmarks": "bun scripts/build-landmarks.ts",

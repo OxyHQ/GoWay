@@ -20,6 +20,9 @@ export const CREDITS_EN: Record<string, string> = {
   'credits.cityData.heading': "GoWay's 3D city database",
   'credits.cityData.body':
     'The 3D buildings, trees and streets GoWay compiles itself are built from OpenStreetMap, region by region, and are a Derivative Database under the Open Database License (ODbL). Every published archive is offered under the same licence: the index below lists each one with its receipt — the OpenStreetMap extract and date it was built from, and any official data merged into it — and links to its download.',
+  'credits.imagery.heading': 'Satellite and aerial imagery',
+  'credits.imagery.body':
+    "The satellite and hybrid maps are drawn from openly licensed imagery that GoWay hosts itself: a Sentinel-2 mosaic for the whole planet, NASA's Blue Marble for the oceans and the first zooms, and national and regional aerial photography where it is published under an open licence. Each source is credited on the map while it is on screen; its full notice is below.",
   'credits.models.heading': '3D vehicles',
   'credits.models.body':
     "The cars, buses, trains, trams and boats drawn in 3D are made from Kenney's kits (Car Kit, Train Kit and Watercraft Kit), released into the public domain under CC0; the city bus, double-decker and airliner are GoWay's own, in the same style. The simulated people are GoWay's own too.",
@@ -43,6 +46,9 @@ export const CREDITS_ES: Record<string, string> = {
   'credits.cityData.heading': 'La base de datos de la ciudad 3D de GoWay',
   'credits.cityData.body':
     'Los edificios, árboles y calles en 3D que GoWay compila por su cuenta se construyen a partir de OpenStreetMap, región a región, y son una base de datos derivada bajo la Open Database License (ODbL). Cada archivo publicado se ofrece bajo la misma licencia: el índice siguiente enumera cada uno con su recibo —el extracto de OpenStreetMap y la fecha de la que se construyó, y los datos oficiales incorporados— y enlaza a su descarga.',
+  'credits.imagery.heading': 'Imágenes de satélite y aéreas',
+  'credits.imagery.body':
+    'Los mapas de satélite e híbrido se dibujan con imágenes de licencia abierta que GoWay aloja por su cuenta: un mosaico de Sentinel-2 para todo el planeta, el Blue Marble de la NASA para los océanos y los primeros niveles de zoom, y la fotografía aérea nacional y regional allí donde se publica bajo una licencia abierta. Cada fuente se acredita en el mapa mientras está en pantalla; su aviso completo figura abajo.',
   'credits.models.heading': 'Vehículos en 3D',
   'credits.models.body':
     'Los coches, autobuses, trenes, tranvías y barcos que se dibujan en 3D proceden de los kits de Kenney (Car Kit, Train Kit y Watercraft Kit), cedidos al dominio público bajo CC0; el autobús urbano, el de dos pisos y el avión son de GoWay, en el mismo estilo. Las personas simuladas también son de GoWay.',

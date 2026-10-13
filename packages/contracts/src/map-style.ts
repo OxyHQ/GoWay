@@ -21,6 +21,8 @@ export const MAP_STYLE_IDS = [
   'outdoors',
   'navigation',
   'monochrome',
+  'satellite',
+  'hybrid',
   'light',
   'dark',
 ] as const;
@@ -47,6 +49,17 @@ export interface MapStyleDefinition {
    * from GoWay's elevation tiles — and so the elevation credit.
    */
   relief?: true;
+  /**
+   * Drawn over GoWay's satellite imagery (`docs/MAP_SATELLITE.md`): the
+   * imagery alone (`satellite`), or under GoWay's roads and labels (`hybrid`).
+   */
+  imagery?: 'satellite' | 'hybrid';
+  /**
+   * `development`: not offered yet — its data is not published (the imagery,
+   * until its first published run). GoWay's picker and embed list it only in a
+   * development build, and `/map/styles/index.json` leaves it out. Absent: offered.
+   */
+  offer?: 'development';
 }
 
 /** The catalogue: which lights each style is published in. */
@@ -56,6 +69,9 @@ export const MAP_STYLE_CATALOGUE: readonly MapStyleDefinition[] = [
   { id: 'outdoors', presets: ['day', 'night'], light: 'follows', relief: true },
   { id: 'navigation', presets: ['day', 'night'], light: 'follows' },
   { id: 'monochrome', presets: ['day', 'night'], light: 'follows' },
+  // A photograph has one light: these keep it.
+  { id: 'satellite', presets: ['day'], light: 'fixed', imagery: 'satellite', offer: 'development' },
+  { id: 'hybrid', presets: ['day'], light: 'fixed', imagery: 'hybrid', offer: 'development' },
   { id: 'light', presets: ['day'], light: 'fixed' },
   { id: 'dark', presets: ['night'], light: 'fixed' },
 ];

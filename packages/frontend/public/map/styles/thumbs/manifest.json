@@ -53,6 +53,14 @@
       "file": "/map/styles/thumbs/monochrome-night.jpg",
       "layers": "7369937b52456e3a"
     },
+    "satellite/day": {
+      "file": "/map/styles/thumbs/satellite-day.jpg",
+      "layers": "c319b0770b0b6355"
+    },
+    "hybrid/day": {
+      "file": "/map/styles/thumbs/hybrid-day.jpg",
+      "layers": "9b287766e8b7976f"
+    },
     "light/day": {
       "file": "/map/styles/thumbs/light-day.jpg",
       "layers": "96c3b39b258fb13b"
