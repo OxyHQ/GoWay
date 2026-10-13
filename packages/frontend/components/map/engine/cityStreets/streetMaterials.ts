@@ -64,7 +64,6 @@ import {
 
 import { mapBlending, perObject } from '../city3d/tsl/common';
 import type { SkyNodes } from '../city3d/tsl/skyNodes';
-import { GROUND } from '../city3d/terrainGround';
 import { MIN_HALF_PX, STREET_LIFT_M } from './meshBuffers';
 import { ATLAS_SIZE, SDF_EDGE } from './streetAtlas';
 
@@ -85,6 +84,8 @@ export interface StreetTile {
 /** The overlay's shared values the materials read on every render. */
 export interface StreetMaterialInputs {
   groundAtlas: Texture;
+  /** DEM pixels across a street tile: each slot is `groundCells + 2` samples square (`groundAtlas.ts`). */
+  groundCells: number;
   sdfAtlas: Texture;
   surfaceDay: Vector3[];
   surfaceNight: Vector3[];
@@ -127,13 +128,16 @@ export function createStreetMaterials(inputs: StreetMaterialInputs): StreetMater
   );
   const depthBias = float(inputs.depthBias);
 
-  // The tile's ground grid (row-major from the north-west corner), bilinear.
+  // The tile's ground grid: the DEM's pixel centres across the tile and one
+  // past each edge, read bilinearly between the four around the vertex —
+  // MapLibre's own `get_elevation`, and `terrainGround.ts` → `gridAt`.
+  const cells = inputs.groundCells;
   const groundAt = (p: Node<'vec2'>) =>
     Fn(() => {
-      const uv = clamp(vec2(p.x, p.y.negate()).div(tileSize), 0, 1).mul(GROUND.grid - 1);
-      const cell = min(floor(uv), vec2(GROUND.grid - 2));
+      const uv = clamp(vec2(p.x, p.y.negate()).div(tileSize), 0, 1).mul(cells).add(0.5);
+      const cell = min(floor(uv), vec2(cells));
       const t = uv.sub(cell);
-      const i = ivec2(cell).add(ivec2(int(0), int(slot).mul(GROUND.grid)));
+      const i = ivec2(cell).add(ivec2(int(0), int(slot).mul(cells + 2)));
       const at = (dx: number, dy: number) =>
         textureLoad(inputs.groundAtlas, i.add(ivec2(dx, dy))).r;
       const h = mix(mix(at(0, 0), at(1, 0), t.x), mix(at(0, 1), at(1, 1), t.x), t.y);

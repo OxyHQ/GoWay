@@ -22,7 +22,7 @@ import { coverageCovers } from '../city3d/coverageIndex';
 import { type LodPolicy, metresPerPixel, selectLodTiles } from '../city3d/lod';
 import type { CityLight } from '../city3d/occlusion';
 import type { CityOverlay, CityOverlayFrame, CityOverlaySky } from '../city3d/overlay';
-import type { Ground } from '../city3d/terrainGround';
+import { type Ground, latticeCells, TERRAIN_LATTICE } from '../city3d/terrainGround';
 import {
   EARTH_CIRCUMFERENCE_M,
   tileKey,
@@ -60,7 +60,7 @@ export const STREET_BUDGET = {
   cachedPerDrawn: 2,
   /** Requests in flight. */
   maxInFlight: 3,
-  /** Ground grids sampled per frame (each ~1,000 terrain reads). */
+  /** Ground grids sampled per frame (each 4,356 terrain reads, ~2 ms, on GoWay's DEM). */
   groundsPerFrame: 2,
   /** Clip-space depth nudge per layer (×w). */
   depthBias: 2e-6,
@@ -191,7 +191,12 @@ export function createCityStreets(options: CityStreetsOptions): CityOverlay {
   // tiles (`streets.maxTiles`) times what is kept per drawn tile, and the
   // drawn ones again for the moment a cache overflows before it evicts.
   const maxCached = Math.max(4, options.quality.maxTiles * STREET_BUDGET.cachedPerDrawn);
-  const groundAtlas = createGroundAtlas(maxCached + options.quality.maxTiles);
+  const groundSlots = maxCached + options.quality.maxTiles;
+  // The terrain's lattice over a street tile: the DEM pixels across it. The
+  // meshes are cut along it (`groundLattice.ts`) and the atlas holds a grid
+  // of it per slot; GoWay's DEM until a terrain says otherwise.
+  let groundCells = latticeCells({ z: 15 }, TERRAIN_LATTICE);
+  let groundAtlas = createGroundAtlas(groundSlots, groundCells + 2);
 
   const atlasBytes = new Uint8Array(ATLAS_SIZE * ATLAS_SIZE);
   /** Glyph patches arrived that the GPU's copy of the atlas lacks. */
@@ -225,6 +230,7 @@ export function createCityStreets(options: CityStreetsOptions): CityOverlay {
   const materialsNow = () => {
     materials ??= createStreetMaterials({
       groundAtlas: groundAtlas.texture,
+      groundCells,
       sdfAtlas: atlas,
       surfaceDay: shared.uSurfaceDay.value,
       surfaceNight: shared.uSurfaceNight.value,
@@ -377,6 +383,8 @@ export function createCityStreets(options: CityStreetsOptions): CityOverlay {
         template: options.roadTileTemplate,
         glyphs: options.glyphTemplate,
         fontstack: options.fontstack,
+        groundCells,
+        groundSubdivision: options.quality.groundSubdivision,
       },
       entry.key,
     );
@@ -618,6 +626,22 @@ export function createCityStreets(options: CityStreetsOptions): CityOverlay {
     setGround(next) {
       ground = next;
       groundVersion++;
+      const cells = next ? latticeCells({ z: 15 }, next.lattice) : groundCells;
+      if (cells !== groundCells) {
+        // A terrain on another DEM (never GoWay's own): every mesh was cut
+        // for the old lattice and every slot is the old size. Start over.
+        for (const entry of entries.values()) {
+          if (entry.state === 'pending') pool.cancel(entry.id, { type: 'cancel', id: entry.id });
+          disposeMeshes(entry);
+        }
+        entries.clear();
+        byId.clear();
+        materials?.dispose();
+        materials = null;
+        groundAtlas.dispose();
+        groundCells = cells;
+        groundAtlas = createGroundAtlas(groundSlots, groundCells + 2);
+      }
       options.requestRepaint();
     },
 
