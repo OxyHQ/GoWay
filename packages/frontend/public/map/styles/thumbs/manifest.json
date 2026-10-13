@@ -5,6 +5,13 @@
     "longitude": 2.1862,
     "zoom": 13.4
   },
+  "views": {
+    "outdoors": {
+      "latitude": 41.5975,
+      "longitude": 1.8325,
+      "zoom": 12.6
+    }
+  },
   "thumbs": {
     "standard/day": {
       "file": "/map/styles/thumbs/standard-day.jpg",
@@ -21,6 +28,14 @@
     "streets/night": {
       "file": "/map/styles/thumbs/streets-night.jpg",
       "layers": "e09929c5c70a603a"
+    },
+    "outdoors/day": {
+      "file": "/map/styles/thumbs/outdoors-day.jpg",
+      "layers": "e3ec8e2472afc4ef"
+    },
+    "outdoors/night": {
+      "file": "/map/styles/thumbs/outdoors-night.jpg",
+      "layers": "f4fb37755691014f"
     },
     "light/day": {
       "file": "/map/styles/thumbs/light-day.jpg",

@@ -72,6 +72,7 @@ import {
   GOWAY_MAP_ORIGIN,
   gowayMapEndpoints,
   OPENFREEMAP_ENDPOINTS,
+  TERRAIN_SOURCE_LINK,
 } from '../lib/map/provider';
 import { buildGowayMapStyle } from '../lib/map/style';
 import {
@@ -84,7 +85,11 @@ import {
 import { applyGroundOverrides } from '../lib/map/style/city3dGround';
 import { QUALITY_LOW_METADATA_KEY, type QualityOverride } from '../lib/map/style/qualityOverrides';
 import { CITY3D_GROUND_METADATA_KEY, type GroundOverride } from '../lib/map/style/palette3d';
-import { GOWAY_STYLE_LAYER_ID_LIST } from '../lib/map/style/layers';
+import {
+  CONTOUR_SOURCE_ID,
+  CONTOUR_SOURCE_LAYER,
+  GOWAY_STYLE_LAYER_ID_LIST,
+} from '../lib/map/style/layers';
 import {
   AVAILABLE_FONTS,
   LANDCOVER_CLASSES,
@@ -191,6 +196,12 @@ const ENDPOINTS = {
   glyphs: gowayMapEndpoints(GOWAY_MAP_ORIGIN).glyphs,
   sprite: gowayMapEndpoints(GOWAY_MAP_ORIGIN).sprite,
   attribution: ATTRIBUTION_HTML,
+  // Only a style with its own relief (Outdoors) declares these.
+  terrain: {
+    tiles: gowayMapEndpoints(GOWAY_MAP_ORIGIN).terrain,
+    contours: gowayMapEndpoints(GOWAY_MAP_ORIGIN).contours,
+    attribution: `<a href="${TERRAIN_SOURCE_LINK.href}" target="_blank">${TERRAIN_SOURCE_LINK.label}</a>`,
+  },
 };
 
 /**
@@ -321,8 +332,13 @@ function checkOne(name: string, style: StyleSpecification, problems: string[]): 
 
     // 2. Schema reality. This is the check that catches the failure mode with
     //    no symptom: a source-layer that does not exist renders nothing at all.
+    //    The contour source has one source-layer of its own (`worker/contours.js`).
     const sourceLayer = sourceLayerOf(layer);
-    if (sourceLayer !== undefined && !knownSourceLayers.has(sourceLayer)) {
+    const contourLayer =
+      'source' in layer && layer.source === CONTOUR_SOURCE_ID
+        ? sourceLayer === CONTOUR_SOURCE_LAYER
+        : false;
+    if (sourceLayer !== undefined && !contourLayer && !knownSourceLayers.has(sourceLayer)) {
       problems.push(
         where(
           `layer "${layer.id}" reads source-layer "${sourceLayer}", which is not in the OpenMapTiles v3 schema`,

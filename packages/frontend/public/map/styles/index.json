@@ -33,6 +33,19 @@
       }
     },
     {
+      "id": "outdoors",
+      "light": "follows",
+      "presets": [
+        "day",
+        "night"
+      ],
+      "defaultPreset": "day",
+      "urls": {
+        "day": "https://goway.to/map/styles/outdoors/day.json",
+        "night": "https://goway.to/map/styles/outdoors/night.json"
+      }
+    },
+    {
       "id": "light",
       "light": "fixed",
       "presets": [

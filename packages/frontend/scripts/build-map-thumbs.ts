@@ -39,6 +39,15 @@ const MANIFEST = join(PUBLIC_DIR, 'map', 'styles', 'thumbs', 'manifest.json');
  * city's, so the picture is the style and nothing else.
  */
 const VIEW = { latitude: 41.3872, longitude: 2.1862, zoom: 13.4 } as const;
+
+/**
+ * A style whose subject is not a city is photographed where its subject is:
+ * Outdoors on Montserrat's ridges, where its contours, hillshade, trails and
+ * peaks all show at a thumbnail's scale.
+ */
+const VIEWS: Partial<Record<string, { latitude: number; longitude: number; zoom: number }>> = {
+  outdoors: { latitude: 41.5975, longitude: 1.8325, zoom: 12.6 },
+};
 /**
  * Drawn at 480 × 320 at 1×, shown at 240 × 160: sharp on a 2× phone, and the
  * map's own mark and credit are drawn at half their size, as befits a tile.
@@ -70,6 +79,7 @@ async function layersHash(selection: MapStyleSelection): Promise<string> {
 type Manifest = {
   v: 1;
   view: typeof VIEW;
+  views: typeof VIEWS;
   thumbs: Record<string, { file: string; layers: string }>;
 };
 
@@ -127,7 +137,8 @@ async function render(): Promise<void> {
       const page = await context.newPage();
       // The sky reads the clock: noon for day, 23:00 for night, local solar time.
       const hour = selection.preset === 'night' ? 23 : 12;
-      const at = Date.UTC(2026, 5, 21) + (hour - VIEW.longitude / 15) * 3_600_000;
+      const view = VIEWS[selection.style] ?? VIEW;
+      const at = Date.UTC(2026, 5, 21) + (hour - view.longitude / 15) * 3_600_000;
       await page.addInitScript((instant: number) => {
         const offset = instant - Date.now();
         const RealDate = Date;
@@ -161,9 +172,9 @@ async function render(): Promise<void> {
         done();
       });
       const query = new URLSearchParams({
-        lat: String(VIEW.latitude),
-        lng: String(VIEW.longitude),
-        zoom: String(VIEW.zoom),
+        lat: String(view.latitude),
+        lng: String(view.longitude),
+        zoom: String(view.zoom),
         style: selection.style,
         light: selection.preset,
         interactive: '0',
@@ -200,7 +211,7 @@ async function render(): Promise<void> {
     }
   }
   await browser.close();
-  const manifest: Manifest = { v: 1, view: VIEW, thumbs };
+  const manifest: Manifest = { v: 1, view: VIEW, views: VIEWS, thumbs };
   await writeFile(MANIFEST, `${JSON.stringify(manifest, null, 2)}\n`, 'utf8');
   console.log(`map thumbs: wrote ${MANIFEST}`);
 }

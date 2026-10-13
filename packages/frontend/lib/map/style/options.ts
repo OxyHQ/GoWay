@@ -23,6 +23,14 @@ export interface StyleOptions {
   oneway: boolean;
   /** The zoom building footprints start to fade in at. */
   buildingsFrom: number;
+  /**
+   * The terrain map (`docs/MAP_STYLES.md` → Outdoors): the document carries
+   * its own hillshade and contour lines (both from GoWay's elevation tiles),
+   * bare rock and glaciers, trails by difficulty, lifts, peaks with their
+   * heights, and the huts, shelters, viewpoints, campsites and drinking water
+   * every other style leaves out. Needs the palette's `outdoors` ink.
+   */
+  outdoors: boolean;
 }
 
 /** Standard: the curated look every other style starts from. */
@@ -33,6 +41,7 @@ export const STANDARD_OPTIONS: StyleOptions = {
   roadLabels: 'all',
   oneway: true,
   buildingsFrom: 15,
+  outdoors: false,
 };
 
 /** Streets: more places, earlier footprints, house numbers a zoom sooner. */
@@ -43,6 +52,7 @@ export const STREETS_OPTIONS: StyleOptions = {
   roadLabels: 'all',
   oneway: true,
   buildingsFrom: 14,
+  outdoors: false,
 };
 
 /** Light and Dark: a quiet ground for somebody else's data. */
@@ -53,4 +63,20 @@ export const DATA_OPTIONS: StyleOptions = {
   roadLabels: 'arterial',
   oneway: false,
   buildingsFrom: 15,
+  outdoors: false,
+};
+
+/**
+ * Outdoors: Standard's density and look, plus the terrain (contours,
+ * hillshade, rock, glaciers, trails, lifts, peaks, huts). Streets named as
+ * written — in the mountains a road name is a way, not an address.
+ */
+export const OUTDOORS_OPTIONS: StyleOptions = {
+  poi: 'standard',
+  houseNumbersFrom: null,
+  roadLabelCase: 'as-written',
+  roadLabels: 'all',
+  oneway: false,
+  buildingsFrom: 15,
+  outdoors: true,
 };
