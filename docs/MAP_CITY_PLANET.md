@@ -169,7 +169,35 @@ next manifest (five minutes). Edge cache keys name the archive key, so a
 rebuilt region never mixes with the old at the edge; directories are cached a
 week per archive, as the basemap's. The manifest is read once per colo per five
 minutes and kept per isolate for a minute; a tile is matched against regions by
-bounding box first, and only those few ownership trees are decoded.
+bounding box first, and only those few ownership trees are decoded. An
+isolate re-reads the 2.6 MB manifest only when its etag changes.
+
+**On the wire** (`worker/tiles.js`, shared with the basemap and the elevation
+tiles): the archives store gzipped tiles, and a client that accepts gzip gets
+those bytes as they are, `content-encoding: gzip`, built with
+`encodeBody: 'manual'` — no compression work per request; any other client
+gets them decoded, `Vary: Accept-Encoding`. "Accepts" is the client's own
+header (`cf.clientAcceptEncoding`): Cloudflare rewrites the one the Worker
+sees. `check:worker-wire` (CI) serves a tile under workerd and counts the
+gzip layers on the wire. The edge cache holds the stored
+bytes opaquely and every answer is rebuilt from them. Measured on the edge
+(PDX) before the change was deployed: Madrid's densest city tile 502,915 →
+274,015 B, its roads 58,790 → 24,750 B, a dense basemap tile 936,345 →
+558,473 B, decoded by Chromium to the identical tile.
+
+**One storage read per tile.** An isolate keeps each archive's header and
+decoded directories, compact (24 B an entry) and bounded by bytes — the
+planet's leaves hold 17,685 entries, the city archives' 4,096 — inside a
+memory budget of 24 MiB for the whole map (`worker/budget.js`: 12 MiB of
+directories, 6 MiB of ownership trees at 5 B a node, a 4.1 MiB slim
+manifest); the colo's cache keeps the directory bytes for a week; R2 is asked for the tile alone once the leaf is
+known. Every answer says so in `Server-Timing` (`r2;desc="N reads"`). What a
+miss costs is then the R2 range reads themselves: from PDX to the bucket
+(WEUR) one read measured 450–900 ms, so a tile in a leaf the colo has not
+seen yet (2 reads) is 1.0–1.5 s and any other miss one read. That floor is
+the bucket's distance, not the Worker; closing it means data nearer the
+reader (a replica, or leaf directories in a global store), which is a
+Cloudflare-resource decision.
 
 **Off until configured.** With `MAP_CITY_MANIFEST` unset — production now —
 every tile is 404, the coverage document covers nothing (the client draws the
@@ -333,11 +361,19 @@ The first regions were built by hand on 2026-10-12 with `map:city-region` on
 extracts of 2026-10-11, uploaded with `wrangler r2 object put --remote`, and
 each object downloaded back and hashed against the local file:
 
-| Region | Official data | `city/20261012-1/…` | `city-roads/20261012-1/…` | Owned z15 tiles |
-| --- | --- | ---: | ---: | ---: |
-| `europe/spain/cataluna` | Catastro, 17 Barcelona-area municipalities (127,744 buildings drawn; 47,260 OSM buildings that had no height given one) | 49.9 MB | 60.5 MB | 68,447 |
-| `europe/spain/madrid` | Catastro, Madrid (111,508 drawn; 94,202 given a height) | 31.6 MB | 17.6 MB | 9,343 |
-| `north-america/us/new-york` | NYC 3D Building Model, delivery areas 10, 12, 13 — Manhattan (92,332 drawn) | 113.6 MB | 83.9 MB | 178,710 |
+| Region | Official data | Live stamp | `city/<stamp>/…` | `city-roads/<stamp>/…` | Owned z15 tiles |
+| --- | --- | --- | ---: | ---: | ---: |
+| `europe/spain/cataluna` | Catastro, 17 Barcelona-area municipalities (127,741 buildings drawn; 47,255 OSM buildings that had no height given one; 12 parts' implausible storey counts dropped, Pla d'en Coll's 111 among them) | `20261012-2` | 49.9 MB | 60.5 MB | 68,447 |
+| `europe/spain/madrid` | Catastro, Madrid (111,508 drawn; 94,202 given a height) | `20261012-2` | 31.6 MB | 17.6 MB | 9,343 |
+| `north-america/us/new-york` | NYC 3D Building Model, delivery areas 10, 12, 13 — Manhattan (92,332 drawn) | `20261012-3` | 113.6 MB | 83.9 MB | 178,710 |
+
+All three were rebuilt under #184's plausibility rules (stamps `20261012-2`
+and `20261012-3`); the `20261012-1` keys stay in the bucket for rollback.
+New York's rebuild, from the same extract (replication 4939, 2026-10-11), is
+**byte-identical** to `20261012-1` (SHA-256 `2f87fc86…`): 4,507,743 buildings,
+182,992 model surfaces and 137,405 trees in both, no height changed, the
+tallest still One World Trade Center's spire (541 m, from OSM) and the Empire
+State Building's model (443.7 m) — the rules find nothing to drop there.
 
 Peaks: Catalonia 12.9 GB, Madrid 8.7 GB, New York 23.5 GB (buildings with
 official data) — the measurement behind "Official data" above, and why the
@@ -346,6 +382,24 @@ workflow's `official` input stays off for hosted runners. The manifest is
 checks passed on each archive (`--verify --area=barcelona|madrid|manhattan`:
 the Sagrada Família's and the cathedral's roofs, the Carrer de Mallorca
 block's official height, the Empire State Building's model).
+
+### The planet, 2026-10-12
+
+All 416 regions of the catalogue are published (430 entries with parts;
+manifest `city/manifests/20261012-r8.json`): 14.83 GB of building archives and
+17.90 GB of road archives, coverage 192,819,247 z14 tiles. Built by the
+workflow on free runners in five dispatches (stamps `20261012-r2`, `-r4` …
+`-r8`, ~3 h 45 min end to end), uploaded with the org's Cloudflare token, every
+object read back and hashed; Catalonia and Madrid with the Catastro and New
+York with NYC's model by hand (`20261012-2`, `20261012-3`; manifest
+`city/manifests/20261012-3.json`). What the run taught
+the pipeline, each now handled: a roadless region (Clipperton) failed its
+batch → regions fail alone; Geofabrik served empty `.poly` files mid-run →
+re-fetched; the Cloudflare API answered large puts with 524s → retried;
+Australia (302 MB of roads in one part) and South-East Asia (a part over
+300 MiB) → `MIN_PARTS`, as Nigeria and Mexico now are for headroom. The 12
+regions whose OSM `height` held elevations and Catalonia (Pla d'en Coll's
+111-storey Catastro part, 340 m) were rebuilt after #184's plausibility rules.
 
 ## Approval
 

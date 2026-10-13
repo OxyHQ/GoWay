@@ -34,7 +34,7 @@ import * as THREE from 'three';
 import type { AnimationClock } from '../../perf/animationClock';
 import type { CityLight } from '../city3d/occlusion';
 import type { CityOverlay, CityOverlayFrame } from '../city3d/overlay';
-import { GROUND, type Ground, gridAt } from '../city3d/terrainGround';
+import { type Ground, gridAt } from '../city3d/terrainGround';
 import { metresPerPixel } from '../city3d/lod';
 import {
   centeredProjection,
@@ -434,7 +434,7 @@ export function createCityLife(options: CityLifeOptions): CityOverlay {
     const fy = origin.y - y / tileM;
     const tile = { z: 15, x: Math.floor(fx), y: Math.floor(fy) };
     if (ground.hasGrid(tile) || gridBudget-- > 0) {
-      return gridAt(ground.grid(tile), GROUND.grid, fx - tile.x, fy - tile.y);
+      return gridAt(ground.grid(tile), fx - tile.x, fy - tile.y);
     }
     const n = 2 ** 15;
     const value = ground.sample((fx / n) * 360 - 180, latFromMercatorY(fy / n));
@@ -501,7 +501,7 @@ export function createCityLife(options: CityLifeOptions): CityOverlay {
   };
 
   const overlay: CityOverlay = {
-    attach(_scene, tslScene) {
+    attach(tslScene) {
       // Drawn by the TSL pass (`docs/MAP_NATIVE_3D.md` → Phase 2).
       tslScene.add(group);
     },

@@ -386,8 +386,14 @@ export interface MapFitOptions {
  * prevent.
  */
 export interface MapApi {
-  /** Move the camera. A bare coordinate keeps the current zoom/bearing/pitch. */
-  moveTo(target: GeoCoordinate | MapViewport, options?: MapCameraOptions): void;
+  /**
+   * Move the camera. A bare coordinate keeps the current zoom/bearing/pitch.
+   *
+   * Answers whether a move was ISSUED: `false` when there is no engine yet, the
+   * target is not drawable, or the engine refused it — a move whose settle
+   * will never be reported, so a caller waiting for that settle must not.
+   */
+  moveTo(target: GeoCoordinate | MapViewport, options?: MapCameraOptions): boolean;
   /** Frame a declared area. */
   fitBounds(bounds: GeoBounds, options?: MapFitOptions): void;
   /** Frame a set of points. A single point is treated as a `moveTo`. */
@@ -503,6 +509,12 @@ export interface MapCanvasProps {
    */
   showUserLocation?: boolean;
   interaction?: MapInteractionOptions;
+  /**
+   * The camera: live while it moves, `isFinal` when it settles — including
+   * the camera the map opened at, reported once it has loaded (`programmatic`,
+   * so it never reads as the reader's move; `loadedCamera.ts`). A frame of a
+   * `transient` animation is never final.
+   */
   onViewportChange?: (change: MapViewportChange) => void;
   /**
    * A tap on the map, carrying the basemap label under it when there was one.

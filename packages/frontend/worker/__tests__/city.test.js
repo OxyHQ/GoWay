@@ -33,6 +33,7 @@ import {
   FULL,
 } from '../coverageTree.js';
 import * as workerModule from '../index.js';
+import { forgetDirectories } from '../tiles.js';
 
 const STAMP = '20261011-test';
 const MANIFEST_KEY = 'city/manifest.json';
@@ -188,6 +189,7 @@ beforeEach(() => {
   caches = cacheStore();
   globalThis.caches = caches;
   forgetCityManifest();
+  forgetDirectories();
 });
 afterEach(() => {
   globalThis.caches = realCaches;
@@ -324,7 +326,7 @@ describe('a tile, from the region that owns it', () => {
     await get(tile(100, 200), e);
     const keys = [...caches.store.keys()].filter((key) => key.includes('/map/city/'));
     expect(keys).toEqual([
-      `https://goway.internal/map/city/${encodeURIComponent(`city/${STAMP}/test/alpha.pmtiles`)}/15/100/200.pbf`,
+      `https://goway.internal/tiles/v2/map/city/${encodeURIComponent(`city/${STAMP}/test/alpha.pmtiles`)}/15/100/200.pbf`,
     ]);
   });
 });

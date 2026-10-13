@@ -311,3 +311,98 @@ export function decodeCoverageTree(encoded) {
   }
   return tree;
 }
+
+/**
+ * A tree decoded for lookups only, in five bytes a node: its code
+ * (`Uint8Array`) and its subtree's node count (`Uint32Array`, to step over a
+ * sibling). The nested-array form above costs ~20 bytes a node in V8 —
+ * measured, the planet's 430 regional ownership trees are 4.58 M nodes, 91.6
+ * MB that way — which a Worker isolate (128 MB) cannot hold; this form is
+ * 23 MB for all of them, and the Worker keeps only the regions it is asked
+ * about, within a byte budget. Decoding is as strict as
+ * {@link decodeCoverageTree}.
+ *
+ * @param {{ maxZoom: unknown, bits: unknown }} encoded
+ * @returns {{ maxZoom: number, codes: Uint8Array, skip: Uint32Array, bytes: number }}
+ */
+export function compactCoverageTree(encoded) {
+  const maxZoom = encoded?.maxZoom;
+  const bits = encoded?.bits;
+  if (!Number.isInteger(maxZoom) || maxZoom < 0 || maxZoom > MAX_TREE_ZOOM) {
+    throw new Error('coverage tree: maxZoom is not a zoom');
+  }
+  if (typeof bits !== 'string' || !/^[A-Za-z0-9+/]*={0,2}$/.test(bits)) {
+    throw new Error('coverage tree: bits is not base64');
+  }
+  const binary = atob(bits);
+  const total = binary.length * 4;
+  const codes = new Uint8Array(total);
+  const skip = new Uint32Array(total);
+  // Open mixed nodes: their index, their depth, and children still to come.
+  const open = [];
+  let n = 0;
+  for (;;) {
+    if (n >= total) throw new Error('coverage tree: the stream ends inside the tree');
+    const code = (binary.charCodeAt(n >> 2) >> ((n & 3) * 2)) & 3;
+    const depth = open.length === 0 ? 0 : open[open.length - 1].depth + 1;
+    codes[n] = code;
+    if (code === MIXED) {
+      if (depth >= maxZoom)
+        throw new Error(`coverage tree: a mixed node at z${depth}, its leaf zoom`);
+      open.push({ index: n, depth, left: 4 });
+      n += 1;
+      continue;
+    }
+    if (code !== EMPTY && code !== FULL) throw new Error('coverage tree: unknown node code');
+    skip[n] = 1;
+    const last = n;
+    n += 1;
+    // Close every mixed node this leaf completes.
+    while (open.length > 0) {
+      const top = open[open.length - 1];
+      top.left -= 1;
+      if (top.left > 0) break;
+      open.pop();
+      skip[top.index] = last - top.index + 1;
+    }
+    if (open.length === 0) break;
+  }
+  if (Math.ceil(n / 4) !== binary.length) {
+    throw new Error('coverage tree: bytes after the end of the tree');
+  }
+  for (let i = n; i < total; i++) {
+    if (((binary.charCodeAt(i >> 2) >> ((i & 3) * 2)) & 3) !== 0) {
+      throw new Error('coverage tree: bits after the end of the tree');
+    }
+  }
+  return { maxZoom, codes: codes.slice(0, n), skip: skip.slice(0, n), bytes: n * 5 };
+}
+
+/**
+ * {@link coverageAt} over a {@link compactCoverageTree}.
+ *
+ * @returns {0 | 1 | 2}
+ */
+export function compactCoverageAt(tree, z, x, y) {
+  const { maxZoom, codes, skip } = tree;
+  let tx = x;
+  let ty = y;
+  let tz = z;
+  if (tz > maxZoom) {
+    tx = Math.floor(tx / 2 ** (tz - maxZoom));
+    ty = Math.floor(ty / 2 ** (tz - maxZoom));
+    tz = maxZoom;
+  }
+  const span = 2 ** tz;
+  if (!(tx >= 0 && ty >= 0 && tx < span && ty < span)) return EMPTY;
+  let node = 0;
+  for (let level = tz - 1; level >= 0; level--) {
+    if (codes[node] !== MIXED) return codes[node];
+    const bit = 2 ** level;
+    const child = ((Math.floor(ty / bit) % 2) << 1) | (Math.floor(tx / bit) % 2);
+    let at = node + 1;
+    for (let c = 0; c < child; c++) at += skip[at];
+    node = at;
+  }
+  return codes[node] === MIXED ? MIXED : codes[node];
+}

@@ -73,6 +73,7 @@ import { useCompactCredit } from './useCompactCredit';
 import { MapBrand } from './MapBrand';
 import { MapErrorState } from './MapErrorState';
 import { drawableModels, modelFallbackMarker, modelIdOfMarker } from './models';
+import { createNativeCameraReports, type NativeCameraReports } from './nativeCameraReports';
 import { useMapRelief } from './reliefFlags';
 import {
   asFinite,
@@ -160,9 +161,15 @@ export const MapCanvas = forwardRef<MapApi, MapCanvasProps>(function MapCanvas(
     );
     return [...(markers ?? []), ...fallbacks];
   }, [markers, drawnModels, modelOverrides]);
-  // A frame of a caller-driven animation is not a settled camera (see
-  // `MapCameraOptions.transient`); set by `moveTo`, read by `onRegionDidChange`.
-  const transientMove = useRef(false);
+  // The camera reports (`nativeCameraReports.ts`), read through a ref so a
+  // new `onViewportChange` from a parent render reaches them. One per ENGINE:
+  // `retry` remounts the engine and gives it a new one, so nothing the old
+  // engine was doing (a move it never finished) stops the new one reporting
+  // the camera it opens at.
+  const viewportListener = useRef(onViewportChange);
+  viewportListener.current = onViewportChange;
+  const cameraReports = useRef<NativeCameraReports | null>(null);
+  cameraReports.current ??= createNativeCameraReports(() => viewportListener.current);
 
   const [error, setError] = useState<MapCanvasError | null>(null);
   // Remounting the engine is the only reliable retry MapLibre Native offers:
@@ -240,7 +247,7 @@ export const MapCanvas = forwardRef<MapApi, MapCanvasProps>(function MapCanvas(
     () => ({
       moveTo(target, options) {
         const camera = cameraRef.current;
-        if (!camera) return;
+        if (!camera) return false;
         const coordinate = isViewport(target)
           ? { latitude: target.latitude, longitude: target.longitude }
           : target;
@@ -251,13 +258,13 @@ export const MapCanvas = forwardRef<MapApi, MapCanvasProps>(function MapCanvas(
             'moveTo',
             `Ignored moveTo: target is not drawable (${describeNumbers(coordinate)}).`,
           );
-          return;
+          return false;
         }
         const viewport = isViewport(target) ? target : undefined;
         // Same rule as web: `undefined` means "leave this axis alone", which is
         // what a NaN was silently NOT doing. See `shared.ts` -> `asFinite`.
         const duration = asFinite(options?.duration) ?? DEFAULT_CAMERA_DURATION_MS;
-        transientMove.current = options?.transient === true;
+        cameraReports.current?.commanded(options?.transient === true);
         const stop = {
           center: toLngLat(coordinate),
           zoom: asFinite(options?.zoom) ?? asFinite(viewport?.zoom),
@@ -265,10 +272,11 @@ export const MapCanvas = forwardRef<MapApi, MapCanvasProps>(function MapCanvas(
           pitch: asFinite(options?.pitch) ?? asFinite(viewport?.pitch),
         };
         if (duration <= 0) {
-          runEngineCommand('jumpTo', () => camera.jumpTo(stop));
-          return;
+          return runEngineCommand('jumpTo', () => camera.jumpTo(stop));
         }
-        runEngineCommand('easeTo', () => camera.easeTo({ ...stop, duration, easing: 'ease' }));
+        return runEngineCommand('easeTo', () =>
+          camera.easeTo({ ...stop, duration, easing: 'ease' }),
+        );
       },
       fitBounds(bounds, options) {
         const camera = cameraRef.current;
@@ -286,6 +294,7 @@ export const MapCanvas = forwardRef<MapApi, MapCanvasProps>(function MapCanvas(
         if (!fitPadding) return;
         const maxZoom = asFinite(options?.maxZoom);
         const duration = asFinite(options?.duration) ?? DEFAULT_CAMERA_DURATION_MS;
+        cameraReports.current?.commanded(false);
         if (isDegenerateBounds(bounds)) {
           runEngineCommand('easeTo', () =>
             camera.easeTo({
@@ -321,6 +330,7 @@ export const MapCanvas = forwardRef<MapApi, MapCanvasProps>(function MapCanvas(
         }
         const camera = cameraRef.current;
         if (!camera) return;
+        cameraReports.current?.commanded(false);
         runEngineCommand('setStop', () =>
           camera.setStop({
             bearing: heading,
@@ -332,6 +342,7 @@ export const MapCanvas = forwardRef<MapApi, MapCanvasProps>(function MapCanvas(
       resetNorth(options) {
         const camera = cameraRef.current;
         if (!camera) return;
+        cameraReports.current?.commanded(false);
         runEngineCommand('setStop', () =>
           camera.setStop({
             bearing: 0,
@@ -385,31 +396,6 @@ export const MapCanvas = forwardRef<MapApi, MapCanvasProps>(function MapCanvas(
   useImperativeHandle(ref, () => api, [api]);
 
   // --- Events -------------------------------------------------------------
-
-  const emitViewport = useCallback(
-    (event: NativeSyntheticEvent<ViewStateChangeEvent>, isFinal: boolean) => {
-      // The reader moving the map folds the credit; the app moving it does not.
-      if (event.nativeEvent.userInteraction) noteCreditInteraction();
-      if (!onViewportChange) return;
-      const { center, zoom, bearing, pitch, bounds, userInteraction } = event.nativeEvent;
-      const [west, south, east, north] = bounds;
-      onViewportChange({
-        viewport: {
-          latitude: center[1],
-          longitude: center[0],
-          zoom,
-          bearing,
-          pitch,
-        },
-        bounds: { west, south, east, north },
-        // The engine tells us straight out whether a finger caused this, so
-        // GoWay never has to infer it from a marker on the command.
-        source: userInteraction ? 'user' : 'programmatic',
-        isFinal,
-      });
-    },
-    [onViewportChange, noteCreditInteraction],
-  );
 
   /**
    * A tap, resolved against the basemap's own labels.
@@ -528,6 +514,15 @@ export const MapCanvas = forwardRef<MapApi, MapCanvasProps>(function MapCanvas(
   const handleStyleLoaded = useCallback(() => {
     setStyleLoaded(true);
     setError(null);
+    // The camera the map opened at, reported as settled — once per engine,
+    // by the rule both forks share (`loadedCamera.ts`). MapLibre Native may
+    // or may not follow its first frame with `onRegionDidChange`, and a
+    // caller cannot depend on a maybe.
+    cameraReports.current?.loaded(() => {
+      const map = mapRef.current;
+      if (!map) throw new Error('no engine');
+      return map.getViewState();
+    });
     onReady?.();
   }, [onReady]);
 
@@ -542,8 +537,14 @@ export const MapCanvas = forwardRef<MapApi, MapCanvasProps>(function MapCanvas(
 
   const retry = useCallback(() => {
     setError(null);
+    cameraReports.current = createNativeCameraReports(() => viewportListener.current);
     setReloadKey((key) => key + 1);
   }, []);
+
+  // The reader moving the map folds the credit; the app moving it does not.
+  const foldOnReaderMove = (event: NativeSyntheticEvent<ViewStateChangeEvent>) => {
+    if (event.nativeEvent.userInteraction) noteCreditInteraction();
+  };
 
   // --- Render -------------------------------------------------------------
 
@@ -576,14 +577,15 @@ export const MapCanvas = forwardRef<MapApi, MapCanvasProps>(function MapCanvas(
         compass={gestures.rotate}
         compassPosition={{ top: 8, right: 8 }}
         onPress={handlePress}
-        onRegionIsChanging={(event) => emitViewport(event, false)}
+        onRegionWillChange={(event) => cameraReports.current?.regionWillChange(event.nativeEvent)}
+        onRegionIsChanging={(event) => {
+          foldOnReaderMove(event);
+          cameraReports.current?.regionIsChanging(event.nativeEvent);
+        }}
         onRegionDidChange={(event) => {
-          if (transientMove.current) {
-            // One frame of a flyover: in progress, not settled.
-            emitViewport(event, false);
-            return;
-          }
-          emitViewport(event, true);
+          foldOnReaderMove(event);
+          // `false`: one frame of a flyover — in progress, not settled.
+          if (!cameraReports.current?.regionDidChange(event.nativeEvent)) return;
           // The settled frame is also when the basemap's labels are worth
           // re-reading — see `reportLabels`.
           const [longitude, latitude] = event.nativeEvent.center;

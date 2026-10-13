@@ -358,26 +358,28 @@ describe('the build and the Worker agree about the fallback', () => {
 // The header that only a deploy could disprove
 // ---------------------------------------------------------------------------
 
-describe('the tile body reaches the browser as plain MVT', () => {
-  // The bug this guards is the one that made the map blank: stored tiles are
-  // gzip, and workerd drops a hand-set `content-encoding`, so forwarding them
-  // compressed delivers a `.pbf` MapLibre cannot parse. `encodeBody: 'manual'`
-  // was tried against the live edge and changed nothing.
+describe('a stored gzip tile reaches the browser as the archive stores it', () => {
+  // #68 forwarded the stored gzip with `content-encoding: gzip` and the map
+  // went blank; #69 concluded workerd drops a hand-set header and decoded
+  // every tile instead, sending 2–4× the bytes. What #68 lacked was control of
+  // the CACHE: it returned `cache.match`'s response, whose body the runtime
+  // then treats as decoded content. Measured on the real edge (a `wrangler dev
+  // --remote` probe, 2026-10-12): a body built with `encodeBody: 'manual'`
+  // arrives as the gzip bytes with `content-encoding: gzip`, also when rebuilt
+  // from an opaque cache entry.
   //
-  // A source assertion, because nothing available here reproduces it: this
-  // file's `Response` is Bun's, which keeps whatever header it is given, and
-  // `wrangler dev`'s local proxy re-compresses the body and sets the header
-  // itself. The first request that ever showed the bug was a browser.
-  it('decompresses before responding and declares no content-encoding', async () => {
-    const source = await readFile(new URL('../index.js', import.meta.url), 'utf8');
-    const serveTile = source.slice(source.indexOf('async function serveTile'));
-    const body = serveTile.slice(0, serveTile.indexOf('\n}\n'));
-
-    expect(body).toContain('await decompress(tile.bytes, tile.compression)');
-    // Declaring an encoding is the failure, not the fix.
-    expect(body).not.toContain("headers.set('content-encoding'");
-    // And the stored bytes must not be what goes out.
-    expect(body).not.toMatch(/new Response\(tile\.bytes/);
+  // A source assertion, because Bun's `Response` ignores `encodeBody`: the
+  // header is only ever set together with it, and a cache entry is never
+  // returned as the answer.
+  it('declares gzip only with encodeBody manual, and never answers with a cache entry', async () => {
+    const source = await readFile(new URL('../tiles.js', import.meta.url), 'utf8');
+    const respond = source.slice(source.indexOf('export async function tileResponse'));
+    const body = respond.slice(0, respond.indexOf('\n}\n'));
+    expect(body).toContain("out.set('content-encoding', 'gzip')");
+    expect(body).toContain("encodeBody: 'manual'");
+    const serve = source.slice(source.indexOf('export async function serveArchiveTile'));
+    expect(serve).not.toMatch(/return hit\b/);
+    expect(serve).toContain('fromTileCacheEntry(hit)');
   });
 });
 

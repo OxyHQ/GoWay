@@ -43,6 +43,7 @@ import {
 } from '../pmtiles.js';
 import * as workerModule from '../index.js';
 import { serveTerrain, serveTile } from '../index.js';
+import { forgetDirectories } from '../tiles.js';
 
 /**
  * The zoom `worker/index.js` stops at, copied rather than imported.
@@ -191,6 +192,9 @@ let caches;
 beforeEach(() => {
   caches = cacheStore();
   globalThis.caches = caches;
+  // Fixtures reuse archive keys for different bytes, which production never
+  // does (keys are immutable); the isolate's memo must not carry across.
+  forgetDirectories();
 });
 afterEach(() => {
   globalThis.caches = realCaches;

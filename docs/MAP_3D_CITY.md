@@ -190,7 +190,9 @@ tile the camera sees**, each at the level of detail its distance affords
   tile changing level is re-meshed from memory. Replies are handed to the GPU
   within a per-frame upload budget (12 MiB; one mesh only after a frame slower
   than 50 ms), nearest first, so three dense tiles landing together do not stall
-  one frame. Least-recently-used meshes are evicted past the cache budgets,
+  one frame. The street detail's tiles (and its glyph atlas) take what the
+  city's arrivals leave of the same budget (`overlay.ts` →
+  `FrameUploadBudget`), and wait a frame otherwise. Least-recently-used meshes are evicted past the cache budgets,
   never one that is wanted or still fading. Empty tiles are cached as empty;
   failed tiles retry with backoff (1, 2, 4, 8 s, then a 5-minute cooldown) even
   while the view stands still — `building-3d` is hidden, so nothing else would
@@ -245,7 +247,7 @@ a loaded 32-core machine and vary ±30% run to run; the sizes are exact.
 | GPU bytes drawn per frame | 128 MiB | `city.drawBytes` | Barcelona at 80°: 107 MiB; at 60°: 69 MiB (was 130) |
 | GPU bytes cached (drawn + slack + fallbacks) | 192 MiB, 160 entries | `city.cacheBytes`, `MAX_CACHED_TILES` | LRU, wanted and fading entries spared |
 | Tiles drawn | ≤ 48, ≤ 6 at full detail | `city.maxTiles`, `city.maxFullTiles` (`LOD_POLICY` holds the rest) | |
-| Upload per frame | 12 MiB (1 mesh after a > 50 ms frame) | `city.uploadBytesPerFrame` | |
+| Upload per frame | 12 MiB (1 mesh after a > 50 ms frame), shared with the street detail | `city.uploadBytesPerFrame` | |
 | Requests in flight | 2 per worker, ≤ 3 workers | `MAX_IN_FLIGHT_PER_WORKER`, `city.maxWorkers` | |
 | Worker time per tile | level 0 ≤ 200 ms, levels 1–2 ≤ 60 ms, trees ≤ 50 ms (Bun, dense tiles) | — | table above |
 | Trees | ≤ 24,000 per tile, ≤ 40,000 drawn per frame (nearest tiles first); ≤ 98 triangles near, ≤ 30 far (far past the full-detail distance, even on a level-0 tile); shorter than `treeMinHeightM(zoom)` not drawn | `TREES.maxPerTile`, `city.treeBudget`, `treeGeometry.ts`, `tsl/treeMaterial.ts` | Central Park: 18,233 trees, 1.28 M triangles; Barcelona at 80°: 20,523 |
@@ -477,7 +479,7 @@ Crown diameter is compiled but not yet used to size the canopy.
 
 The city engine and the SDK's coordinate-anchored models
 ([`SDK_MAP_MODELS.md`](./SDK_MAP_MODELS.md)) must be **one** custom layer, one
-`WebGLRenderer`, one scene and one camera. Two custom layers each wrapping
+renderer (since phase 2 of `MAP_NATIVE_3D.md`, three's `WebGPURenderer`), one scene and one camera. Two custom layers each wrapping
 their own three.js renderer around MapLibre's context double the state
 resets, cannot depth-sort against each other's transparency, and each re-solve
 the precision problem. The engine's per-tile placement
@@ -569,7 +571,7 @@ fabricated places on the public map; the same rule governs buildings:
 - Colour comes from the cartographic palette's height ramp (shared with
   `building-3d` via `buildingHeightRamp`). On the city tiles a tagged
   `building:colour`/`roof:colour` or `*:material` is drawn **tempered** into
-  that ramp (`osmShaders.ts`): desaturated and pulled most of the way to the
+  that ramp (`tsl/buildingSurface.ts`): desaturated and pulled most of the way to the
   ramp's lightness, so it is a hint (warm brick, cool glass, a tiled roof)
   rather than the patchwork `buildings3d.ts` refused raw `colour` for — the
   first untempered render of Lower Manhattan proved that point with a black
@@ -729,7 +731,7 @@ fallback.
 | Compiler internals | `scripts/citygen/` — `osmPbf.ts` (reader, relation roles included), `compile.ts` (passes, assembly, parts, tiling), `tags.ts` (+ `cssColours.ts`), `mvtEncode.ts`, `pmtilesWriter.ts` |
 | Client decode | `components/map/engine/city3d/osmTiles.ts` |
 | Client mesh | `osmMesher.ts`, `roofs.ts`, `facades.ts` |
-| Client material | `tsl/buildingMaterial.ts` (with the city sky: `osmShaders.ts` → `osmBase`, `skyShaders.ts`) |
+| Client material | `tsl/buildingSurface.ts` (the surface), `tsl/buildingMaterial.ts` (map-lit), `tsl/skyBuildingMaterial.ts` (under the city sky) |
 | Engine/worker seam | `protocol.ts` (`format`), `meshWorker.ts` (one branch, packed like the rest), `cityEngine.ts` (`tileFormat`, `maxTiles`), `cityMeshes.ts` + `packing.ts` (the two extra attributes) |
 | Flag | The registry's `cityTiles` (`lib/map/mapFeatures.ts`; offered in the settings modal only in a development build; `?cityTiles=1` in development; requires `city3d`) |
 | Adapter | `city3dLayer.web.ts` → `citySourceFor` |
@@ -948,7 +950,7 @@ against this branch (separate Metro caches, `--clear`):
 Nothing new reached first paint: the decision was then read only by the lazy
 adapter, which is why it was not in `lib/config.ts`. (It now lives in the
 map-feature registry, which is on first paint by design; see `MAP_FEATURES.md`.)
-`components/__tests__/engine3dChunk.test.ts` stays green (`osmShaders.ts` is
+`components/__tests__/engine3dChunk.test.ts` stays green (the TSL materials are
 imported only by the engine; the adapter imports `lib/map/cityTiles*` and the
 engine folder type-only).
 
@@ -1057,17 +1059,17 @@ material gets (one shared `{ value }` object, `cityEngine.ts` → `light`), or
 as `CityEngine.nightFactor` — that same live object, to hand to a material
 built elsewhere. Per-building inputs for night looks travel in one
 per-vertex byte, `OsmTileMesh.flags` (`osmMesher.ts`) → `PackedChunk.flags`
-(`packing.ts`) → the `flags` attribute; bit 0 is `VERTEX_FLAG_FLOODLIT`, and
+(`packing.ts`) → the normal's spare lane (`w`); bit 0 is `VERTEX_FLAG_FLOODLIT`, and
 a new bit is a new constant, never a new meaning for an old one.
 
 **City life and other overlays** (`overlay.ts`) get the sky two ways: through
 `setLight`, the sun's direction and the light on an up-facing surface, as the
 trees get it — so the simulated traffic darkens and cools at night with no
-change of its own — and, optionally, through `setSky`: the live uniforms
-(sun, sky, bounce, shadow map and matrix, night factor, camera, ground) and
-the GLSL that reads them (`SKY_OVERLAY_GLSL`: `sunVisibility`,
-`hazeTransmittance`, `skyColor`), for an overlay that wants the sun's shadows
-and the haze on its own objects. Only the buildings cast into the shadow map
+change of its own — and, optionally, through `setSky`: the sky's live TSL
+nodes (`tsl/skyNodes.ts`: the sun, sky, bounce, shadow matrix, night factor,
+camera and ground, and `sunVisibility`, `hazeTransmittance`, `skyColor`,
+`aerial`, `groundLight`), for an overlay that wants the sun's shadows and the
+haze on its own objects (the street detail does). Only the buildings cast into the shadow map
 (`SHADOW_CASTER_LAYER`); the instanced trees and the overlays do not.
 
 **The palette** (`atmosphere.ts`): a deep blue-violet sky (`#141658` overhead to
@@ -1168,7 +1170,7 @@ at that ray's hit.
   own colours, `1` at reference daylight, with a pure 2.2 gamma so "multiply
   the basemap's sRGB pixel" and "light the building's linear albedo" agree.
   Both tile formats (OpenMapTiles and GoWay city tiles, whose colour function
-  is shared: `OSM_BASE_GLSL`) and terrain grounding are supported.
+  is shared: `tsl/buildingSurface.ts`) and terrain grounding are supported.
 - **Shadows** (`shadows.ts`): one orthographic map over a square receiver box
   round the map centre — radius from the view, rounded up in √2 steps; centre
   snapped to an eighth of it; box turned to face the sun so a low sun gets *more*
@@ -1280,7 +1282,7 @@ two can be compared side by side at the same camera.
 | Feature entry | `lib/map/mapFeatures.ts` (`detailedCity`), labels in `mapFeatureLabels.ts` |
 | Palette: the 3D ground, the material (day, night) | `lib/map/style/palette3d.ts` |
 | The ground as paint overrides, generated | `lib/map/style/city3dGround.ts` → style `metadata['goway:city3d-ground']` (`scripts/build-map-style.ts`) |
-| Material response (the sky's `cityMaterial`) + uniforms + JS mirror | `components/map/engine/city3d/materials.ts`; the surface colour under `#ifdef GOWAY_DETAILED` in `osmShaders.ts` → `osmBase` |
+| Material response (the sky's `CityMaterialResponse`) and its surface tint | `components/map/engine/city3d/tsl/detailedMaterial.ts`; tables, values and the JS mirror in `materials.ts` |
 | Per-building seed | `osmMesher.ts` → `buildingSeed` (an untagged surface's unused rgb) |
 | Adapter half (material data, ground apply/undo) | `components/map/city3dStyle.ts`, wired in `city3dLayer.web.ts` (`detailed`) |
 | Tests | `lib/map/__tests__/palette3d.test.ts`, `components/map/__tests__/city3dMaterials.test.ts`, `city3dStyle.test.ts` |
@@ -1392,8 +1394,8 @@ colour  = albedo · tint · (sun · wrap · shadow + fill)
           + albedo · emitted  +  edge · chamfer(n.z) · fill       the 45° bevel catches light
 ```
 
-It is `DETAILED_SKY_MATERIAL_GLSL`, the `cityMaterial(CitySurface,
-CityLight)` the sky's shading path calls through `CityEngineOptions.sky.material`,
+It is `tsl/detailedMaterial.ts`, the `CityMaterialResponse` (`CitySurface`,
+`CitySkyLight`) the sky's shading path calls (`CityEngineOptions.sky.response`),
 in the sky's linear light, with its real sun, soft shadow, sky, bounce and
 emitted light; roll-off, gamma and haze stay the sky's. **There is no second
 path**: the detailed look is always drawn in the city sky's light, and the map
@@ -1411,9 +1413,10 @@ white lid on a grey box. Here no face is lit by the sun alone — a wall facing
 away keeps the whole sky fill — so the shaded side is ~20% under the lit one
 and cooler (blue sky, warm sun): clay, not cardboard.
 
-The surface colour is shared by both paths too: `osmBase` (`osmShaders.ts`)
-applies the tag clamp and the per-building tint under the define, and leaves
-the openings to the material.
+The surface colour is shared too: `tsl/buildingSurface.ts` (the ramp and the
+tempered tag), then the detailed look's tag clamp and per-building tint
+(`detailedMaterial.ts` → `surface`), which leaves the openings to the
+response.
 
 ### Night
 
@@ -1470,7 +1473,7 @@ stay plain walls: the relief shows on its neighbours that do (a 6th Avenue
 block), not on the complex `nav1` shows.
 
 **What is drawn** (per-class numbers in `FACADE_STYLES`, generated into the
-GLSL; era nudges them):
+shader's tables; era nudges them):
 
 | Element | How |
 | --- | --- |

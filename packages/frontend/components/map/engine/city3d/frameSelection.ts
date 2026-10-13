@@ -29,6 +29,19 @@ import type { TileId } from './tileMath';
  */
 export const SHADOW_CASTER_LAYER = 1;
 
+/**
+ * The city sky's ground passes (`tsl/skyPasses.ts`): in the engine's scene,
+ * drawn first in the same render as the buildings, and on their own layer so
+ * a frame with no city (zoomed out of its fade) can draw them alone.
+ */
+export const SKY_PASS_LAYER = 2;
+
+/**
+ * The material warm-up's meshes (`materialWarmup.ts`): in the engine's scene,
+ * drawn by no camera but the warm-up's.
+ */
+export const WARM_LAYER = 3;
+
 /** Who selects the tiles in a frame: the first pass of it. */
 export class FrameSchedule {
   private selectedThisFrame = false;

@@ -31,6 +31,7 @@
     "map:city-plan": "bun scripts/plan-city-regions.ts",
     "map:city-region": "bun scripts/build-city-region.ts",
     "map:city-manifest": "bun scripts/build-city-manifest.ts",
+    "check:worker-wire": "bun scripts/check-worker-wire.ts",
     "bench:map": "bun scripts/bench-map.ts",
     "check:city3d-visible": "bun scripts/check-city3d-visible.ts",
     "landmarks": "bun scripts/build-landmarks.ts",
@@ -112,6 +113,7 @@
     "eslint-plugin-react-hooks": "^7.1.1",
     "fontkit": "^2",
     "meshoptimizer": "1.1.1",
+    "miniflare": "5.20260926.1-alpha",
     "playwright-core": "1.61.1",
     "typescript": "^5.9.3"
   },

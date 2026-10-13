@@ -67,7 +67,14 @@ const ENGINES = [
   // (below); and the phase 1 tile view, reached by no app module (only
   // `scripts/` and the native harness).
   'components/map/engine/city3d/tsl/buildingMaterial.ts',
+  'components/map/engine/city3d/tsl/buildingSurface.ts',
   'components/map/engine/city3d/tsl/common.ts',
+  // The city sky's: its light, haze and shadow nodes, its ground passes, the
+  // sky-lit buildings and the detailed look's response.
+  'components/map/engine/city3d/tsl/skyNodes.ts',
+  'components/map/engine/city3d/tsl/skyPasses.ts',
+  'components/map/engine/city3d/tsl/skyBuildingMaterial.ts',
+  'components/map/engine/city3d/tsl/detailedMaterial.ts',
   'components/map/engine/city3d/tsl/treeMaterial.ts',
   'components/map/engine/city3d/tsl/tslPass.ts',
   'components/map/engine/city3d/tsl/cityTileView.ts',
@@ -77,6 +84,8 @@ const TSL = 'components/map/engine/city3d/tsl/';
 const TSL_REACHERS = [
   'components/map/engine/city3d/cityEngine.ts',
   'components/map/engine/city3d/cityMeshes.ts',
+  // The city sky (an engine part): its nodes, passes and the pass it draws with.
+  'components/map/engine/city3d/sky.ts',
   // The street detail's TSL materials (`docs/MAP_NATIVE_3D.md` → step 5).
   'components/map/engine/cityStreets/streetMaterials.ts',
   // City life's TSL materials.
@@ -90,6 +99,8 @@ const CHUNK = 'components/engine3d/lazyChunk.ts';
  */
 const ENGINE_PARTS: Record<string, string> = {
   'components/map/engine/city3d/sky.ts': 'components/map/engine/city3d/cityEngine.ts',
+  // The materials built ahead of the first tiles, over real tile entries.
+  'components/map/engine/city3d/materialWarmup.ts': 'components/map/engine/city3d/cityEngine.ts',
   // The street detail's TSL materials and ground atlas, parts of its renderer.
   'components/map/engine/cityStreets/streetMaterials.ts':
     'components/map/engine/cityStreets/streetRenderer.ts',
@@ -170,7 +181,11 @@ describe('the three.js chunk', () => {
     const importers = files
       .filter((f) => runtimeImports(f.text, /(^|\/)cityMeshes$/).length > 0)
       .map((f) => f.path);
-    expect(importers).toEqual(['components/map/engine/city3d/cityEngine.ts']);
+    expect(importers.sort()).toEqual([
+      'components/map/engine/city3d/cityEngine.ts',
+      // The material warm-up's tile entries: an engine part (below).
+      'components/map/engine/city3d/materialWarmup.ts',
+    ]);
   });
 
   test('the map-feature registry reads no build variable', () => {

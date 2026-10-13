@@ -8,6 +8,7 @@ import { describe, expect, test } from 'bun:test';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
+import { isGestureMove, PROGRAMMATIC } from '@/components/map/cameraReports.web';
 import {
   CREDIT_AUTO_COLLAPSE_MS,
   type CreditEvent,
@@ -116,7 +117,10 @@ describe('wired on every map', () => {
   test('the web fork folds only on a gesture (a move carrying its input event)', () => {
     const web = read('components/map/MapCanvas.web.tsx');
     expect(web).toContain('if (isGestureMove(event)) noteCreditInteraction();');
-    expect(web).toContain('?.originalEvent != null');
+    expect(isGestureMove({ originalEvent: new Event('pointermove') })).toBe(true);
+    // GoWay's own camera commands, and MapLibre's own moves (resize, padding).
+    expect(isGestureMove(PROGRAMMATIC)).toBe(false);
+    expect(isGestureMove({})).toBe(false);
   });
 
   test('the web fork hands the credit what the city layer says the simulation draws', () => {

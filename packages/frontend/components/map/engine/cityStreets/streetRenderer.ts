@@ -22,7 +22,7 @@ import { coverageCovers } from '../city3d/coverageIndex';
 import { type LodPolicy, metresPerPixel, selectLodTiles } from '../city3d/lod';
 import type { CityLight } from '../city3d/occlusion';
 import type { CityOverlay, CityOverlayFrame, CityOverlaySky } from '../city3d/overlay';
-import type { Ground } from '../city3d/terrainGround';
+import { type Ground, latticeCells, TERRAIN_LATTICE } from '../city3d/terrainGround';
 import {
   EARTH_CIRCUMFERENCE_M,
   tileKey,
@@ -43,7 +43,6 @@ import {
 } from './streetMaterials';
 import type { StreetMeshStats } from './streetMesher';
 import type { QualityProfile } from '@/lib/map/quality/profile';
-import { markingShaders, surfaceShaders } from './streetShaders';
 
 /** Streets are drawn from this zoom; they fade in over the next quarter zoom. */
 export const STREETS_MIN_ZOOM = 16;
@@ -61,7 +60,7 @@ export const STREET_BUDGET = {
   cachedPerDrawn: 2,
   /** Requests in flight. */
   maxInFlight: 3,
-  /** Ground grids sampled per frame (each ~1,000 terrain reads). */
+  /** Ground grids sampled per frame (each 4,356 terrain reads, ~2 ms, on GoWay's DEM). */
   groundsPerFrame: 2,
   /** Clip-space depth nudge per layer (×w). */
   depthBias: 2e-6,
@@ -102,12 +101,24 @@ export interface CityStreetsOptions {
    */
   onPaintedNames?: (points: readonly [number, number][]) => void;
   onStats?: (stats: CityStreetsStats) => void;
+  /** The clock (ms) for retries and the statistics' interval; absent: `performance.now`. */
+  now?: () => number;
 }
 
 export interface CityStreetsStats {
+  /** Tiles this view selects (inside the road coverage). */
+  tilesWanted: number;
+  /**
+   * …of which answered: meshed (`ready`) or known to hold no street
+   * (`empty`). With `pending` 0, `tilesSettled === tilesWanted` is "every tile
+   * the view wants is in" — the streets are SETTLED. A failed tile waiting
+   * for its retry is not settled.
+   */
+  tilesSettled: number;
   tilesDrawn: number;
   tilesFull: number;
   tilesCached: number;
+  /** Tiles being meshed, and meshed tiles held for a frame's upload budget. */
   pending: number;
   triangles: number;
   drawCalls: number;
@@ -136,8 +147,10 @@ interface Entry {
   paintedNames: [number, number][];
   /** Its slot in the ground atlas while it holds one. */
   slot: number | null;
+  /** Its meshes have gone to the GPU (within a frame's `upload` budget). */
+  uploaded: boolean;
   groundVersion: number;
-  /** Its tile as the materials read it: GLSL uniforms, and (TSL) the mesh's `userData`. */
+  /** Its tile's live values, which the shared materials read through the mesh's `userData`. */
   uniforms: {
     uGroundSlot: { value: number };
     uGrounded: { value: number };
@@ -169,11 +182,8 @@ const vec3s = (list: readonly (readonly [number, number, number])[]) =>
   list.map(([r, g, b]) => new THREE.Vector3(r, g, b));
 
 export function createCityStreets(options: CityStreetsOptions): CityOverlay {
-  // Under the city sky the streets are GLSL and drawn in the engine's scene;
-  // without it, TSL in its TSL pass (`docs/MAP_NATIVE_3D.md` → Phase 2).
-  const group = new THREE.Group();
-  group.matrixAutoUpdate = false;
-  group.matrixWorldAutoUpdate = false;
+  // Drawn by the engine's one renderer (`tsl/tslPass.ts`), lit by the city
+  // sky when there is one (`setSky`).
   const tslGroup = new THREE.Group();
   tslGroup.matrixAutoUpdate = false;
   tslGroup.matrixWorldAutoUpdate = false;
@@ -181,9 +191,16 @@ export function createCityStreets(options: CityStreetsOptions): CityOverlay {
   // tiles (`streets.maxTiles`) times what is kept per drawn tile, and the
   // drawn ones again for the moment a cache overflows before it evicts.
   const maxCached = Math.max(4, options.quality.maxTiles * STREET_BUDGET.cachedPerDrawn);
-  const groundAtlas = createGroundAtlas(maxCached + options.quality.maxTiles);
+  const groundSlots = maxCached + options.quality.maxTiles;
+  // The terrain's lattice over a street tile: the DEM pixels across it. The
+  // meshes are cut along it (`groundLattice.ts`) and the atlas holds a grid
+  // of it per slot; GoWay's DEM until a terrain says otherwise.
+  let groundCells = latticeCells({ z: 15 }, TERRAIN_LATTICE);
+  let groundAtlas = createGroundAtlas(groundSlots, groundCells + 2);
 
   const atlasBytes = new Uint8Array(ATLAS_SIZE * ATLAS_SIZE);
+  /** Glyph patches arrived that the GPU's copy of the atlas lacks. */
+  let atlasDirty = false;
   const atlas = new THREE.DataTexture(
     atlasBytes,
     ATLAS_SIZE,
@@ -201,28 +218,19 @@ export function createCityStreets(options: CityStreetsOptions): CityOverlay {
     uNightFactor: { value: 0 },
     uFade: { value: 1 },
     uPxPerM: { value: 1 },
-    uDepthBias: { value: STREET_BUDGET.depthBias },
-    uAtlas: { value: atlas as THREE.Texture },
-    uGroundAtlas: { value: groundAtlas.texture as THREE.Texture },
     uSurfaceDay: { value: vec3s(options.palette.surfaces.day) },
     uSurfaceNight: { value: vec3s(options.palette.surfaces.night) },
     uPaintDay: { value: vec3s(options.palette.paint.day) },
     uPaintNight: { value: vec3s(options.palette.paint.night) },
   };
+  // The city sky's light inputs (`setSky`), before the first material is built.
   let sky: CityOverlaySky | null = null;
-  let shaders: {
-    surfaces: ReturnType<typeof surfaceShaders>;
-    markings: ReturnType<typeof markingShaders>;
-  } | null = null;
-  const shadersNow = (withSky: CityOverlaySky) => {
-    shaders ??= { surfaces: surfaceShaders(withSky), markings: markingShaders(withSky) };
-    return shaders;
-  };
   // One material per kind for every tile, built on first use.
   let materials: StreetMaterials | null = null;
   const materialsNow = () => {
     materials ??= createStreetMaterials({
       groundAtlas: groundAtlas.texture,
+      groundCells,
       sdfAtlas: atlas,
       surfaceDay: shared.uSurfaceDay.value,
       surfaceNight: shared.uSurfaceNight.value,
@@ -232,10 +240,12 @@ export function createCityStreets(options: CityStreetsOptions): CityOverlay {
       fade: () => shared.uFade.value,
       pxPerM: () => shared.uPxPerM.value,
       depthBias: STREET_BUDGET.depthBias,
+      sky,
     });
     return materials;
   };
 
+  const clock = options.now ?? (() => performance.now());
   let namedKey = '';
   const entries = new Map<string, Entry>();
   const byId = new Map<number, Entry>();
@@ -263,9 +273,8 @@ export function createCityStreets(options: CityStreetsOptions): CityOverlay {
     for (const mesh of [entry.surfaces, entry.markings]) {
       if (!mesh) continue;
       mesh.removeFromParent();
+      // The materials are shared by every tile (`streetMaterials.ts`).
       mesh.geometry.dispose();
-      // The GLSL materials are the mesh's own; the TSL ones are shared.
-      if (mesh.material instanceof THREE.RawShaderMaterial) mesh.material.dispose();
     }
     entry.surfaces = null;
     entry.markings = null;
@@ -288,25 +297,9 @@ export function createCityStreets(options: CityStreetsOptions): CityOverlay {
       geometry.setAttribute('uv', new THREE.BufferAttribute(data.uvs, 2));
     }
     geometry.setIndex(new THREE.BufferAttribute(data.indices, 1));
-    const material = sky
-      ? new THREE.RawShaderMaterial({
-          glslVersion: THREE.GLSL3,
-          ...shadersNow(sky)[kind],
-          uniforms: { ...sky.uniforms, ...shared, ...entry.uniforms },
-          side: THREE.DoubleSide,
-          ...(kind === 'markings'
-            ? {
-                transparent: true,
-                depthWrite: false,
-                blending: THREE.CustomBlending,
-                blendSrc: THREE.OneFactor,
-                blendDst: THREE.OneMinusSrcAlphaFactor,
-              }
-            : {}),
-        })
-      : materialsNow()[kind];
+    const material = materialsNow()[kind];
     const mesh = new THREE.Mesh(geometry, material);
-    if (!sky) mesh.userData[STREET_TILE_USERDATA_KEY] = streetTileOf(entry.uniforms);
+    mesh.userData[STREET_TILE_USERDATA_KEY] = streetTileOf(entry.uniforms);
     mesh.frustumCulled = false;
     mesh.matrixAutoUpdate = false;
     mesh.matrixWorldAutoUpdate = false;
@@ -314,7 +307,7 @@ export function createCityStreets(options: CityStreetsOptions): CityOverlay {
     // markings first among the blended (before city life's contact shadows).
     mesh.renderOrder = kind === 'surfaces' ? -3 : -2;
     mesh.visible = false;
-    (sky ? group : tslGroup).add(mesh);
+    tslGroup.add(mesh);
     return mesh;
   };
 
@@ -326,7 +319,7 @@ export function createCityStreets(options: CityStreetsOptions): CityOverlay {
     if (reply.type === 'error') {
       errors++;
       entry.state = 'failed';
-      entry.retryAt = performance.now() + 4000;
+      entry.retryAt = clock() + 4000;
       return;
     }
     if (reply.epoch !== atlasEpoch) {
@@ -349,7 +342,9 @@ export function createCityStreets(options: CityStreetsOptions): CityOverlay {
         );
       }
     }
-    if (reply.patches.length > 0) atlas.needsUpdate = true;
+    // Uploaded with the first tile that goes up after it (`update`): only
+    // tiles meshed from now on read the new glyphs.
+    if (reply.patches.length > 0) atlasDirty = true;
     lastMeshMs = reply.meshMs;
     if (reply.stats) {
       meshMsSum += reply.meshMs;
@@ -360,6 +355,7 @@ export function createCityStreets(options: CityStreetsOptions): CityOverlay {
     if (!reply.surfaces && !reply.markings) {
       entry.state = 'empty';
     } else {
+      entry.uploaded = false;
       if (reply.surfaces) {
         entry.surfaces = meshFor(entry, reply.surfaces, 'surfaces');
         entry.simpleSurfaces = reply.surfaces.simpleCount;
@@ -387,6 +383,8 @@ export function createCityStreets(options: CityStreetsOptions): CityOverlay {
         template: options.roadTileTemplate,
         glyphs: options.glyphTemplate,
         fontstack: options.fontstack,
+        groundCells,
+        groundSubdivision: options.quality.groundSubdivision,
       },
       entry.key,
     );
@@ -408,14 +406,14 @@ export function createCityStreets(options: CityStreetsOptions): CityOverlay {
 
   let stats: CityStreetsStats | null = null;
   let lastStatsAt = 0;
+  let lastSignature = '';
 
   const overlay: CityOverlay = {
-    attach(scene, tslScene) {
-      scene.add(group);
-      tslScene.add(tslGroup);
+    attach(scene) {
+      scene.add(tslGroup);
     },
 
-    update({ view, center, opacity }: CityOverlayFrame) {
+    update({ view, center, opacity, upload }: CityOverlayFrame) {
       if (disposed) return;
       frameNo++;
       for (const entry of entries.values()) {
@@ -434,7 +432,7 @@ export function createCityStreets(options: CityStreetsOptions): CityOverlay {
 
       const selected = select(view);
       const wanted = new Set(selected.map((t) => tileKey(t)));
-      const now = performance.now();
+      const now = clock();
       // Ask for what is missing, nearest first, within the in-flight budget.
       let inFlight = byId.size;
       for (const tile of selected) {
@@ -454,6 +452,7 @@ export function createCityStreets(options: CityStreetsOptions): CityOverlay {
             stats: null,
             paintedNames: [],
             slot: null,
+            uploaded: false,
             groundVersion: -1,
             uniforms: {
               uGroundSlot: { value: 0 },
@@ -493,6 +492,8 @@ export function createCityStreets(options: CityStreetsOptions): CityOverlay {
       let drawCalls = 0;
       let tilesDrawn = 0;
       let tilesFull = 0;
+      /** Tiles meshed and wanted, held for a later frame's upload budget. */
+      let held = 0;
       const named: Entry[] = [];
       for (const tile of selected) {
         const entry = entries.get(tileKey(tile));
@@ -529,6 +530,28 @@ export function createCityStreets(options: CityStreetsOptions): CityOverlay {
           0,
           Math.min(1, (effective - (FULL_DETAIL_ZOOM - 0.1)) / 0.3),
         );
+        if (!entry.uploaded) {
+          // Its first draw hands its meshes (and any new glyphs) to the GPU:
+          // within what the frame's budget has left (`overlay.ts`).
+          let bytes = atlasDirty ? atlasBytes.byteLength : 0;
+          for (const mesh of [entry.surfaces, entry.markings]) {
+            if (!mesh) continue;
+            const geometry = mesh.geometry;
+            for (const attribute of Object.values(geometry.attributes))
+              bytes += (attribute as THREE.BufferAttribute).array.byteLength;
+            bytes += geometry.index?.array.byteLength ?? 0;
+          }
+          if (!upload.take(bytes)) {
+            held++;
+            options.requestRepaint();
+            continue;
+          }
+          entry.uploaded = true;
+          if (atlasDirty) {
+            atlas.needsUpdate = true;
+            atlasDirty = false;
+          }
+        }
         const matrix = tileModelMatrix(tile, center);
         tilesDrawn++;
         if (full) tilesFull++;
@@ -563,13 +586,28 @@ export function createCityStreets(options: CityStreetsOptions): CityOverlay {
         (ratio * 512 * 2 ** view.zoom) /
         (EARTH_CIRCUMFERENCE_M * Math.cos((view.center.lat * Math.PI) / 180));
 
-      if (options.onStats && now - lastStatsAt > 500) {
+      // Counts that changed are reported AT ONCE; timings at most twice a
+      // second. Throttling the counts too left the last report stale for
+      // good: the frame that drew the last tiles fell inside the 500 ms, and
+      // a map at rest draws no frame after it, so `pending` read 2 forever
+      // while both tiles were on the screen (the visibility gate's landmark
+      // views never settled). The city engine's `reportStats` works the same way.
+      let tilesSettled = 0;
+      for (const tile of selected) {
+        const state = entries.get(tileKey(tile))?.state;
+        if (state === 'ready' || state === 'empty') tilesSettled++;
+      }
+      const signature = `${selected.length}|${tilesSettled}|${tilesDrawn}|${tilesFull}|${entries.size}|${byId.size}|${held}|${errors}`;
+      if (options.onStats && statsDue(signature, lastSignature, now, lastStatsAt)) {
         lastStatsAt = now;
+        lastSignature = signature;
         stats = {
+          tilesWanted: selected.length,
+          tilesSettled,
           tilesDrawn,
           tilesFull,
           tilesCached: entries.size,
-          pending: byId.size,
+          pending: byId.size + held,
           triangles,
           drawCalls,
           lastMeshMs,
@@ -588,15 +626,29 @@ export function createCityStreets(options: CityStreetsOptions): CityOverlay {
     setGround(next) {
       ground = next;
       groundVersion++;
+      const cells = next ? latticeCells({ z: 15 }, next.lattice) : groundCells;
+      if (cells !== groundCells) {
+        // A terrain on another DEM (never GoWay's own): every mesh was cut
+        // for the old lattice and every slot is the old size. Start over.
+        for (const entry of entries.values()) {
+          if (entry.state === 'pending') pool.cancel(entry.id, { type: 'cancel', id: entry.id });
+          disposeMeshes(entry);
+        }
+        entries.clear();
+        byId.clear();
+        materials?.dispose();
+        materials = null;
+        groundAtlas.dispose();
+        groundCells = cells;
+        groundAtlas = createGroundAtlas(groundSlots, groundCells + 2);
+      }
       options.requestRepaint();
     },
 
     setSky(next) {
+      // Set once, before the first frame builds the materials; the sky's
+      // night factor is then the one the streets read, as every city material.
       sky = next;
-      shaders = null;
-      // The sky's night factor is the one every city material reads.
-      const night = next.uniforms.uNightFactor as { value: number } | undefined;
-      if (night) shared.uNightFactor = night;
     },
 
     setNightFactor(nightFactor) {
@@ -613,7 +665,6 @@ export function createCityStreets(options: CityStreetsOptions): CityOverlay {
       materials?.dispose();
       atlas.dispose();
       groundAtlas.dispose();
-      group.removeFromParent();
       tslGroup.removeFromParent();
     },
   };
@@ -661,4 +712,20 @@ export function streetLodPolicy(lat: number, maxTiles: number): LodPolicy {
     hysteresis: 0.1,
     boxHeightM: 20,
   };
+}
+
+/** Timings are refreshed at most this often; counts whenever they change. */
+export const STREET_STATS_INTERVAL_MS = 500;
+
+/**
+ * Whether a frame's statistics are reported: always when any count changed
+ * (`signature`), else once the interval has passed (the timings).
+ */
+export function statsDue(
+  signature: string,
+  lastSignature: string,
+  now: number,
+  lastAt: number,
+): boolean {
+  return signature !== lastSignature || now - lastAt > STREET_STATS_INTERVAL_MS;
 }

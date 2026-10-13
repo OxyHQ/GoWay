@@ -28,6 +28,7 @@ bun run worker:doctor                    # GPU, toolchain, models, disk, AWS acc
 bun run worker:doctor -- ARGS=--smoke    # plus a GPU train/encode/render smoke test
 bun run worker:run                       # consume jobs until drained
 bun run worker:run -- ARGS="--max-jobs 10 --max-hours 4"
+bun run worker:bench -- SCENE=<dir>     # solve one scene with each feature set (SIFT, ALIKED, RaCo)
 make -C packages/reconstruction-worker status   # queue, ledger, cache, scratch
 make -C packages/reconstruction-worker drain    # finish the current job, then stop
 make -C packages/reconstruction-worker test
@@ -98,6 +99,7 @@ separately, and every weight file is pinned by SHA-256.
 
 ## Boundary
 
-This package is **internal**. COLMAP, gsplat, the detectors and the SPZ encoder
-are replaceable implementation details, never public GoWay contracts. What
-consumers see is the backend's published scene manifest in `@goway.to/sdk`.
+This package is **internal**. COLMAP, the feature sets, gsplat, the detectors and
+the SPZ encoder are replaceable implementation details, never public GoWay
+contracts. What consumers see is the backend's published scene manifest in
+`@goway.to/sdk`.

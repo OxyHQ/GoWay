@@ -580,6 +580,19 @@ export async function attachCity3d(
   const drawnLandmarks = new Set<string>();
   const failedLandmarks = new Set<string>();
   let allLandmarks: readonly PreparedLandmark[] = [];
+  let landmarksLoaded = false;
+  // Development only: what the landmarks are doing, for a headless check
+  // (the visibility gate waits for its landmark to be drawn or failed).
+  const reportLandmarks = () => {
+    if (!__DEV__) return;
+    publishLandmarkStats({
+      loaded: landmarksLoaded,
+      offered: landmarkList.map(({ entry }) => entry.id),
+      held: [...heldLandmarks],
+      drawn: [...drawnLandmarks],
+      failed: [...failedLandmarks],
+    });
+  };
   /** Recompute what can be drawn, and tell the tour. */
   const reofferLandmarks = () => {
     landmarkList = drawableLandmarks(allLandmarks, coverage, failedLandmarks, coverageCovers);
@@ -595,7 +608,9 @@ export async function attachCity3d(
         allLandmarks = await module.loadLandmarks(origin);
         if (detached) return;
         landmarkModule = module;
+        landmarksLoaded = true;
         reofferLandmarks();
+        reportLandmarks();
         map.triggerRepaint();
       })
       .catch((cause: unknown) =>
@@ -616,6 +631,7 @@ export async function attachCity3d(
     if (same) return;
     heldLandmarks.clear();
     for (const l of next) heldLandmarks.add(l.entry.id);
+    reportLandmarks();
     engine.setLandmarks(
       next.map(
         (l): LandmarkSpec => ({
@@ -637,6 +653,7 @@ export async function attachCity3d(
   const onLandmarkStatus = (id: string, status: ModelStatus) => {
     if (status === 'drawn') drawnLandmarks.add(id);
     else drawnLandmarks.delete(id);
+    reportLandmarks();
     if (landmarkModule) {
       options.onLandmarkCredits?.(landmarkModule.landmarkCredits(landmarkList, drawnLandmarks));
     }
@@ -784,6 +801,7 @@ export async function attachCity3d(
         // A model that cannot load is never drawn: neither held nor offered.
         failedLandmarks.add(id);
         reofferLandmarks();
+        reportLandmarks();
         // The next frame hands the engine the list without it.
         map.triggerRepaint();
       },
@@ -1099,6 +1117,23 @@ export function absoluteGlyphs(glyphs: string | undefined, origin: string): stri
   if (!glyphs) return null;
   if (/^https?:\/\//.test(glyphs)) return glyphs;
   return glyphs.startsWith('/') ? `${origin}${glyphs}` : null;
+}
+
+/** What the landmarks are doing, on `globalThis.__gowayLandmarks` (development only). */
+export interface LandmarkStats {
+  /** The registry has been read. */
+  loaded: boolean;
+  /** Ids the map can draw (in coverage, not failed). */
+  offered: string[];
+  /** Ids handed to the engine for this view. */
+  held: string[];
+  drawn: string[];
+  /** Ids whose model could not load: their buildings stay. */
+  failed: string[];
+}
+
+function publishLandmarkStats(stats: LandmarkStats): void {
+  (globalThis as { __gowayLandmarks?: LandmarkStats }).__gowayLandmarks = stats;
 }
 
 /** Development only: the street renderer's numbers on `globalThis.__gowayCityStreets`. */

@@ -104,7 +104,7 @@ export interface ShadowFrame {
  * How large a receiver box the view needs: the distance from the map centre
  * to its farthest visible corner, clamped to {@link SHADOW_RADIUS_RANGE_M}.
  * Under a steep pitch the bounds run to the horizon and this is the clamp;
- * shadows fade out at the box's edge (`skyShaders.ts`).
+ * shadows fade out at the box's edge (`tsl/skyNodes.ts` → `sunVisibility`).
  */
 export function shadowRadiusForView(
   bounds: LngLatBox,

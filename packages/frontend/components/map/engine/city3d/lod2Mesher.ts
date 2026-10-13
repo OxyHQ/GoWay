@@ -6,7 +6,7 @@
  * The sibling of `osmMesher.ts` for the `building_lod2` layer
  * (`lib/map/cityOfficial.ts`), writing the SAME vertex layout into the same
  * {@link Builder}, so the two meshes concatenate into one draw with one
- * material (`tsl/buildingMaterial.ts`; with the sky, `osmShaders.ts`) and the
+ * material (`tsl/buildingMaterial.ts`; with the sky, `tsl/skyBuildingMaterial.ts`) and the
  * engine needs no second material.
  *
  * ## A building as columns
@@ -32,7 +32,7 @@
  * The compiler keeps the OSM building the model building matched best
  * (`osm_id`). Where that OSM feature is in the same tile, its RECORDED facts
  * dress the model's shape exactly as they would dress its own: tagged
- * colours and materials (tempered by the material, `TAG_TEMPER` in `osmShaders.ts`) and the
+ * colours and materials (tempered by the material, `TAG_TEMPER` in `tsl/buildingSurface.ts`) and the
  * storey rhythm where `building:levels` is recorded and fits the height
  * (`facadeFor`) — on outline walls only, never on a step above a neighbour
  * (a blind party wall). Without it the first Midtown render turned every

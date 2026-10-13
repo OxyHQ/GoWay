@@ -8,7 +8,7 @@
  * The buildings are opaque and write depth. Fading them with alpha would need
  * sorting and would show the inside of every building half way through. So a
  * fade is a SCREEN-DOOR: each pixel compares a fixed noise value in `[0, 1)`
- * (`DITHER_GLSL`, interleaved gradient noise on the fragment's screen
+ * (`tsl/common.ts` → `dithered`, interleaved gradient noise on the fragment's screen
  * position) with the fade's progress `f`. The incoming mesh keeps the pixels
  * where `noise < f`; the outgoing one keeps exactly the others. The two are
  * complementary at every pixel and every moment, so a level swap never shows
@@ -176,32 +176,3 @@ export class Transitions<T> {
     this.slots.clear();
   }
 }
-
-/**
- * The screen-door test, as GLSL: a mesh keeps the pixels whose noise lies in
- * `[uFadeFrom, uFadeTo)` ({@link FadeDraw}). Interleaved gradient noise (Jimenez 2014) has no visible
- * grid at any fade and costs four multiplies.
- *
- * Compiled in only under `#define DITHER`, which the engine sets on a tile's
- * materials for the 280 ms it is fading and clears after (`setEntryFade`). A
- * fragment shader that MAY `discard` loses the GPU's early depth test — every
- * covered pixel of every building is then shaded even where a nearer one
- * hides it, and tile-based mobile GPUs pay more still — so a settled city must
- * not carry it.
- */
-export const DITHER_GLSL = `
-#ifdef DITHER
-uniform float uFadeFrom;
-uniform float uFadeTo;
-
-bool ditherDiscard() {
-  float noise = fract(52.9829189 * fract(dot(gl_FragCoord.xy, vec2(0.06711056, 0.00583715))));
-  return noise < uFadeFrom || noise >= uFadeTo;
-}
-#endif
-`;
-
-/** The fragment shader's first statement: drop the pixels a fade does not keep. */
-export const DITHER_DISCARD_GLSL = `#ifdef DITHER
-  if (ditherDiscard()) discard;
-#endif`;

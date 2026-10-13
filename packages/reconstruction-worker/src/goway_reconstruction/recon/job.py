@@ -60,7 +60,7 @@ from ..contract import (
 from ..storage import ContentCache
 from . import spz
 from ..privacy.panorama import HORIZON_ONLY_PIPELINES
-from .sfm import RigView, SfmError, SfmFrame, enu_to_geodetic, frame_image_name, geodetic_to_enu, georeference, solve
+from .sfm import FEATURES, RigView, SfmError, SfmFrame, enu_to_geodetic, frame_image_name, geodetic_to_enu, georeference, solve, write_frames
 from .train import Trainer, View, load_views, train_scene
 
 log = logging.getLogger("goway.worker")
@@ -217,6 +217,7 @@ def run(
             raise JobFailure("corrupt_input", "a derivative is missing or altered") from error
         frames.append(sfm_frame(f, name, rig, anchor))
         by_id[f.frameId] = f
+    write_frames(frames, work / "frames.json")
 
     resume = work / "resume"
     marker = resume / "manifest.sha256"
@@ -231,7 +232,7 @@ def run(
         ctx.enter("matching")
         try:
             ctx.enter("solving")
-            solved = solve(frames, images, masks, work / "sfm")
+            solved = solve(frames, images, masks, work / "sfm", models_dir=models_dir, device=device)
         except SfmError as error:
             raise JobFailure(error.code, error.detail) from error
         registered = len(solved.registered)
@@ -463,7 +464,7 @@ def _dense_init(
 def _components(dense: str | None = None) -> dict[str, str]:
     import gsplat
 
-    components = {"sfm": f"pycolmap {pycolmap.__version__}", "trainer": f"gsplat {gsplat.__version__}", "torch": torch.__version__}
+    components = {"sfm": f"pycolmap {pycolmap.__version__}", "features": FEATURES, "trainer": f"gsplat {gsplat.__version__}", "torch": torch.__version__}
     if dense:
         components["denseInit"] = dense
     return components

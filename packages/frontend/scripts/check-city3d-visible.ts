@@ -34,7 +34,8 @@
  *    glyphs and sprite (`public/map`). Every other request is refused.
  *  - **Quality**: the high preset (`?quality=high`). SwiftShader alone would
  *    resolve to low, which draws no 3D terrain: nothing would be grounded.
- *  - **Clock**: local noon (the sky's light, the crowns' green).
+ *  - **Clock**: local noon (the sky's light, the crowns' green); the night
+ *    view at half past midnight.
  *  - **Camera**: opened flat at z19 over the city, then tilted to 60° in six
  *    eased 10° steps to ABSOLUTE pitches, each waited out: the keyboard's
  *    relative steps land short when frames are slower than the ease.
@@ -50,11 +51,24 @@
  *    with the 3D city off.
  *  - **Streets**: the street detail drew the fixture's road tiles (`roadTile`),
  *    and over a junction turning it on changes at least 3% of the view.
+ *  - **Streets on a sloped, creased ground** (the `nosky` leg): the same
+ *    junction on a terrain with swells and metre-scale folds a few DEM pixels
+ *    across ({@link creasedMetres}), served at every zoom from one surface as
+ *    Mapterhorn's tiles are. Turning the street detail on must change at least
+ *    {@link CREASED_MIN_SHARE} of what it changes on flat ground: where the
+ *    drawn terrain rose through the street meshes (the Mallorca–Marina
+ *    report), the street was hidden under it and changed nothing there.
  *  - **Models** (the `objects` leg, sky off): the Sagrada Família, a landmark
  *    of the registry, changes at least 1% of the map against landmarks off.
  *  - **City life** (the `objects` leg, sky off, low preset): its simulated
  *    traffic on the fixture's streets changes at least 0.05% of the view from
  *    z17.5 over a junction (measured 0.10–0.13%; not drawn, 0%).
+ *  - **No speckle at night** (the `sky` leg, or `--skies=night` alone): the
+ *    city sky at night over OSM city-tile walls, where under
+ *    {@link NIGHT_MAX_SPECKLE_PCT}% of the map may be a pixel standing out
+ *    from all four neighbours ({@link speckle}). Born of #188: the building
+ *    flags reached the fragment interpolated, and the floodlight's
+ *    `mod(flags, 2)` lit every wall on half its pixels.
  *  - **A pan holds still** (the `sky` leg: its sun shadows): dragged north in
  *    steps from straight above, each frame is the one before moved by the
  *    drag — under {@link PAN_MAX_CHANGED_PCT} of the map differs once
@@ -71,6 +85,7 @@ import { extname, join, resolve } from 'node:path';
 import { type Browser, chromium, type Page, type Route } from 'playwright-core';
 
 import { CITY_COVERAGE_PATH } from '../lib/map/cityTiles';
+import { type PublishedStats, type SettledWants, unsettled } from './city3dSettled';
 import {
   cityTile,
   openMapTilesTile,
@@ -95,6 +110,8 @@ const TERRAIN_M = 50;
 /** The camera's pitch once tilted, degrees. */
 const TILT = 60;
 const NOON = new Date('2026-06-21T12:00:00+02:00');
+/** The night view's clock: the sun far below the horizon, the windows and floodlights on. */
+const MIDNIGHT = new Date('2026-06-21T00:30:00+02:00');
 /**
  * Moving things off, as stored choices: they differ between page loads. And
  * street detail, on by default since the 3D city is: the fixture has no road
@@ -152,6 +169,11 @@ function terrariumTile(metres: number, size = 512): Uint8Array {
   for (let y = 0; y < size; y++) {
     for (let x = 0; x < size; x++) raw.set(rgb, y * (size * 3 + 1) + 1 + x * 3);
   }
+  return png24(raw, size);
+}
+
+/** An RGB PNG from filtered scanlines (a 0 filter byte, then `size` RGB triples, per row). */
+function png24(raw: Uint8Array, size: number): Uint8Array {
   const header = new Uint8Array(13);
   const view = new DataView(header.buffer);
   view.setUint32(0, size);
@@ -172,6 +194,49 @@ function terrariumTile(metres: number, size = 512): Uint8Array {
   return out;
 }
 const TERRAIN_PNG = terrariumTile(TERRAIN_M);
+
+/**
+ * The creased ground, metres at a mercator point: TERRAIN_M with 3 m swells
+ * ~250 m across and 0.5 m folds ~120 m across (four to nine DEM pixels at
+ * z12) — bare-earth-like relief whose creases a coarser copy of the surface
+ * misses (`city3dStreetLattice.test.ts` uses the same folds).
+ */
+function creasedMetres(mx: number, my: number): number {
+  const metresPerUnit = 40_075_016.7 * Math.cos((SYNTHETIC_CENTRE.lat * Math.PI) / 180);
+  const m = (mx - (SYNTHETIC_CENTRE.lng + 180) / 360) * metresPerUnit;
+  const n = my * metresPerUnit;
+  return (
+    TERRAIN_M +
+    3 * Math.sin(m / 45) * Math.cos(n / 38) +
+    0.5 * Math.sin(m / 22 + 1) * Math.sin(n / 18)
+  );
+}
+
+/** A Terrarium PNG of {@link creasedMetres} for one DEM tile, its pixels at their centres. */
+const creasedTiles = new Map<string, Uint8Array>();
+function creasedTile(z: number, x: number, y: number, size = 512): Uint8Array {
+  const key = `${z}/${x}/${y}`;
+  const known = creasedTiles.get(key);
+  if (known) return known;
+  const raw = new Uint8Array(size * (size * 3 + 1));
+  for (let j = 0; j < size; j++) {
+    const my = (y + (j + 0.5) / size) / 2 ** z;
+    for (let i = 0; i < size; i++) {
+      const v =
+        Math.round((creasedMetres((x + (i + 0.5) / size) / 2 ** z, my) + 32768) * 256) / 256;
+      raw.set(
+        [Math.floor(v / 256), Math.floor(v) % 256, Math.round((v % 1) * 256)],
+        j * (size * 3 + 1) + 1 + i * 3,
+      );
+    }
+  }
+  const png = png24(raw, size);
+  creasedTiles.set(key, png);
+  return png;
+}
+
+/** How much of the flat ground's street change the creased ground must keep. */
+const CREASED_MIN_SHARE = 0.85;
 
 // --- The app: a dev server, or an `expo export --dev` output served here ----
 
@@ -260,6 +325,7 @@ async function answer(
   origin: string,
   basemap: 'buildings' | 'empty',
   terrain: Promise<void>,
+  relief: 'flat' | 'creased' = 'flat',
 ): Promise<void> {
   const url = new URL(route.request().url());
   const path = url.pathname;
@@ -277,7 +343,12 @@ async function answer(
   }
   if (path.includes('/map/terrain/')) {
     await terrain;
-    await route.fulfill({ status: 200, contentType: 'image/png', body: Buffer.from(TERRAIN_PNG) });
+    const at = /\/(\d+)\/(\d+)\/(\d+)\.\w+$/.exec(path);
+    const body =
+      relief === 'creased' && at
+        ? creasedTile(Number(at[1]), Number(at[2]), Number(at[3]))
+        : TERRAIN_PNG;
+    await route.fulfill({ status: 200, contentType: 'image/png', body: Buffer.from(body) });
     return;
   }
   for (const prefix of ['/map/fonts/', '/map/sprites/']) {
@@ -299,6 +370,10 @@ async function answer(
 
 interface View {
   png: Buffer;
+  /** Whether the view settled before the screenshot (a city view that did not is a failure). */
+  settled: boolean;
+  /** The expected landmark's model failed to load. */
+  landmarkFailed: boolean;
   trees: number;
   triangles: number;
   streetTriangles: number;
@@ -330,34 +405,42 @@ async function until(page: Page, test: () => boolean): Promise<boolean> {
 }
 
 /**
- * What the engine says it drew, once every tile it wants is loaded and none is
- * pending; `null` if that never happens. A slow runner (two cores of
- * SwiftShader) settles in minutes, not seconds.
+ * What the engine says it drew, once the view is SETTLED (`city3dSettled.ts`:
+ * the city's tiles, the street detail's when it is on, and the expected
+ * landmark); `null` if that never happens, with why on stderr. A slow runner
+ * (two cores of SwiftShader) settles in minutes, not seconds.
  */
 async function settled(
   page: Page,
-  streets: boolean,
+  wants: SettledWants,
+  name: string,
 ): Promise<{ trees: number; triangles: number; streetTriangles: number } | null> {
   const by = Date.now() + SETTLE_TIMEOUT_MS;
+  let why: string | null = 'never read';
   while (Date.now() < by) {
-    const stats = await page.evaluate((wantStreets) => {
+    const published = await page.evaluate(() => {
       const scope = globalThis as {
-        __gowayCity3d?: Record<string, number>;
-        __gowayCityStreets?: Record<string, number>;
+        __gowayCity3d?: PublishedStats['city'] & { trees: number; triangles: number };
+        __gowayCityStreets?: PublishedStats['streets'] & { triangles: number };
+        __gowayLandmarks?: PublishedStats['landmarks'];
       };
-      const s = scope.__gowayCity3d;
-      const st = scope.__gowayCityStreets;
-      const city =
-        s && s.tilesWanted > 0 && s.tilesPending === 0 && s.tilesLoaded === s.tilesWanted;
-      // The streets' own tiles (`streetRenderer.ts`), meshed and drawn.
-      const streetsIn = !wantStreets || (st !== undefined && st.pending === 0 && st.tilesDrawn > 0);
-      return city && streetsIn
-        ? { trees: s.trees, triangles: s.triangles, streetTriangles: st?.triangles ?? 0 }
-        : null;
-    }, streets);
-    if (stats) return stats;
+      return {
+        city: scope.__gowayCity3d,
+        streets: scope.__gowayCityStreets,
+        landmarks: scope.__gowayLandmarks,
+      };
+    });
+    why = unsettled(published, wants);
+    if (why === null && published.city) {
+      return {
+        trees: published.city.trees,
+        triangles: published.city.triangles,
+        streetTriangles: published.streets?.triangles ?? 0,
+      };
+    }
     await page.waitForTimeout(500);
   }
+  console.error(`${name}: not settled after ${SETTLE_TIMEOUT_MS / 1000}s: ${why}`);
   return null;
 }
 
@@ -374,14 +457,40 @@ async function view(
   at: { lat: number; lng: number; zoom: number } = { ...SYNTHETIC_CENTRE, zoom: 19 },
   /** The quality preset (`lib/map/quality/profile.ts`); see `query` below. */
   quality: 'low' | 'high' = 'high',
+  /** A landmark the view must have drawn (or failed) before it is settled. */
+  landmark: string | null = null,
+  /**
+   * `ease`: tilt in six eased steps, as a person does (the buildings' and
+   * trees' grounding order is the subject). `jump`: one jump to the tilt —
+   * for the views whose subject is a model or the traffic: every eased frame
+   * is a full 3D-terrain frame, and on two software-GL cores those queued
+   * frames took the GPU 40–60 s to drain per view (measured).
+   */
+  tilt: 'ease' | 'jump' = 'ease',
+  /** The page's clock: local noon, or the night view's midnight. */
+  time: Date = NOON,
+  /** The ground: flat at TERRAIN_M, or {@link creasedMetres}. */
+  relief: 'flat' | 'creased' = 'flat',
 ): Promise<View> {
   const started = Date.now();
+  // Per-view progress on stderr, so a CI log says WHICH view and WHICH step
+  // a timeout was in (a screenshot that never came looked like any other).
+  const step = async (what: string) => {
+    console.error(`${name}: ${what} at ${Math.round((Date.now() - started) / 1000)}s`);
+    // `GATE_DRAIN_EACH=1`: drain after every step too, to see where the
+    // software rasteriser's time goes.
+    if (process.env.GATE_DRAIN_EACH) {
+      const t = Date.now();
+      await drainGpu(page);
+      console.error(`${name}:   drained ${Math.round((Date.now() - t) / 1000)}s`);
+    }
+  };
   const context = await browser.newContext({ viewport: VIEWPORT });
   let releaseTerrain = () => {};
   const terrain = new Promise<void>((done) => {
     releaseTerrain = done;
   });
-  await context.route('**/*', (route) => answer(route, origin, basemap, terrain));
+  await context.route('**/*', (route) => answer(route, origin, basemap, terrain, relief));
   const page = await context.newPage();
   if (DEBUG) {
     page.on('console', (m) => {
@@ -396,7 +505,7 @@ async function view(
       if (!r.url().includes('/_expo/')) console.error(`[${r.status()}] ${r.url().slice(0, 160)}`);
     });
   }
-  await page.clock.setFixedTime(NOON);
+  await page.clock.setFixedTime(time);
   // The map the relief layer attached to, published by a development build.
   await page.addInitScript(() => {
     const scope = globalThis as {
@@ -436,28 +545,31 @@ async function view(
   if (!(await until(page, () => reliefMap() !== undefined))) {
     throw new Error(`${name}: the map never came up`);
   }
-  const streets = city && flags.includes('cityStreets=1');
-  if (city) await settled(page, streets);
+  await step('map up');
+  const wants: SettledWants = { streets: city && flags.includes('cityStreets=1'), landmark };
+  if (city) await settled(page, wants, `${name} (flat)`);
   else await page.waitForTimeout(3000);
+  await step('flat settled');
   // Then tilted: MapLibre's 3D terrain comes on with the tilt
   // (`lib/map/style/relief.ts` → `terrainWanted`), and its elevation is still
   // held back, so the tilted view's tiles are drawn ungrounded too. Eased
   // steps as a person tilts, but to ABSOLUTE pitches and each waited out: the
   // keyboard's relative steps land short when frames are slower than the
   // ease, and the camera would depend on the runner.
-  for (let pitch = 10; pitch <= TILT; pitch += 10) {
+  for (let pitch = tilt === 'jump' ? TILT : 10; pitch <= TILT; pitch += 10) {
     await page.evaluate(
-      (to) =>
+      ({ to, jump }) =>
         new Promise<void>((done) => {
           const map = reliefMap();
           if (!map) return done();
           map.once('moveend', () => done());
-          map.easeTo({ pitch: to, duration: 300 });
+          map.easeTo({ pitch: to, duration: jump ? 0 : 300 });
         }),
-      pitch,
+      { to: pitch, jump: tilt === 'jump' },
     );
   }
-  if (city) await settled(page, streets);
+  if (city) await settled(page, wants, `${name} (tilted)`);
+  await step('tilted settled');
   if (!(await until(page, () => Boolean(reliefMap()?.getTerrain())))) {
     throw new Error(`${name}: 3D terrain never came on: the gate would test nothing`);
   }
@@ -474,7 +586,17 @@ async function view(
   });
   if (!lifted)
     throw new Error(`${name}: the terrain never lifted the map: the gate would test nothing`);
-  const stats = city ? await settled(page, streets) : null;
+  await step('terrain lifted');
+  const stats = city ? await settled(page, wants, name) : null;
+  const landmarkFailed =
+    landmark !== null &&
+    (await page.evaluate(
+      (id) =>
+        (
+          globalThis as { __gowayLandmarks?: { failed: string[] } }
+        ).__gowayLandmarks?.failed.includes(id) ?? false,
+      landmark,
+    ));
   const settledS = Math.round((Date.now() - started) / 1000);
   // Fades, and the terrain's own refinement.
   await page.waitForTimeout(6000);
@@ -496,6 +618,9 @@ async function view(
     }));
     console.error(`[probe] ${JSON.stringify(probe)}`);
   }
+  await step(`settled; ${await framesNow(page)}`);
+  await drainGpu(page);
+  await step('GPU drained');
   // A screenshot waits for a fresh frame, and on two software-GL cores a frame
   // with the sky's passes takes seconds.
   const png = await page.screenshot({
@@ -504,15 +629,104 @@ async function view(
     timeout: SETTLE_TIMEOUT_MS,
   });
   await context.close();
+  // A view that never settled was measured mid-load: whatever it shows, the
+  // gate cannot vouch for it, and a timeout is a finding, not a pass.
+  if (city && stats === null) unsettledViews.push(name);
   console.error(
     `${name}: ${city ? (stats ? `settled at ${settledS}s` : 'NOT settled') : 'no city'}, shot at ${Math.round((Date.now() - started) / 1000)}s`,
   );
   return {
     png,
+    settled: !city || stats !== null,
+    landmarkFailed,
     trees: stats?.trees ?? 0,
     triangles: stats?.triangles ?? 0,
     streetTriangles: stats?.streetTriangles ?? 0,
   };
+}
+
+/**
+ * Wait until the GPU has done every frame already asked of it. A screenshot
+ * waits for the compositor's NEXT frame, and on two software-GL cores that
+ * comes only after the whole queue: every frame drawn while the view loaded
+ * and the terrain lifted (one tile is re-grounded per frame, each a full 3D
+ * terrain frame) — 1–4 minutes of rasterising that the screenshot's own
+ * timeout then ran out on (#186). A 1-px read of the map's context returns
+ * only once its queue is done; after it the screenshot takes a second.
+ */
+async function drainGpu(page: Page): Promise<void> {
+  await page.evaluate(() => {
+    const canvas = document.querySelector<HTMLCanvasElement>('.maplibregl-canvas');
+    const gl = canvas?.getContext('webgl2');
+    gl?.readPixels(0, 0, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, new Uint8Array(4));
+  });
+}
+
+/**
+ * How the page is drawing right now, for the log: frames in 3 s (0: the page
+ * is producing none, so a screenshot would wait), and the engine's own
+ * numbers — what is still uploading, grounding or rendering.
+ */
+async function framesNow(page: Page): Promise<string> {
+  const frames = await page
+    .evaluate(
+      () =>
+        new Promise<number>((done) => {
+          let n = 0;
+          const end = performance.now() + 3000;
+          const tick = () => {
+            n++;
+            if (performance.now() < end) requestAnimationFrame(tick);
+            else done(n);
+          };
+          requestAnimationFrame(tick);
+          setTimeout(() => done(n), 6000);
+        }),
+    )
+    .catch(() => -1);
+  const engine = await page.evaluate(() => {
+    const scope = globalThis as {
+      __gowayCity3d?: Record<string, unknown>;
+      __gowayCity3dGround?: Record<string, unknown>;
+    };
+    const c = scope.__gowayCity3d;
+    return c
+      ? {
+          frameCpuMs: Math.round(Number(c.frameCpuMs)),
+          triangles: c.triangles,
+          treeTriangles: c.treeTriangles,
+          uploadsQueued: c.uploadsQueued,
+          grounded: scope.__gowayCity3dGround?.tilesGrounded,
+        }
+      : null;
+  });
+  // How often the MAP renders: a map at rest renders nothing.
+  const renders = await page
+    .evaluate(
+      () =>
+        new Promise<number>((done) => {
+          const map = (
+            globalThis as {
+              __gowayReliefMap?: {
+                on: (e: string, f: () => void) => void;
+                off: (e: string, f: () => void) => void;
+              };
+            }
+          ).__gowayReliefMap;
+          if (!map) return done(-1);
+          let n = 0;
+          const count = () => {
+            n++;
+          };
+          map.on('render', count);
+          setTimeout(() => {
+            map.off('render', count);
+            done(n);
+          }, 3000);
+        }),
+    )
+    .catch(() => -2);
+  return `${frames} frames and ${renders} map renders in 3 s, engine ${JSON.stringify(engine)}`;
 }
 
 /** Share of `png`'s pixels that `test` accepts, in %. */
@@ -540,6 +754,59 @@ async function share(browser: Browser, png: Buffer, kind: 'canopy' | 'dark'): Pr
   await page.close();
   return Number(value.toFixed(2));
 }
+
+/**
+ * Speckle, in % of the map: pixels brighter or darker than ALL four of their
+ * neighbours by more than {@link SPECKLE_LEVELS} (luma, 0–255). A window, an
+ * edge or a shadow is a run of pixels and is never that; a value that changes
+ * pixel by pixel across a wall is. Over the view's shot ({@link CLIP}).
+ */
+async function speckle(browser: Browser, png: Buffer): Promise<number> {
+  const page = await browser.newPage();
+  const value = await page.evaluate(
+    async ([data, levels]) => {
+      const img = new Image();
+      img.src = `data:image/png;base64,${data}`;
+      await img.decode();
+      const canvas = new OffscreenCanvas(img.width, img.height);
+      const g = canvas.getContext('2d') as OffscreenCanvasRenderingContext2D;
+      g.drawImage(img, 0, 0);
+      const { width: w, height: h } = img;
+      const px = g.getImageData(0, 0, w, h).data;
+      const luma = new Float32Array(w * h);
+      for (let i = 0; i < w * h; i++)
+        luma[i] = 0.2126 * px[4 * i] + 0.7152 * px[4 * i + 1] + 0.0722 * px[4 * i + 2];
+      let n = 0;
+      for (let y = 1; y < h - 1; y++) {
+        for (let x = 1; x < w - 1; x++) {
+          const i = y * w + x;
+          const v = luma[i];
+          const around = [luma[i - 1], luma[i + 1], luma[i - w], luma[i + w]];
+          if (around.every((a) => v - a > levels) || around.every((a) => a - v > levels)) n++;
+        }
+      }
+      return (100 * n) / ((w - 2) * (h - 2));
+    },
+    [png.toString('base64'), SPECKLE_LEVELS] as const,
+  );
+  await page.close();
+  return Number(value.toFixed(3));
+}
+
+/**
+ * Four blocks east of the centre, clear of the official (LOD2) blocks, whose
+ * walls carry no class or era: OSM city-tile walls with a facade style and a
+ * non-zero flag byte, as a real city's.
+ */
+const NIGHT_VIEW = { lat: SYNTHETIC_CENTRE.lat, lng: SYNTHETIC_CENTRE.lng + 0.006, zoom: 18 };
+
+/** How far a pixel must stand out from all four neighbours to count as speckle. */
+const SPECKLE_LEVELS = 24;
+/**
+ * The night view's most speckle, %. Measured on SwiftShader: 0.003% with the
+ * flags flat, 0.74% with them interpolated (#188, main @660a706).
+ */
+const NIGHT_MAX_SPECKLE_PCT = 0.1;
 
 /**
  * Over a junction of the synthetic grid (the one north-west of the central
@@ -718,10 +985,11 @@ async function panSteps(
     throw new Error('pan: the map never came up');
   }
   const still = async () => {
-    await settled(page, false);
+    await settled(page, { streets: false, landmark: null }, 'pan');
     await until(page, () => Boolean(reliefMap()?.areTilesLoaded()));
     // The shadow map's caster redraw is throttled (`sky.ts`), and fades end.
     await page.waitForTimeout(1500);
+    await drainGpu(page);
   };
   await still();
   await page.addStyleTag({ content: '[data-goway-perf-hud] { display: none !important; }' });
@@ -771,6 +1039,8 @@ const browser = await chromium.launch({
 });
 const results: Record<string, Record<string, number>> = {};
 const failures: string[] = [];
+/** City views that never settled (`settled` → `null`). */
+const unsettledViews: string[] = [];
 try {
   // `--skies=sky,nosky,objects` (all by default): CI runs one per job. The
   // `objects` leg holds the views that are not per sky (models, city life).
@@ -826,7 +1096,7 @@ try {
       // the reference is a map with no buildings standing at all.
       'empty',
     );
-    const r = {
+    const r: Record<string, number> = {
       trees: withTrees.trees,
       triangles: noTrees.triangles,
       canopyPct: await share(browser, withTrees.png, 'canopy'),
@@ -837,6 +1107,36 @@ try {
       streetsChangedPct: await differs(browser, streets.png, noStreets.png),
     };
     results[label] = r;
+    if (label === 'nosky') {
+      // The same junction on a sloped, creased ground.
+      const creased = (name: string, withStreets: boolean) =>
+        view(
+          browser,
+          origin,
+          withStreets ? flags : flags.replace('&cityStreets=1', ''),
+          choices,
+          outDir,
+          name,
+          'buildings',
+          JUNCTION,
+          'high',
+          null,
+          'ease',
+          NOON,
+          'creased',
+        );
+      const on = await creased(`${label}-creased-streets`, true);
+      const off = await creased(`${label}-creased-nostreets`, false);
+      const pct = await differs(browser, on.png, off.png);
+      r.creasedStreetTriangles = on.streetTriangles;
+      r.creasedStreetsChangedPct = pct;
+      if (on.streetTriangles === 0)
+        failures.push(`${label}: no streets drawn on the creased ground`);
+      else if (pct < CREASED_MIN_SHARE * r.streetsChangedPct)
+        failures.push(
+          `${label}: on a creased ground the streets change ${pct}% of the view, on flat ground ${r.streetsChangedPct}%: the terrain covers the street detail`,
+        );
+    }
     if (r.trees === 0)
       failures.push(`${label}: the engine drew no trees (the fixture is not reaching it)`);
     else if (r.canopyPct < Math.max(1, 3 * r.canopyPctWithoutTrees))
@@ -866,10 +1166,45 @@ try {
         `pan: a frame differs ${Math.max(...changed)}% from the one before once aligned (over ${PAN_MAX_CHANGED_PCT}%): the map changes under a pan`,
       );
   }
+  if (!DEBUG && (skies.includes('sky') || skies.includes('night'))) {
+    // The city sky at night, looking at the synthetic city's walls: windows
+    // lit, floodlights on, no sun. Born of #188: an interpolated building
+    // flag lit every wall's floodlight on half its pixels, pixel by pixel.
+    const { flags, choices } = SKIES.sky;
+    const night = await view(
+      browser,
+      origin,
+      flags,
+      choices,
+      outDir,
+      'sky-night',
+      'buildings',
+      NIGHT_VIEW,
+      'high',
+      null,
+      'jump',
+      MIDNIGHT,
+    );
+    const speckled = await speckle(browser, night.png);
+    results.night = { triangles: night.triangles, specklePct: speckled };
+    console.error(`night: speckle ${speckled}% of the map`);
+    if (night.triangles === 0)
+      failures.push('night: the engine drew no buildings (the fixture is not reaching it)');
+    else if (speckled > NIGHT_MAX_SPECKLE_PCT)
+      failures.push(
+        `night: ${speckled}% of the map is speckle (over ${NIGHT_MAX_SPECKLE_PCT}%): a surface value changes pixel by pixel`,
+      );
+  }
   if (!DEBUG && skies.includes('objects')) {
     // Models (`models.ts`, drawn by the TSL pass): the landmark on and off,
     // without the sky (models are drawn the same way under either).
-    const { flags, choices } = SKIES.nosky;
+    const { flags: skyless, choices } = SKIES.nosky;
+    // Trees off on both sides of the comparison: they are the other legs'
+    // subject, and at this zoom they are 1.5 M of the view's 1.8 M triangles —
+    // on two software-GL cores the frames queued while the view settles took
+    // the GPU minutes to drain, and the screenshot (which waits for the next
+    // frame) timed out behind them (#186's first CI run).
+    const flags = `${skyless}&city3dTrees=0`;
     const withLandmark = await view(
       browser,
       origin,
@@ -879,6 +1214,9 @@ try {
       'landmark',
       'buildings',
       LANDMARK,
+      'low',
+      LANDMARK.id,
+      'jump',
     );
     const without = await view(
       browser,
@@ -889,10 +1227,15 @@ try {
       'nolandmark',
       'buildings',
       LANDMARK,
+      'low',
+      null,
+      'jump',
     );
     const changed = await differs(browser, withLandmark.png, without.png);
     results.landmark = { changedPct: changed };
-    if (changed < 1)
+    if (withLandmark.landmarkFailed)
+      failures.push(`landmark: ${LANDMARK.id}'s model failed to load (its buildings stayed)`);
+    else if (changed < 1)
       failures.push(
         `landmark: ${LANDMARK.id} changes ${changed}% of the map (on against off): it is not on the screen`,
       );
@@ -905,7 +1248,13 @@ try {
     // seconds, and a screenshot waits for one). The simulation is seeded and
     // the clock fixed, but the agents move with real time: the share is a
     // floor, not a match.
-    const { flags, choices } = SKIES.nosky;
+    const { flags: skyless, choices } = SKIES.nosky;
+    // Trees off on both sides of the comparison: they are the other legs'
+    // subject, and at this zoom they are 1.5 M of the view's 1.8 M triangles —
+    // on two software-GL cores the frames queued while the view settles took
+    // the GPU minutes to drain, and the screenshot (which waits for the next
+    // frame) timed out behind them (#186's first CI run).
+    const flags = `${skyless}&city3dTrees=0`;
     // The low preset's 300 cars and 300 people (`profile.ts` → `life`): the
     // high one's 2,400 agents keep two software-GL cores from ever finishing
     // a frame for the screenshot. From z17.5 over the junction several
@@ -921,6 +1270,8 @@ try {
       'buildings',
       TRAFFIC,
       'low',
+      null,
+      'jump',
     );
     const without = await view(
       browser,
@@ -932,6 +1283,8 @@ try {
       'buildings',
       TRAFFIC,
       'low',
+      null,
+      'jump',
     );
     const changed = await differs(browser, withLife.png, without.png, 24, 0);
     results.life = { changedPct: changed };
@@ -941,6 +1294,11 @@ try {
 } finally {
   await browser.close();
   served.stop();
+}
+for (const name of unsettledViews) {
+  failures.push(
+    `${name}: never settled within ${SETTLE_TIMEOUT_MS / 1000}s (see the reason above)`,
+  );
 }
 console.log(JSON.stringify({ results, screenshots: outDir }, null, 2));
 if (failures.length > 0) {

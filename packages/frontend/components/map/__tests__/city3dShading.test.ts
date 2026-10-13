@@ -1,11 +1,11 @@
 /**
- * The city-3D occlusion and lighting numbers, and the shader generated from
+ * The city-3D occlusion and lighting numbers, and the shaders built from
  * them.
  *
- * The shader is checked only for what can go wrong in TEXT: that it carries
- * the tested constants as valid GLSL float literals. Whether it draws what the
- * numbers say is a rendering question, verified in a browser and recorded in
- * `docs/MAP_3D_CITY.md`.
+ * The shaders (TSL) are checked only for what they are built FROM: that both
+ * building materials, map-lit and sky-lit, hold the tested constants. Whether
+ * they draw what the numbers say is a rendering question, answered by the
+ * visibility gate and recorded in `docs/MAP_3D_CITY.md`.
  */
 import { describe, expect, test } from 'bun:test';
 
@@ -18,7 +18,18 @@ import {
   luminance,
   smoothstep,
 } from '@/components/map/engine/city3d/occlusion';
-import { glslFloat } from '@/components/map/engine/city3d/shaders';
+import {
+  createBuildingMaterials,
+  createBuildingUniforms,
+} from '@/components/map/engine/city3d/tsl/buildingMaterial';
+import {
+  clayResponse,
+  createSkyBuildingMaterials,
+} from '@/components/map/engine/city3d/tsl/skyBuildingMaterial';
+import { createSkyNodes } from '@/components/map/engine/city3d/tsl/skyNodes';
+import { FrontSide, Vector3 } from 'three/webgpu';
+
+import { constantsOf, skyRefs } from './tslGraph';
 
 describe('ground occlusion', () => {
   test('darkest at the ground, none above the reach, monotonic between', () => {
@@ -96,11 +107,35 @@ describe('extrusion lighting (MapLibre’s formula)', () => {
   });
 });
 
-describe('shader source', () => {
-  test('float literals are GLSL floats', () => {
-    expect(glslFloat(1)).toBe('1.0');
-    expect(glslFloat(0.62)).toBe('0.62');
-    expect(glslFloat(7)).toBe('7.0');
-    expect(() => glslFloat(Number.NaN)).toThrow();
+describe('the shaders', () => {
+  const uniforms = () =>
+    createBuildingUniforms({
+      uLow: { value: new Vector3() },
+      uTall: { value: new Vector3() },
+      uVeryTall: { value: new Vector3() },
+      uTallM: { value: 60 },
+      uVeryTallM: { value: 180 },
+      uLightPosition: { value: new Vector3(0, 0, 1) },
+      uLightIntensity: { value: 0.5 },
+      uLightColor: { value: new Vector3(1, 1, 1) },
+      uOpacity: { value: 1 },
+      uGrounded: { value: 0 },
+    });
+
+  test('both building materials hold the tested occlusion', () => {
+    const mapLit = createBuildingMaterials(uniforms(), FrontSide);
+    const skyLit = createSkyBuildingMaterials({
+      uniforms: uniforms(),
+      sky: createSkyNodes(skyRefs(true), 12),
+      response: clayResponse,
+      side: FrontSide,
+    });
+    for (const materials of [mapLit, skyLit]) {
+      for (const format of ['openmaptiles', 'goway'] as const) {
+        const values = constantsOf(materials.get(format, false).colorNode);
+        expect(values).toContain(AO.groundMin);
+        expect(values).toContain(AO.groundReachM);
+      }
+    }
   });
 });
