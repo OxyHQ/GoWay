@@ -38,8 +38,14 @@ export interface GtfsRealtimeOptions {
   /** The mode of a vehicle; `defaultMode` when it returns `null`. */
   modeOf?: (vehicle: GtfsVehiclePosition) => LiveTransitMode | null;
   defaultMode: LiveTransitMode;
-  /** The line riders know; the route id when absent. */
+  /** The line riders know; the route id when it returns `null` (unless `routeIdIsLine` is false). */
   lineOf?: (vehicle: GtfsVehiclePosition) => string | null;
+  /**
+   * Whether a route id may stand in as the line (default `true`). `false` for
+   * a feed whose ids mean nothing to a rider (`100001`, `OST:Line:1_400`): the
+   * line then comes only from the static GTFS's route names.
+   */
+  routeIdIsLine?: boolean;
   /** The vehicle's label; the descriptor's `label` when absent. */
   labelOf?: (vehicle: GtfsVehiclePosition) => string | null;
   /** Prefixed to the provider's id: keeps two feeds of one source apart (`renfe-cercanias:ld-…`). */
@@ -47,6 +53,8 @@ export interface GtfsRealtimeOptions {
   /** Where a configured key goes: a query parameter (`key` for MTA Bus Time) or headers. */
   keyQueryParameter?: string;
   keyHeaders?: (key: string) => Record<string, string>;
+  /** Extra headers a provider asks callers to send (Entur's `ET-Client-Name`). */
+  headers?: Record<string, string>;
 }
 
 export function normaliseGtfsVehicle(
@@ -63,7 +71,9 @@ export function normaliseGtfsVehicle(
   const seconds = vehicle.timestamp ?? headerTimestamp;
   const observedAt = instant(seconds === undefined ? null : seconds * 1000, nowMs);
   if (!observedAt) return null;
-  const line = options.lineOf?.(vehicle) ?? text(vehicle.routeId, 32);
+  const line =
+    options.lineOf?.(vehicle) ??
+    (options.routeIdIsLine === false ? null : text(vehicle.routeId, 32));
   return accept({
     kind: 'transit',
     id: `${options.sourceId}:${options.idPrefix ?? ''}${providerId}`,
@@ -121,6 +131,17 @@ export function normaliseGtfsFeed(
   return { entities: [...byId.values()], rejected, hints };
 }
 
+/**
+ * What a GTFS-Realtime request accepts. Servers disagree on protobuf's media
+ * type and some refuse a request that names none they serve: Trapeze's
+ * (Edmonton, Halifax, Mississauga) answer 406 to anything but their own
+ * `application/protocol-buffer` or a wildcard, and Adelaide's answers JSON to
+ * `application/x-protobuf` but protobuf to `application/x-google-protobuf`.
+ * So every spelling, Google's first, and a low-priority wildcard.
+ */
+export const GTFS_REALTIME_ACCEPT =
+  'application/x-google-protobuf, application/x-protobuf, application/protocol-buffer, application/octet-stream;q=0.9, */*;q=0.1';
+
 export function createGtfsRealtimeAdapter(
   options: GtfsRealtimeOptions,
   settings: LiveAdapterSettings,
@@ -129,7 +150,8 @@ export function createGtfsRealtimeAdapter(
     async poll(context: LiveFetchContext): Promise<LivePollResult> {
       const headers: Record<string, string> = {
         'user-agent': settings.userAgent,
-        accept: 'application/x-protobuf, application/octet-stream',
+        accept: GTFS_REALTIME_ACCEPT,
+        ...(options.headers ?? {}),
         ...(settings.key && options.keyHeaders ? options.keyHeaders(settings.key) : {}),
       };
       // The key is appended here rather than configured in the URL, so it never

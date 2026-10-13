@@ -133,6 +133,8 @@ interface SourceState {
   /** When the next load may start (a refresh, or a retry after failure). */
   gtfsDueAt: number;
   gtfsFailures: number;
+  /** Since when this task has had no use for the static GTFS it holds. */
+  gtfsUnneededSince: number | null;
   /** Each vehicle's last match, to keep it on its direction's shape. */
   matches: Map<string, PreviousMatch>;
   settings: LiveAdapterSettings;
@@ -148,6 +150,12 @@ interface SourceState {
 
 /** Static GTFS is re-read this often while a source is watched. */
 export const STATIC_GTFS_REFRESH_MS = 24 * 3600_000;
+/**
+ * A static GTFS this task has had no use for this long is let go: with the
+ * worldwide catalogue a task would otherwise end the day holding every
+ * network anyone looked at. Read again when someone looks again.
+ */
+export const STATIC_GTFS_IDLE_MS = 15 * 60_000;
 /** The largest static GTFS download (Renfe Cercanías' zip is ~14 MB). */
 export const MAX_STATIC_GTFS_BYTES = 120 * 1024 * 1024;
 
@@ -187,6 +195,7 @@ export class LiveHub {
       gtfsLoading: null,
       gtfsDueAt: 0,
       gtfsFailures: 0,
+      gtfsUnneededSince: null,
       matches: new Map(),
       settings,
       leader: !options.bus,
@@ -551,6 +560,7 @@ export class LiveHub {
     for (const state of this.states) {
       const demand = this.demandFor(state.definition);
       if (demand.length === 0) {
+        this.keepStatic(state, false, now);
         if (state.idleSince === null && state.everActive) state.idleSince = now;
         if (state.idleSince !== null && now - state.idleSince > IDLE_GRACE_MS) {
           this.release(state);
@@ -565,6 +575,7 @@ export class LiveHub {
       // nor for a regional view, which never asks.
       const needsStatic =
         this.leads(state) || this.localDemandFor(state.definition, 'shapes').length > 0;
+      this.keepStatic(state, needsStatic, now);
       if (
         needsStatic &&
         state.definition.staticGtfs &&
@@ -666,6 +677,20 @@ export class LiveHub {
     ).catch((error: unknown) => this.busFailed(error));
   }
 
+  /** Let a source's static GTFS go once this task has not needed it for {@link STATIC_GTFS_IDLE_MS}. */
+  private keepStatic(state: SourceState, needed: boolean, now: number): void {
+    if (needed || !state.gtfs) {
+      state.gtfsUnneededSince = null;
+      return;
+    }
+    state.gtfsUnneededSince ??= now;
+    if (now - state.gtfsUnneededSince < STATIC_GTFS_IDLE_MS || state.gtfsLoading) return;
+    state.gtfs = null;
+    state.gtfsDueAt = 0;
+    state.gtfsUnneededSince = null;
+    state.matches.clear();
+  }
+
   /** Fetch (or refresh) a source's static GTFS; a failure retries with backoff and never stops the feed. */
   private loadStatic(state: SourceState): Promise<void> {
     const location = state.definition.staticGtfs;
@@ -680,7 +705,26 @@ export class LiveHub {
         { 'user-agent': state.settings.userAgent },
         MAX_STATIC_GTFS_BYTES,
       );
-    const run = loadStaticGtfs(location, read)
+    // A ranged GET: 206 with the part asked for, or 200 with the whole file
+    // from a server that ignores ranges (bounded like any static download).
+    const readRange = async (url: string, range: string) => {
+      const response = await this.options.fetch(url, {
+        signal: abort.signal,
+        // A range of the archive itself: a server that gzips on the fly
+        // (TransLink Queensland's) otherwise ranges over its gzip stream.
+        headers: { 'user-agent': state.settings.userAgent, range, 'accept-encoding': 'identity' },
+      });
+      if (response.status !== 206 && (response.status < 200 || response.status >= 300))
+        throw new LiveUpstreamError(`upstream answered ${response.status}`, null, response.status);
+      const length = Number.parseInt(response.headers.get('content-length') ?? '', 10);
+      if (Number.isFinite(length) && length > MAX_STATIC_GTFS_BYTES)
+        throw new LiveUpstreamError(`upstream body too large (${length} bytes)`);
+      const bytes = new Uint8Array(await response.arrayBuffer());
+      if (bytes.byteLength > MAX_STATIC_GTFS_BYTES)
+        throw new LiveUpstreamError(`upstream body too large (${bytes.byteLength} bytes)`);
+      return { bytes, partial: response.status === 206 };
+    };
+    const run = loadStaticGtfs(location, read, readRange)
       .then(
         (gtfs) => {
           state.gtfs = gtfs;
@@ -735,6 +779,9 @@ export class LiveHub {
       return {
         ...entity,
         line: entity.line ?? match.route?.shortName ?? match.route?.longName?.slice(0, 32) ?? null,
+        // The route's own mode when its static file says it (a multimodal
+        // feed: Helsinki's buses, trams, metro and ferries in one).
+        mode: match.route?.mode ?? entity.mode,
         lineColor: match.route?.color ?? null,
         lineTextColor: match.route?.textColor ?? null,
         track: match.track,

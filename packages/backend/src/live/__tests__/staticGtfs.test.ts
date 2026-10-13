@@ -16,10 +16,10 @@ import {
   project,
   SNAP_TOLERANCE_METERS,
 } from '../staticGtfs';
-import { readZipEntries, ZipError } from '../zip';
+import { readZipEntries, readZipEntriesRanged, type ZipRangeReader, ZipError } from '../zip';
 
 /** A zip with deflated entries, built by hand (local headers + central directory). */
-function zip(files: Record<string, string>): Uint8Array {
+function zip(files: Record<string, string>, options: { zip64?: boolean } = {}): Uint8Array {
   const chunks: Buffer[] = [];
   const central: Buffer[] = [];
   let offset = 0;
@@ -35,12 +35,25 @@ function zip(files: Record<string, string>): Uint8Array {
     const head = Buffer.alloc(46);
     head.writeUInt32LE(0x02014b50, 0);
     head.writeUInt16LE(8, 10);
-    head.writeUInt32LE(data.length, 20);
-    head.writeUInt32LE(Buffer.byteLength(text), 24);
     head.writeUInt16LE(nameBytes.length, 28);
     head.writeUInt32LE(offset, 42);
+    // ZIP64, as Nice's writer does it: the sizes overflowed to 0xFFFFFFFF and
+    // the real ones in the 0x0001 extra record (uncompressed, then compressed).
+    const extra = Buffer.alloc(options.zip64 ? 20 : 0);
+    if (options.zip64) {
+      head.writeUInt32LE(0xffffffff, 20);
+      head.writeUInt32LE(0xffffffff, 24);
+      head.writeUInt16LE(extra.length, 30);
+      extra.writeUInt16LE(0x0001, 0);
+      extra.writeUInt16LE(16, 2);
+      extra.writeBigUInt64LE(BigInt(Buffer.byteLength(text)), 4);
+      extra.writeBigUInt64LE(BigInt(data.length), 12);
+    } else {
+      head.writeUInt32LE(data.length, 20);
+      head.writeUInt32LE(Buffer.byteLength(text), 24);
+    }
     chunks.push(local, nameBytes, data);
-    central.push(head, nameBytes);
+    central.push(head, nameBytes, extra);
     offset += local.length + nameBytes.length + data.length;
   }
   const centralBytes = Buffer.concat(central);
@@ -89,6 +102,63 @@ describe('the zip reader', () => {
     expect(entries.has('stop_times.txt')).toBe(false);
   });
 
+  it('reads ZIP64 sizes from the extra field', () => {
+    const entries = readZipEntries(
+      zip({ 'routes.txt': ROUTES, 'shapes.txt': SHAPES }, { zip64: true }),
+      ['routes.txt'],
+    );
+    expect(new TextDecoder().decode(entries.get('routes.txt'))).toBe(ROUTES);
+  });
+
+  it("reads a big archive's small files by range, and the whole of it from a server without ranges", async () => {
+    // A stop_times.txt that barely compresses: ~800 KB the ranged read must not fetch.
+    let seed = 7;
+    const noise = Array.from({ length: 400_000 }, () => {
+      seed = (seed * 1_103_515_245 + 12_345) % 2_147_483_648;
+      return String(seed % 100_000).padStart(5, '0');
+    }).join('');
+    const archive = zip({ 'routes.txt': ROUTES, 'stop_times.txt': noise, 'trips.txt': TRIPS });
+    const server = (honoursRanges: boolean) => {
+      let sent = 0;
+      const read: ZipRangeReader = async (range) => {
+        if (!honoursRanges) {
+          sent += archive.byteLength;
+          return { bytes: archive, partial: false };
+        }
+        const suffix = /^bytes=-(\d+)$/.exec(range);
+        const span = /^bytes=(\d+)-(\d+)$/.exec(range);
+        const from = suffix
+          ? Math.max(0, archive.byteLength - Number(suffix[1]))
+          : Number(span?.[1]);
+        const to = suffix
+          ? archive.byteLength - 1
+          : Math.min(archive.byteLength - 1, Number(span?.[2]));
+        const part = archive.subarray(from, to + 1);
+        sent += part.byteLength;
+        return { bytes: part, partial: true };
+      };
+      return { read, sent: () => sent };
+    };
+    const ranged = server(true);
+    const entries = await readZipEntriesRanged(ranged.read, ['routes.txt']);
+    expect(new TextDecoder().decode(entries.get('routes.txt'))).toBe(ROUTES);
+    expect(archive.byteLength).toBeGreaterThan(700_000);
+    expect(ranged.sent()).toBeLessThan(250_000);
+    const whole = server(false);
+    const again = await readZipEntriesRanged(whole.read, ['routes.txt', 'trips.txt']);
+    expect(new TextDecoder().decode(again.get('trips.txt'))).toBe(TRIPS);
+    // loadStaticGtfs takes the ranged path when only part of the file is wanted.
+    const viaLoad = server(true);
+    const routesOnly = await loadStaticGtfs(
+      { zip: 'x', only: 'routes' },
+      async () => {
+        throw new Error('the whole archive was downloaded');
+      },
+      (_url, range) => viaLoad.read(range),
+    );
+    expect(routesOnly.routes.size).toBe(3);
+  });
+
   it('throws on a truncated or foreign file', () => {
     const good = zip({ 'routes.txt': 'route_id' });
     expect(() => readZipEntries(good.subarray(0, good.length - 30), ['routes.txt'])).toThrow(
@@ -113,6 +183,37 @@ describe('the zip reader', () => {
     expect(shapeless.shapes.size).toBe(0);
     expect(shapeless.routes.size).toBeGreaterThan(0);
   });
+
+  it('reads only routes, or routes and trips, when that is all a feed needs', async () => {
+    const bytes = zip({ 'routes.txt': ROUTES, 'trips.txt': TRIPS, 'shapes.txt': SHAPES });
+    const routes = await loadStaticGtfs({ zip: 'x', only: 'routes' }, async () =>
+      zip({ 'routes.txt': ROUTES }),
+    );
+    expect([routes.routes.size, routes.trips.size, routes.shapes.size]).toEqual([3, 0, 0]);
+    const trips = await loadStaticGtfs({ zip: 'x', only: 'trips' }, async () => bytes);
+    expect(trips.trips.get('T1')?.routeId).toBe('R2N_A');
+    expect(trips.shapes.size).toBe(0);
+    // The line, colour and mode, by the vehicle's route id; no track.
+    const match = matchTrack(
+      routes,
+      { route: 'R2N_A' },
+      { latitude: 41.4, longitude: 2.105 },
+      null,
+    );
+    expect(match.route?.shortName).toBe('R2N');
+    expect(match.route?.mode).toBe('rail');
+    expect(match.track).toBeNull();
+  });
+
+  it("a route id is looked up as an id before as another route's short name", () => {
+    const routes = buildStaticGtfs({
+      routes: 'route_id,route_short_name,route_type\n2,165,3\n9,2,0\n',
+      trips: 'route_id,trip_id\n',
+      shapes: 'shape_id,shape_pt_lat,shape_pt_lon,shape_pt_sequence\n',
+    });
+    const match = matchTrack(routes, { route: '2' }, { latitude: 60, longitude: 25 }, null);
+    expect(match.route?.shortName).toBe('165');
+  });
 });
 
 describe('the static GTFS', () => {
@@ -126,6 +227,7 @@ describe('the static GTFS', () => {
       longName: 'Aeroport - Maçanet',
       color: '#D0DF00',
       textColor: '#FFFFFF',
+      mode: 'rail', // route_type 2
     });
     const east = gtfs.shapes.get('east');
     expect(east?.lon[0]).toBe(2.1);

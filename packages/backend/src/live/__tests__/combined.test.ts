@@ -105,3 +105,36 @@ describe('a static GTFS without shapes', () => {
     expect(trip?.shapeId).toBeNull();
   });
 });
+
+describe('a route type names the mode', () => {
+  it('basic and extended GTFS types', async () => {
+    const { modeOfRouteType } = await import('../staticGtfs');
+    expect(['0', '1', '2', '3', '4', '6', '11', '12'].map(modeOfRouteType)).toEqual([
+      'tram',
+      'subway',
+      'rail',
+      'bus',
+      'ferry',
+      'cable',
+      'bus',
+      'subway',
+    ]);
+    expect(['109', '401', '700', '900', '1000', '1400', 'x', '-1'].map(modeOfRouteType)).toEqual([
+      'rail',
+      'subway',
+      'bus',
+      'tram',
+      'ferry',
+      'cable',
+      null,
+      null,
+    ]);
+    // Entur's airport routes are 1102, "Domestic Air Service": not a boat.
+    expect(['1004', '1102', '1200', '1501'].map(modeOfRouteType)).toEqual([
+      'ferry',
+      null,
+      'ferry',
+      null,
+    ]);
+  });
+});

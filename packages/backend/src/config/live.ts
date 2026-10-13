@@ -98,6 +98,14 @@ export const LIVE_POLICY: LivePolicy = {
 export interface LiveConfig extends LivePolicy {
   /** Source ids, as listed, de-duplicated. Checked against the catalogue by the caller. */
   sources: readonly string[];
+  /**
+   * `LIVE_SOURCES=all`: every catalogue source — each one licence-checked —
+   * whose key, when it needs one, is configured. A keyed source without its
+   * key is then skipped quietly rather than warned about one by one.
+   */
+  all: boolean;
+  /** Ids listed by name beside `all` (`all,adsb-lol`): a source still `awaiting` a permission joins only this way. */
+  named: readonly string[];
   settings: Readonly<Record<string, LiveSourceSettings>>;
   /**
    * Valkey shared by the API tasks (`live/cluster.ts`): one task polls each
@@ -149,7 +157,10 @@ export function parseLiveConfig(
   }
 
   const settings: Record<string, LiveSourceSettings> = {};
-  const listed = result.success ? result.data : [];
+  const parsed = result.success ? result.data : [];
+  // `all`: the whole catalogue (only meaningful against it).
+  const all = parsed.includes('all') && knownSourceIds.length > 0;
+  const listed = all ? [...knownSourceIds] : parsed;
   for (const id of listed) {
     if (knownSourceIds.length > 0 && !knownSourceIds.includes(id)) {
       problems.push(
@@ -191,7 +202,8 @@ export function parseLiveConfig(
   if (problems.length > 0) {
     throw new Error(`Invalid live configuration:\n${problems.join('\n')}`);
   }
-  return { ...LIVE_POLICY, sources: listed, settings, valkeyUrl, valkeyUrlProblem };
+  const named = parsed.filter((id) => id !== 'all');
+  return { ...LIVE_POLICY, sources: listed, all, named, settings, valkeyUrl, valkeyUrlProblem };
 }
 
 /** The one parse for this process, against the catalogue's ids. */
