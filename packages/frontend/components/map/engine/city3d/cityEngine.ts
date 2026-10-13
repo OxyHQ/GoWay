@@ -114,6 +114,7 @@ import { assignSources, type SourcedTile } from './sources';
 import { Transitions } from './transitions';
 import { treeMinHeightM } from './tsl/treeMaterial';
 import { createTslPass, type Warming } from './tsl/tslPass';
+import type { TreeSettingCounts } from './treeContext';
 import type { TreeSourceLayers } from './treeSources';
 import { WorkerPool, webWorker } from './workerPool';
 
@@ -150,6 +151,11 @@ export interface CityEngineOptions {
     sourceLayer: string;
     /** The city tiles' layer of trees OSM records (`CITY_TREE_LAYER`). */
     treeLayer: string;
+    /**
+     * `{z}/{x}/{y}` of the road archive's tiles (`CITY_ROAD_TILE_PATH`), read
+     * for the trees' setting (`treeContext.ts`); absent where none is published.
+     */
+    roadTileUrlTemplate?: string;
     coverage: readonly CityCoverageArea[];
   } | null;
   /**
@@ -276,6 +282,11 @@ export interface CityEngineStats {
   /** Trees (instances) and their triangles drawn last frame. */
   trees: number;
   treeTriangles: number;
+  /**
+   * Where the drawn tiles' mapped trees went (`treeContext.ts`): street or
+   * nature, moved off a carriageway to the kerb, or left out of one.
+   */
+  treeSettings: TreeSettingCounts;
   /** GPU bytes held by the tile cache. */
   gpuBytes: number;
   /** Worker time for the last tile: decode + mesh, and tree placement. */
@@ -429,17 +440,29 @@ function expandTemplate(template: string, tile: TileId): string {
     .replace('{y}', String(tile.y));
 }
 
-/** The fill's source tile for a city tile: its ancestor at the fill source's zoom. */
-function treeFill(
+/**
+ * What surrounds a city tile's trees (`treeContext.ts`): its ancestor at the
+ * basemap's zoom (areas; the fill's landcover) and the road tile at its own
+ * address.
+ */
+function treeContextFor(
   tile: TileId,
-  fill: { tileUrlTemplate: string; tileZoom: number; mappedLayer: string },
-): { url: string; tile: TileId; mappedLayer: string } {
-  const shift = Math.max(0, tile.z - fill.tileZoom);
+  source: {
+    tileUrlTemplate: string;
+    tileZoom: number;
+    mappedLayer: string;
+    roadTileUrlTemplate?: string;
+  },
+): { url: string; tile: TileId; roadsUrl?: string; mappedLayer: string } {
+  const shift = Math.max(0, tile.z - source.tileZoom);
   const parent = { z: tile.z - shift, x: tile.x >> shift, y: tile.y >> shift };
   return {
-    url: expandTemplate(fill.tileUrlTemplate, parent),
+    url: expandTemplate(source.tileUrlTemplate, parent),
     tile: parent,
-    mappedLayer: fill.mappedLayer,
+    ...(source.roadTileUrlTemplate
+      ? { roadsUrl: expandTemplate(source.roadTileUrlTemplate, tile) }
+      : {}),
+    mappedLayer: source.mappedLayer,
   };
 }
 
@@ -641,6 +664,8 @@ export function createCityEngine(options: CityEngineOptions): CityEngine {
   let errors = 0;
   // Which official datasets each tile entry draws, and the set last reported.
   const entrySources = new WeakMap<object, readonly string[]>();
+  // Where each tile entry's mapped trees went (`treeContext.ts`), for the stats.
+  const entryTreeSettings = new WeakMap<object, TreeSettingCounts>();
   let drawnSources = '';
   const reportSources = (sources: ReadonlySet<string>) => {
     const key = [...sources].sort().join(',');
@@ -652,7 +677,13 @@ export function createCityEngine(options: CityEngineOptions): CityEngine {
   let lastFrameAt = 0;
   let lastStatsAt = 0;
   let lastSignature = '';
-  let drawn = { triangles: 0, vertices: 0, trees: 0, treeTriangles: 0 };
+  let drawn = {
+    triangles: 0,
+    vertices: 0,
+    trees: 0,
+    treeTriangles: 0,
+    treeSettings: { street: 0, nature: 0, nudged: 0, offCarriageway: 0 },
+  };
   // Tiles this frame wanted to draw but could not yet: on terrain, not lifted.
   const unlifted = new Set<string>();
   // Measured full-detail cost per canonical tile, and a running mean of it.
@@ -882,7 +913,10 @@ export function createCityEngine(options: CityEngineOptions): CityEngine {
     const wanted = protectedKeys();
     while (arrivals.length > 0) {
       const next = arrivals[0];
-      const bytes = (next.reply.mesh?.bytes ?? 0) + (next.reply.trees?.data.byteLength ?? 0);
+      const bytes =
+        (next.reply.mesh?.bytes ?? 0) +
+        (next.reply.trees?.data.byteLength ?? 0) +
+        (next.reply.trees?.form.byteLength ?? 0);
       if (!upload.take(bytes)) break;
       arrivals.shift();
       const entry = createTileEntry(
@@ -895,6 +929,7 @@ export function createCityEngine(options: CityEngineOptions): CityEngine {
         next.format,
       );
       if (entry && next.reply.sources) entrySources.set(entry, next.reply.sources);
+      if (entry && next.reply.treeSettings) entryTreeSettings.set(entry, next.reply.treeSettings);
       remember(next.key.slice(0, next.key.indexOf('@')), next.lod, entry);
       if (next.reply.treesComplete === false) {
         const attempts = (incomplete.get(next.key)?.attempts ?? 0) + 1;
@@ -982,14 +1017,16 @@ export function createCityEngine(options: CityEngineOptions): CityEngine {
                 sourceLayer: options.city.sourceLayer,
                 format: 'goway' as const,
                 ...(hidden.length > 0 ? { hidden } : {}),
-                // The fill reads the basemap's landcover: the city tiles
+                // The trees' setting reads the basemap's areas and the road
+                // archive; the fill the basemap's landcover: the city tiles
                 // carry buildings and the trees OSM records, no landcover.
                 ...(trees
                   ? {
-                      treeFill: treeFill(tile, {
+                      treeContext: treeContextFor(tile, {
                         tileUrlTemplate: options.tileUrlTemplate,
                         tileZoom: options.tileZoom,
                         mappedLayer: options.city.treeLayer,
+                        roadTileUrlTemplate: options.city.roadTileUrlTemplate,
                       }),
                     }
                   : {}),
@@ -1120,7 +1157,13 @@ export function createCityEngine(options: CityEngineOptions): CityEngine {
     }
 
     for (const entry of cache.values()) setEntryVisible(entry, false);
-    drawn = { triangles: 0, vertices: 0, trees: 0, treeTriangles: 0 };
+    drawn = {
+      triangles: 0,
+      vertices: 0,
+      trees: 0,
+      treeTriangles: 0,
+      treeSettings: { street: 0, nature: 0, nudged: 0, offCarriageway: 0 },
+    };
     unlifted.clear();
     const casting: DrawnTile[] = [];
     const sources = new Set<string>();
@@ -1162,6 +1205,13 @@ export function createCityEngine(options: CityEngineOptions): CityEngine {
         } else {
           drawn.trees += entry.treeCount;
           drawn.treeTriangles += entry.treeTriangles;
+          const settings = entryTreeSettings.get(entry);
+          if (settings) {
+            drawn.treeSettings.street += settings.street;
+            drawn.treeSettings.nature += settings.nature;
+            drawn.treeSettings.nudged += settings.nudged;
+            drawn.treeSettings.offCarriageway += settings.offCarriageway;
+          }
         }
       }
     }

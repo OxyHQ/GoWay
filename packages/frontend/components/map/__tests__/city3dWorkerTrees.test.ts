@@ -8,7 +8,9 @@
  *    (in these cities a bare-earth model, measured — so not "de-noised", which
  *    only buried buildings on real knolls);
  *  - a fill whose basemap tile failed to fetch is marked incomplete (PR #126
- *    review) and retried on a schedule.
+ *    review) and retried on a schedule;
+ *  - a mapped tree is read in its context — the road archive's tile and the
+ *    basemap's areas — and never stands on a carriageway (`treeContext.ts`).
  */
 import { describe, expect, test } from 'bun:test';
 
@@ -24,9 +26,16 @@ import {
   TileGrounder,
 } from '@/components/map/engine/city3d/terrainGround';
 import { incompleteRetryMs } from '@/components/map/engine/city3d/tileScheduler';
-import { standTrees, type TreePoint, type TreeSources } from '@/components/map/engine/city3d/trees';
+import {
+  KIND_STREET,
+  standTrees,
+  type TreePoint,
+  type TreeSources,
+} from '@/components/map/engine/city3d/trees';
 import { dropTreesInBuildings, treesFor } from '@/components/map/engine/city3d/workerTrees';
 import type { Point2 } from '@/components/map/engine/city3d/mesher';
+import { CITY_ROAD_LAYER } from '@/lib/map/cityRoads';
+import { encodeLines, encodeTileLayers } from '@/scripts/citygen/mvtEncode';
 const square = (x0: number, y0: number, x1: number, y1: number): Point2[] => [
   [x0, y0],
   [x1, y0],
@@ -120,33 +129,102 @@ describe('treesFor', () => {
       lod: 0,
       trees: layers,
       treeFillWoods: fillWoods,
-      treeFill: { url: 'parent', tile: { z: 14, x: 8290, y: 6119 }, mappedLayer: 'tree' },
+      treeContext: {
+        url: 'parent',
+        tile: { z: 14, x: 8290, y: 6119 },
+        roadsUrl: 'roads',
+        mappedLayer: 'tree',
+      },
     }) as const;
   const bytes = treeTile([
     [100, 100],
     [2000, 2000],
   ]);
   const footprints = { list: [{ rings: [square(1900, 1900, 2100, 2100)] }], extent: 4096 };
+  // 900 m over 4096 units: a residential street (two lanes, 6 m) along y = 600.
+  const UNIT_M = 900 / 4096;
+  const roads = (() => {
+    const out = encodeTileLayers([
+      {
+        name: CITY_ROAD_LAYER,
+        features: [
+          {
+            id: 0,
+            type: 2,
+            geometry: encodeLines([
+              [
+                [0, 600],
+                [4096, 600],
+              ],
+            ]),
+            properties: { highway: 'residential', car: true, foot: true },
+          },
+        ],
+      },
+    ]);
+    return out.buffer.slice(out.byteOffset, out.byteOffset + out.byteLength) as ArrayBuffer;
+  })();
 
-  test('mapped trees only by default: the one in a building is dropped, nothing fetched', async () => {
-    let fetched = 0;
-    const out = await treesFor({ ...request(false) }, bytes, 900, footprints, async () => {
-      fetched++;
+  test('mapped trees by default: the one in a building is dropped; the tiles around them are read', async () => {
+    const asked: string[] = [];
+    const out = await treesFor({ ...request(false) }, bytes, 900, footprints, async (url) => {
+      asked.push(url);
       return null;
     });
     expect(out.complete).toBe(true);
     expect(out.points).toHaveLength(1);
+    expect(asked.sort()).toEqual(['parent', 'roads']);
+  });
+
+  test('no mapped tree and no fill: nothing is fetched', async () => {
+    let fetched = 0;
+    const out = await treesFor({ ...request(false) }, treeTile([]), 900, footprints, async () => {
+      fetched++;
+      return null;
+    });
+    expect(out.points).toHaveLength(0);
     expect(fetched).toBe(0);
   });
 
-  test('a fill whose basemap tile failed to fetch is incomplete; a missing one (204) is not', async () => {
+  test('a tile the trees read that failed to fetch is incomplete; a missing one (204) is not', async () => {
     const failed = await treesFor({ ...request(true) }, bytes, 900, footprints, async () => {
       throw new Error('network');
     });
     expect(failed.complete).toBe(false);
     expect(failed.points).toHaveLength(1);
+    const roadsFailed = await treesFor(
+      { ...request(false) },
+      bytes,
+      900,
+      footprints,
+      async (url) => {
+        if (url === 'roads') throw new Error('network');
+        return null;
+      },
+    );
+    expect(roadsFailed.complete).toBe(false);
     const missing = await treesFor({ ...request(true) }, bytes, 900, footprints, async () => null);
     expect(missing.complete).toBe(true);
+  });
+
+  test('beside the road archive’s carriageway a tree is a street tree, never on it', async () => {
+    const y = (metres: number) => Math.round(600 + metres / UNIT_M);
+    const trees = treeTile([
+      [100, 600], // on the centreline: left out
+      [200, y(2.5)], // half a metre inside the kerb: moved to it
+      [300, y(5)], // on the sidewalk: a street tree
+      [400, 3500], // 640 m away: drawn as before
+    ]);
+    const out = await treesFor({ ...request(false) }, trees, 900, footprints, async (url) =>
+      url === 'roads' ? roads : null,
+    );
+    expect(out.settings).toEqual({ street: 2, nature: 1, nudged: 1, offCarriageway: 1 });
+    expect(out.points).toHaveLength(3);
+    for (const point of out.points) {
+      expect(Math.abs(point.y - 600 * UNIT_M)).toBeGreaterThanOrEqual(3);
+    }
+    const street = out.points.filter((p) => (p.kind & KIND_STREET) !== 0);
+    expect(street.map((p) => Math.round(p.x / UNIT_M))).toEqual([200, 300]);
   });
 
   test('an incomplete tile is asked for again at 2, 8 and 30 s, then left as it is', () => {

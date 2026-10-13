@@ -514,7 +514,7 @@ async function build(args: Args): Promise<string> {
   console.log(`  problems     ${JSON.stringify(result.problems)}; nodes kept ${result.nodesKept}`);
   const t = result.treeCoverage;
   console.log(
-    `  trees        ${t.trees} natural=tree · crown ${pct(t.withCrown, t.trees)}% ${JSON.stringify(t.crowns)} · height ${pct(t.withHeight, t.trees)}% · diameter_crown ${pct(t.withCrownDiameter, t.trees)}%`,
+    `  trees        ${t.trees} natural=tree · crown ${pct(t.withCrown, t.trees)}% ${JSON.stringify(t.crowns)} · height ${pct(t.withHeight, t.trees)}% · diameter_crown ${pct(t.withCrownDiameter, t.trees)}% · circumference ${pct(t.withCircumference, t.trees)}% · street (tree_row/denotation) ${pct(t.street, t.trees)}%`,
   );
 
   await writeFile(

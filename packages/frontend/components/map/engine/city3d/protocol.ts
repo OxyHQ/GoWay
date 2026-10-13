@@ -6,6 +6,7 @@
  */
 import type { Lod } from './lod';
 import type { PackedMesh } from './packing';
+import type { TreeSettingCounts } from './treeContext';
 import type { TreeSourceLayers } from './treeSources';
 import type { TreeInstances } from './trees';
 import type { TileId } from './tileMath';
@@ -42,11 +43,14 @@ export type MeshWorkerRequest =
       /** Also stand the styling fill in mapped woods (off unless asked; `trees.ts`). */
       treeFillWoods?: boolean;
       /**
-       * GoWay city tiles only: the OpenMapTiles tile whose landcover the
-       * styling fill reads (the z14 parent of this z15 tile), and the city
-       * tile's own tree layer name. Absent: the fill reads this tile.
+       * GoWay city tiles only: what surrounds the trees OSM records
+       * (`treeContext.ts`) — the OpenMapTiles tile whose areas set a tree's
+       * setting and whose landcover the styling fill reads (`url`, `tile`:
+       * the z14 parent of this z15 tile), the road archive's tile at this
+       * tile's address (`roadsUrl`; absent where none is published) — and the
+       * city tile's own tree layer name. Absent: the fill reads this tile.
        */
-      treeFill?: { url: string; tile: TileId; mappedLayer: string };
+      treeContext?: { url: string; tile: TileId; roadsUrl?: string; mappedLayer: string };
       /**
        * City-tile feature ids (`osmId × 10 + 2|3`) NOT to mesh: buildings a
        * drawn landmark model replaces (`docs/MAP_LANDMARKS.md`). Only the
@@ -68,6 +72,8 @@ export type MeshWorkerResponse =
       meshMs: number;
       /** Time spent placing trees. */
       treeMs: number;
+      /** Where the mapped trees went (`treeContext.ts`); absent: none, or not asked. */
+      treeSettings?: TreeSettingCounts;
       /**
        * `false`: a source the trees needed could not be fetched (not merely
        * absent); the engine draws this and asks again later.

@@ -1,8 +1,9 @@
 /**
  * The instanced-tree material in TSL (`docs/MAP_NATIVE_3D.md`): every tree is
  * one instance of a shared unit tree (`treeGeometry.ts`), placed, turned,
- * sized and tinted here from four 16-bit numbers (`trees.ts` →
- * `TreeInstances`), so a wood costs the CPU nothing per frame.
+ * sized and tinted here from six 16-bit numbers (`trees.ts` →
+ * `TreeInstances`: position, seed, kind and height; crown base and crown
+ * diameter), so a wood costs the CPU nothing per frame.
  *
  * The look is a maquette's — matte, soft, no highlight — lit as the buildings
  * are (MapLibre's `fill-extrusion` light, `common.ts`), with a gentle canopy
@@ -36,8 +37,8 @@ import {
 } from 'three/tsl';
 
 import { AO } from '../occlusion';
-import { CANOPY, SHADOW, SHADOW_RADIUS, STEM } from '../treeGeometry';
-import { KIND_CONIFER, KIND_PALM, KIND_WOOD } from '../trees';
+import { CANOPY, CROWN_FRAMES, SHADOW, SHADOW_RADIUS, STEM } from '../treeGeometry';
+import { KIND_CONIFER, KIND_PALM, KIND_STREET, KIND_WOOD, STREET_TREE } from '../trees';
 import {
   bindFloat,
   bindVec3,
@@ -150,36 +151,79 @@ function buildMaterial(
   const part = attribute('part', 'float');
   // x, y (tile units, y southward), seed, kind × 256 + height in half metres.
   const tree = attribute('aTree', 'vec4');
+  // Crown base and crown diameter, decimetres (`trees.ts` → `treeForm`).
+  const form = attribute('aForm', 'vec2');
   const seed = tree.z.div(65536);
   const kind = floor(tree.w.div(256));
   const height = tree.w.sub(kind.mul(256)).mul(0.5);
   const conifer = mod(floor(kind.div(KIND_CONIFER)), 2);
   const palm = mod(floor(kind.div(KIND_PALM)), 2);
   const wood = mod(kind, KIND_WOOD * 2);
+  const street = mod(floor(kind.div(KIND_STREET)), 2);
   const yaw = seed.mul(6.2831853);
-  // Canopies vary in width as well as height.
-  const width = float(0.86).add(fract(seed.mul(7.31)).mul(0.3));
   const c = cos(yaw);
   const s = sin(yaw);
-  const isCanopy = part.greaterThan(CANOPY - 0.5).and(part.lessThan(CANOPY + 0.5));
-  const scaleXY = select(isCanopy, width, float(1));
+  const isTrunk = part.lessThan(CANOPY - 0.5);
+  // The unit shape's crown frame (treeGeometry.ts → CROWN_FRAMES), stretched
+  // to this tree's: the clear trunk below the frame's base to the crown base,
+  // the crown above it to the rest of the height, and its reach to the crown
+  // diameter. A tree drawn with the unit tree's own proportions (a park or
+  // wood tree) is the unit tree scaled by its height, as it always was.
+  const frameBase = select(
+    palm.greaterThan(0.5),
+    float(CROWN_FRAMES.palm.base),
+    select(
+      conifer.greaterThan(0.5),
+      float(CROWN_FRAMES.conifer.base),
+      float(CROWN_FRAMES.broadleaf.base),
+    ),
+  );
+  const frameRadius = select(
+    palm.greaterThan(0.5),
+    float(CROWN_FRAMES.palm.radius),
+    select(
+      conifer.greaterThan(0.5),
+      float(CROWN_FRAMES.conifer.radius),
+      float(CROWN_FRAMES.broadleaf.radius),
+    ),
+  );
+  const crownBase = form.x.mul(0.1);
+  const crownScale = form.y.mul(0.1).div(frameRadius.mul(2));
+  const below = position.z.lessThan(frameBase);
+  const z = select(
+    below,
+    position.z.div(frameBase).mul(crownBase),
+    crownBase.add(
+      position.z.sub(frameBase).div(float(1).sub(frameBase)).mul(height.sub(crownBase)),
+    ),
+  );
+  const scaleZ = select(
+    below,
+    crownBase.div(frameBase),
+    height.sub(crownBase).div(float(1).sub(frameBase)),
+  );
+  // Canopy and contact shadow follow the crown; a street tree's trunk is slimmer.
+  const scaleXY = select(
+    isTrunk,
+    height.mul(select(street.greaterThan(0.5), float(STREET_TREE.trunkScale), float(1))),
+    crownScale,
+  );
   // A slight curve: the trunk leans away from vertical toward its top, and
   // the canopy rides on it. Palms lean more. (The shadow does not lean.)
   const lean = select(palm.greaterThan(0.5), float(0.12), float(0.04)).mul(
     float(0.4).add(fract(seed.mul(3.17)).mul(0.6)),
   );
   const t = min(1, position.z.div(STEM.top));
-  const leanX = select(part.lessThan(CANOPY + 0.5), lean.mul(t).mul(t), float(0));
+  const leanX = select(part.lessThan(CANOPY + 0.5), lean.mul(t).mul(t).mul(height), float(0));
   const px = position.x.mul(scaleXY).add(leanX);
   const py = position.y.mul(scaleXY);
   const nx = normal.x.div(scaleXY);
   const ny = normal.y.div(scaleXY);
+  const nz = normal.z.div(scaleZ);
   // Shorter than the zoom's threshold: shrink away over 3 m, then vanish.
   const grow = smoothstep(u.uTreeMinHeight.sub(1.5), u.uTreeMinHeight.add(1.5), height);
-  const local = vec3(c.mul(px).sub(s.mul(py)), s.mul(px).add(c.mul(py)), position.z).mul(
-    height.mul(grow),
-  );
-  const vNormal = varying(vec3(c.mul(nx).sub(s.mul(ny)), s.mul(nx).add(c.mul(ny)), normal.z));
+  const local = vec3(c.mul(px).sub(s.mul(py)), s.mul(px).add(c.mul(py)), z).mul(grow);
+  const vNormal = varying(vec3(c.mul(nx).sub(s.mul(ny)), s.mul(nx).add(c.mul(ny)), nz));
   const vPart = varying(part);
   const vHeight = varying(local.z);
   // 0 at the canopy's foot, 1 at its top: the gentle top-lit gradient.

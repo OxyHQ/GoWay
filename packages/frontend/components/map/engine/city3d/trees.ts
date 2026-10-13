@@ -30,6 +30,7 @@
  * Pure; runs in the mesh worker; tested in `__tests__/city3dTrees.test.ts`.
  */
 import type { Point2 } from './mesher';
+import { CROWN_FRAMES } from './treeGeometry';
 
 export const TREES = {
   /** Raster cell, metres. */
@@ -60,6 +61,13 @@ export const KIND_CONIFER = 2;
 export const KIND_PALM = 4;
 /** A tree OpenStreetMap records (`natural=tree`), not the fill's styling. */
 export const KIND_MAPPED = 8;
+/**
+ * A STREET tree (`treeContext.ts` → `settleTrees`): beside a carriageway or a
+ * sidewalk, recorded in a row or avenue, or in urban landuse — drawn with
+ * {@link STREET_TREE}'s proportions. Without it a tree is a park, wood or
+ * rural tree, drawn as it always was.
+ */
+export const KIND_STREET = 16;
 
 /**
  * The instance ranges, in order: three broadleaf canopy variants, conifers,
@@ -75,6 +83,109 @@ export interface TreePoint {
   seed: number;
   kind: number;
   heightM: number;
+  /**
+   * The crown's diameter when the data gives one (`diameter_crown`, or an
+   * estimate from a recorded `circumference`); absent: {@link treeForm}'s
+   * default for the tree's setting.
+   */
+  crownDiameterM?: number;
+}
+
+/** How a tree is drawn: its height, where its crown starts, and how wide it is. */
+export interface TreeForm {
+  heightM: number;
+  /** The clear trunk: from the ground to the crown's lowest point. */
+  crownBaseM: number;
+  crownDiameterM: number;
+}
+
+/**
+ * A street tree's proportions where OSM records no size — the Apple Maps
+ * "Detailed City" street tree: a modest lollipop on a clear trunk, its crown
+ * above a bus (`docs/MAP_3D_CITY.md` → "Trees"). Styling, not measurement:
+ * the tree's POSITION is data, an unrecorded size is not.
+ */
+export const STREET_TREE = {
+  /** Unrecorded height, metres, picked per tree by its seed. */
+  heightM: [8.5, 11.5] as const,
+  /** Clear trunk: this share of the height, kept within `[min, max]` metres. */
+  clearTrunkShare: 0.45,
+  clearTrunkM: [2.5, 6] as const,
+  /** Unrecorded crown diameter: the crown's own height × this (per seed), at most `maxCrownM`. */
+  crownPerHeight: [0.9, 1.1] as const,
+  maxCrownM: 6.5,
+  /** A street tree's trunk is slimmer than a park tree's of the same height. */
+  trunkScale: 0.6,
+} as const;
+
+/** Recorded crown diameters are drawn between these, metres (a guard against typos, not a style). */
+export const CROWN_DIAMETER_RANGE_M = [1, 40] as const;
+
+/**
+ * A crown diameter estimated from a recorded trunk `circumference` (metres,
+ * measured at breast height): the diameter at breast height in centimetres,
+ * through a broad urban-forestry rule of thumb (crown ≈ 1.5 m + 0.2 m per cm
+ * of trunk), clamped to 2–20 m. An estimate from a fact, said as one.
+ */
+export function crownFromCircumferenceM(circumferenceM: number): number {
+  const dbhCm = (circumferenceM * 100) / Math.PI;
+  return Math.max(2, Math.min(20, 1.5 + 0.2 * dbhCm));
+}
+
+/** The seed as the GPU reads it (16 bits), so the CPU and the shader agree. */
+const gpuSeed = (seed: number) => Math.floor(seed * 65_536) / 65_536;
+const fract = (v: number) => v - Math.floor(v);
+
+/** Which {@link CROWN_FRAMES} entry a tree's shape uses. */
+function frameOf(kind: number) {
+  if (kind & KIND_PALM) return CROWN_FRAMES.palm;
+  if (kind & KIND_CONIFER) return CROWN_FRAMES.conifer;
+  return CROWN_FRAMES.broadleaf;
+}
+
+/**
+ * How a tree is drawn. A recorded size wins; otherwise:
+ *
+ *  - a park, wood or rural tree (and every palm) keeps the proportions it has
+ *    always had: the unit tree scaled by its height, its canopy 0.86–1.16
+ *    times as wide by its seed;
+ *  - a street tree ({@link KIND_STREET}) gets {@link STREET_TREE}'s: a clear
+ *    trunk of 45% of its height (2.5–6 m), a crown about as wide as it is
+ *    tall, at most 6.5 m unless recorded.
+ */
+export function treeForm(tree: TreePoint): TreeForm {
+  const heightM = tree.heightM;
+  const frame = frameOf(tree.kind);
+  const seed = gpuSeed(tree.seed);
+  const recorded =
+    tree.crownDiameterM === undefined
+      ? undefined
+      : Math.max(
+          CROWN_DIAMETER_RANGE_M[0],
+          Math.min(CROWN_DIAMETER_RANGE_M[1], tree.crownDiameterM),
+        );
+  if (!(tree.kind & KIND_STREET) || tree.kind & KIND_PALM) {
+    // The canopy's width variant, as the shader used to draw it.
+    const width = 0.86 + fract(seed * 7.31) * 0.3;
+    return {
+      heightM,
+      crownBaseM: frame.base * heightM,
+      crownDiameterM: recorded ?? 2 * frame.radius * heightM * width,
+    };
+  }
+  const [lo, hi] = STREET_TREE.clearTrunkM;
+  const crownBaseM = Math.min(
+    Math.max(lo, Math.min(hi, STREET_TREE.clearTrunkShare * heightM)),
+    heightM * 0.7,
+  );
+  const [c0, c1] = STREET_TREE.crownPerHeight;
+  const share = c0 + (c1 - c0) * fract(seed * 5.77);
+  return {
+    heightM,
+    crownBaseM,
+    crownDiameterM:
+      recorded ?? Math.max(2, Math.min(STREET_TREE.maxCrownM, (heightM - crownBaseM) * share)),
+  };
 }
 
 /** Which of {@link TREE_SHAPES} a tree is drawn with. */
@@ -99,15 +210,21 @@ export function packTrees(
   for (const shape of shapes) ranges[shape]++;
   const starts = ranges.map((_, i) => ranges.slice(0, i).reduce((a, b) => a + b, 0));
   const data = new Uint16Array(trees.length * 4);
+  const form = new Uint16Array(trees.length * 2);
   trees.forEach((tree, k) => {
-    const p = starts[shapes[k]]++ * 4;
+    const slot = starts[shapes[k]]++;
+    const p = slot * 4;
+    // Height in half metres, as the shader reads it; the form from the same.
+    const halfMetres = Math.max(1, Math.min(255, Math.round(tree.heightM * 2)));
     data[p] = Math.max(0, Math.min(65_535, Math.round(tree.x / unitM)));
     data[p + 1] = Math.max(0, Math.min(65_535, Math.round(tree.y / unitM)));
     data[p + 2] = Math.floor(tree.seed * 65_536);
-    data[p + 3] =
-      ((tree.kind & 255) << 8) | Math.max(1, Math.min(255, Math.round(tree.heightM * 2)));
+    data[p + 3] = ((tree.kind & 255) << 8) | halfMetres;
+    const shaped = treeForm({ ...tree, heightM: halfMetres / 2 });
+    form[slot * 2] = Math.round(shaped.crownBaseM * 10);
+    form[slot * 2 + 1] = Math.max(1, Math.round(shaped.crownDiameterM * 10));
   });
-  return { data, count: trees.length, ranges, unitM };
+  return { data, form, count: trees.length, ranges, unitM };
 }
 
 /** Raster classes. */
@@ -161,6 +278,25 @@ export function landuseRole(cls: unknown): AreaRole {
 }
 
 /**
+ * `landuse` `class` values that are the built city: a mapped tree standing in
+ * one is a street tree (`treeContext.ts`). The fill does not read this.
+ */
+const URBAN_LANDUSE = new Set([
+  'residential',
+  'commercial',
+  'retail',
+  'industrial',
+  'garages',
+  'neighbourhood',
+  'quarter',
+  'suburb',
+]);
+
+export function isUrbanLanduse(cls: unknown): boolean {
+  return typeof cls === 'string' && URBAN_LANDUSE.has(cls);
+}
+
+/**
  * Half the cleared width along a `transportation` line, metres, by class —
  * the carriageway or path plus a verge, so no crown sits on it.
  */
@@ -208,9 +344,15 @@ export interface TreeInstances {
   /**
    * x, y (tile units of `unitM`, y southward), seed, `kind << 8 | heightHalfMetres`
    * (`kind`: {@link KIND_WOOD} | {@link KIND_CONIFER} | {@link KIND_PALM} |
-   * {@link KIND_MAPPED}), sorted by shape ({@link TreeInstances.ranges}).
+   * {@link KIND_MAPPED} | {@link KIND_STREET}), sorted by shape
+   * ({@link TreeInstances.ranges}).
    */
   data: Uint16Array;
+  /**
+   * Per tree, in `data`'s order: crown base and crown diameter, decimetres
+   * ({@link treeForm}). The shader stretches the unit tree to them.
+   */
+  form: Uint16Array;
   count: number;
   /** Trees per {@link TREE_SHAPES} entry, in that order along `data`. */
   ranges: number[];
@@ -506,9 +648,10 @@ export function placeTrees(
 }
 
 /**
- * Typical heights for a mapped tree whose `height` OSM does not record,
- * metres, by crown. A size for the eye, not a measurement: the tree's
- * POSITION and crown are data, an unrecorded height is not.
+ * Typical heights for a park, wood or rural tree whose `height` OSM does not
+ * record, metres, by crown. A size for the eye, not a measurement: the tree's
+ * POSITION and crown are data, an unrecorded height is not. A street tree's
+ * is {@link STREET_TREE}'s.
  */
 export const MAPPED_TREE_HEIGHT_M = {
   broadleaf: [8, 14],
@@ -516,13 +659,31 @@ export const MAPPED_TREE_HEIGHT_M = {
   palm: [8, 14],
 } as const;
 
+/** One tree OpenStreetMap records, as {@link mappedTreePoints} reads it (tile units, y down). */
+export interface MappedTreeInput {
+  id: number;
+  x: number;
+  y: number;
+  crown?: string;
+  /** Recorded `height`, metres. */
+  heightM?: number;
+  /** Recorded `diameter_crown`, metres. */
+  crownDiameterM?: number;
+  /** Recorded trunk `circumference`, metres. */
+  circumferenceM?: number;
+  /** A street tree (`treeContext.ts` → `settleTrees`). */
+  street?: boolean;
+}
+
 /**
  * Mapped trees (a GoWay city tile's `tree` layer) as {@link TreePoint}s, in
  * metres from the tile's north-west corner. Each tree's seed is its OSM id,
- * so it keeps its turn and canopy variant across sessions and tiles.
+ * so it keeps its turn and canopy variant across sessions and tiles. What
+ * OSM records about its size is kept; what it does not is its setting's
+ * default ({@link treeForm}). A palm stays a palm on a street.
  */
 export function mappedTreePoints(
-  trees: readonly { id: number; x: number; y: number; crown?: string; heightM?: number }[],
+  trees: readonly MappedTreeInput[],
   extent: number,
   tileSizeMetres: number,
 ): TreePoint[] {
@@ -530,15 +691,29 @@ export function mappedTreePoints(
   return trees.map((tree) => {
     const seed = hash32(tree.id ^ Math.floor(tree.id / 4_294_967_296)) / 4_294_967_296;
     const crown = tree.crown === 'conifer' || tree.crown === 'palm' ? tree.crown : 'broadleaf';
-    const [lo, hi] = MAPPED_TREE_HEIGHT_M[crown];
-    const typical = lo + (hi - lo) * (hash32(Math.floor(seed * 4_294_967_296)) / 4_294_967_296);
+    const street = tree.street === true && crown !== 'palm';
+    const [lo, hi] = street ? STREET_TREE.heightM : MAPPED_TREE_HEIGHT_M[crown];
+    const pick = lo + (hi - lo) * (hash32(Math.floor(seed * 4_294_967_296)) / 4_294_967_296);
+    const crownDiameterM =
+      tree.crownDiameterM ??
+      (tree.circumferenceM === undefined
+        ? undefined
+        : crownFromCircumferenceM(tree.circumferenceM));
+    // A street tree whose crown the data sizes, but not its height, is drawn
+    // tall enough to carry that crown over its clear trunk.
+    const typical =
+      street && crownDiameterM !== undefined ? Math.max(pick, 3 + 0.8 * crownDiameterM) : pick;
     return {
       x: tree.x * metresPerUnit,
       y: tree.y * metresPerUnit,
       seed,
       kind:
-        KIND_MAPPED | (crown === 'conifer' ? KIND_CONIFER : 0) | (crown === 'palm' ? KIND_PALM : 0),
+        KIND_MAPPED |
+        (crown === 'conifer' ? KIND_CONIFER : 0) |
+        (crown === 'palm' ? KIND_PALM : 0) |
+        (street ? KIND_STREET : 0),
       heightM: tree.heightM ?? typical,
+      ...(crownDiameterM === undefined ? {} : { crownDiameterM }),
     };
   });
 }

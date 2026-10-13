@@ -191,7 +191,8 @@ const outline = rect(300, 0, 60, 30, 30);
 const part = rect(310, 5, 65, 10, 10);
 const unclosed = rect(400, 0, 120, 10, 10);
 // Trees: a recorded palm with a height, a needleleaved conifer, one with
-// nothing but `natural=tree`, and a node that is not a tree.
+// nothing but `natural=tree`, a node that is not a tree, an avenue tree with
+// its trunk measured, and a tree that is a node of a `natural=tree_row`.
 const TREES: Node[] = [
   {
     id: 500,
@@ -217,6 +218,20 @@ const TREES: Node[] = [
     lon: ORIGIN.lon + 30 * M_LON,
     tags: { amenity: 'bench' },
   },
+  {
+    id: 504,
+    lat: ORIGIN.lat + 38 * M_LAT,
+    lon: ORIGIN.lon + 30 * M_LON,
+    tags: { natural: 'tree', circumference: '120 cm', denotation: 'avenue' },
+  },
+  {
+    id: 505,
+    lat: ORIGIN.lat + 40 * M_LAT,
+    lon: ORIGIN.lon + 30 * M_LON,
+    tags: { natural: 'tree' },
+  },
+  // The tree row's other end: a vertex, not a tree.
+  { id: 506, lat: ORIGIN.lat + 40 * M_LAT, lon: ORIGIN.lon + 40 * M_LON },
 ];
 const NODES = [...house, ...blockOuter, ...blockInner, ...outline, ...part, ...unclosed, ...TREES];
 const ids = (nodes: Node[]) => nodes.map((n) => n.id);
@@ -242,6 +257,7 @@ const WAYS: Way[] = [
   },
   { id: 40, refs: ids(unclosed), tags: { building: 'yes' } },
   { id: 50, refs: [100, 101], tags: { highway: 'residential' } },
+  { id: 60, refs: [505, 506], tags: { natural: 'tree_row' } },
 ];
 const RELATIONS: Relation[] = [
   {
@@ -357,14 +373,26 @@ describe('trees', () => {
   test('natural=tree nodes become the tree layer, with only what they record', () => {
     const result = compile({ pbf: pbfPath, zoom: CITY_TILE_ZOOM });
     const trees = [...result.trees.values()].flat();
-    expect(trees.map((t) => t.id)).toEqual([500, 501, 502]);
+    expect(trees.map((t) => t.id)).toEqual([500, 501, 502, 504, 505]);
     expect(trees.find((t) => t.id === 500)?.properties).toEqual({ crown: 'palm', height: 9 });
     expect(trees.find((t) => t.id === 501)?.properties).toEqual({
       crown: 'conifer',
       crown_diameter: 4,
     });
     expect(trees.find((t) => t.id === 502)?.properties).toEqual({});
-    expect(result.treeCoverage).toMatchObject({ trees: 3, withCrown: 2, withHeight: 1 });
+    // Recorded as street trees: by `denotation`, and by standing in a tree row.
+    expect(trees.find((t) => t.id === 504)?.properties).toEqual({
+      circumference: 1.2,
+      street: true,
+    });
+    expect(trees.find((t) => t.id === 505)?.properties).toEqual({ street: true });
+    expect(result.treeCoverage).toMatchObject({
+      trees: 5,
+      withCrown: 2,
+      withHeight: 1,
+      withCircumference: 1,
+      street: 2,
+    });
     // The buildings are untouched by the trees riding the node pass.
     expect(
       [...result.tiles.values()]
@@ -383,8 +411,12 @@ describe('trees', () => {
     bytes.set(buildings);
     bytes.set(layer, buildings.length);
     const decoded = decodeMappedTrees(bytes, CITY_TREE_LAYER);
-    expect(decoded.trees.map((t) => t.id)).toEqual([500, 501, 502]);
+    expect(decoded.trees.map((t) => t.id)).toEqual([500, 501, 502, 504, 505]);
     expect(decoded.trees[0]).toMatchObject({ crown: 'palm', heightM: 9 });
+    expect(decoded.trees[1]).toMatchObject({ crown: 'conifer', crownDiameterM: 4 });
+    expect(decoded.trees[3]).toMatchObject({ circumferenceM: 1.2, street: true });
+    expect(decoded.trees[4]).toMatchObject({ street: true });
+    expect(decoded.trees[2].street).toBeUndefined();
     expect(decoded.trees[0].x).toBeCloseTo(trees[0].point[0], -0.5);
     if (buildings.length > 0) expect(decodeCityTile(bytes)?.buildings.length).toBeGreaterThan(0);
   });

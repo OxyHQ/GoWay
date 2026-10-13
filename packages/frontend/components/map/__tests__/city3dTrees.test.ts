@@ -18,6 +18,7 @@ import type { Point2 } from '@/components/map/engine/city3d/mesher';
 import {
   bumpyCanopy,
   CROWN,
+  CROWN_FRAMES,
   farConiferShape,
   farPalmShape,
   farTreeShape,
@@ -31,9 +32,11 @@ import {
 } from '@/components/map/engine/city3d/tsl/treeMaterial';
 import { decodeTreeSources } from '@/components/map/engine/city3d/treeSources';
 import {
+  crownFromCircumferenceM,
   KIND_CONIFER,
   KIND_MAPPED,
   KIND_PALM,
+  KIND_STREET,
   KIND_WOOD,
   landcoverRole,
   MAPPED_TREE_HEIGHT_M,
@@ -48,13 +51,15 @@ import {
   pathHalfWidthM,
   placeTrees,
   rasterizeTreeAreas,
+  STREET_TREE,
   TREES,
+  treeForm,
   type TreeInstances,
   type TreeSources,
   WOOD,
 } from '@/components/map/engine/city3d/trees';
 import { CARTOGRAPHY_PALETTES } from '@/lib/map/style/palette';
-import { parseMetres, treeCrown } from '@/scripts/citygen/treeTags';
+import { parseCircumference, parseMetres, treeCrown } from '@/scripts/citygen/treeTags';
 
 /** Extent 4096 over 4096 m: one tile unit is one metre. */
 const SIZE = 4096;
@@ -562,6 +567,138 @@ describe('what OpenStreetMap records about a tree', () => {
     expect(parseMetres('30cm')).toBeUndefined();
     expect(parseMetres('tall')).toBeUndefined();
     expect(parseMetres('999')).toBeUndefined();
+  });
+});
+
+describe('how a tree is drawn: its form', () => {
+  const tree = (kind: number, heightM: number, seed = 0.37, crownDiameterM?: number) => ({
+    x: 0,
+    y: 0,
+    seed,
+    kind,
+    heightM,
+    ...(crownDiameterM === undefined ? {} : { crownDiameterM }),
+  });
+
+  test('a park, wood or rural tree keeps the proportions it always had', () => {
+    for (const seed of [0.01, 0.37, 0.64, 0.99]) {
+      const form = treeForm(tree(KIND_MAPPED, 12, seed));
+      // The unit canopy scaled by the height: its foot at 0.2, its reach 0.33,
+      // 0.86–1.16 as wide by the seed.
+      expect(form.crownBaseM).toBeCloseTo(CROWN_FRAMES.broadleaf.base * 12, 6);
+      expect(form.crownDiameterM).toBeGreaterThanOrEqual(2 * 0.33 * 12 * 0.86 - 1e-6);
+      expect(form.crownDiameterM).toBeLessThanOrEqual(2 * 0.33 * 12 * 1.16 + 1e-6);
+    }
+    const conifer = treeForm(tree(KIND_MAPPED | KIND_CONIFER, 15));
+    expect(conifer.crownBaseM).toBeCloseTo(CROWN_FRAMES.conifer.base * 15, 6);
+  });
+
+  test('a street tree is a modest lollipop: a clear trunk above a bus, a crown that leaves the street', () => {
+    const points = mappedTreePoints(
+      Array.from({ length: 400 }, (_, i) => ({ id: 1000 + i * 7919, x: 0, y: 0, street: true })),
+      4096,
+      SIZE,
+    );
+    for (const point of points) {
+      expect(point.kind & KIND_STREET).toBe(KIND_STREET);
+      const form = treeForm(point);
+      expect(form.heightM).toBeGreaterThanOrEqual(STREET_TREE.heightM[0]);
+      expect(form.heightM).toBeLessThanOrEqual(STREET_TREE.heightM[1]);
+      // A double-decker is 4.4 m; a city bus 3.2 m.
+      expect(form.crownBaseM).toBeGreaterThanOrEqual(3.8);
+      expect(form.crownDiameterM).toBeLessThanOrEqual(STREET_TREE.maxCrownM);
+      expect(form.crownDiameterM).toBeGreaterThan(3.5);
+    }
+    // Today's park tree of the same id: lower and wider.
+    const park = mappedTreePoints([{ id: 1000, x: 0, y: 0 }], 4096, SIZE)[0];
+    const street = mappedTreePoints([{ id: 1000, x: 0, y: 0, street: true }], 4096, SIZE)[0];
+    expect(treeForm(park).crownBaseM).toBeLessThan(3);
+    expect(treeForm(street).crownBaseM).toBeGreaterThan(treeForm(park).crownBaseM + 1.5);
+  });
+
+  test('what OSM records wins: height, crown diameter, a crown from the trunk’s circumference', () => {
+    const [height, crown, girth, both] = mappedTreePoints(
+      [
+        { id: 1, x: 0, y: 0, street: true, heightM: 18 },
+        { id: 2, x: 0, y: 0, street: true, crownDiameterM: 11 },
+        { id: 3, x: 0, y: 0, circumferenceM: 1.2 },
+        { id: 4, x: 0, y: 0, heightM: 7, crownDiameterM: 3, circumferenceM: 2 },
+      ],
+      4096,
+      SIZE,
+    );
+    expect(height.heightM).toBe(18);
+    // 45% of 18 m, held to the 6 m a clear trunk reaches.
+    expect(treeForm(height).crownBaseM).toBe(STREET_TREE.clearTrunkM[1]);
+    // A recorded crown is drawn as recorded, on a tree tall enough to carry it.
+    expect(treeForm(crown).crownDiameterM).toBe(11);
+    expect(crown.heightM).toBeGreaterThanOrEqual(3 + 0.8 * 11);
+    // 1.2 m round: 38 cm across, so a crown of about 9 m.
+    expect(treeForm(girth).crownDiameterM).toBeCloseTo(crownFromCircumferenceM(1.2), 6);
+    expect(crownFromCircumferenceM(1.2)).toBeCloseTo(1.5 + (0.2 * 120) / Math.PI, 6);
+    // diameter_crown beats the circumference's estimate; the height is kept.
+    expect(both.heightM).toBe(7);
+    expect(treeForm(both).crownDiameterM).toBe(3);
+  });
+
+  test('a palm stays a palm on a street', () => {
+    const [palm] = mappedTreePoints(
+      [{ id: 9, x: 0, y: 0, crown: 'palm', street: true }],
+      4096,
+      SIZE,
+    );
+    expect(palm.kind & KIND_STREET).toBe(0);
+    expect(treeForm(palm).crownBaseM).toBeCloseTo(CROWN_FRAMES.palm.base * palm.heightM, 6);
+  });
+
+  test('packing carries each tree’s form, in decimetres, in the same order as its instance', () => {
+    const points = mappedTreePoints(
+      [
+        { id: 11, x: 10, y: 10, street: true },
+        { id: 12, x: 20, y: 20, crown: 'conifer' },
+        { id: 13, x: 30, y: 30, heightM: 20, crownDiameterM: 12 },
+      ],
+      4096,
+      SIZE,
+    );
+    const packed = packTrees(points, SIZE) as TreeInstances;
+    expect(packed.form).toHaveLength(packed.count * 2);
+    for (let i = 0; i < packed.count; i++) {
+      const x = Math.round(packed.data[i * 4] * packed.unitM);
+      const point = points.find((p) => Math.round(p.x) === x) as (typeof points)[number];
+      const form = treeForm({ ...point, heightM: Math.round(point.heightM * 2) / 2 });
+      expect(packed.form[i * 2]).toBe(Math.round(form.crownBaseM * 10));
+      expect(packed.form[i * 2 + 1]).toBe(Math.round(form.crownDiameterM * 10));
+    }
+  });
+
+  test('the shapes’ crown frames are where the unit trees’ crowns are', () => {
+    const lowest = (shape: ReturnType<typeof nearTreeShape>) => {
+      let z = Infinity;
+      let r = 0;
+      for (let i = 0; i < shape.part.length; i++) {
+        if (shape.part[i] !== 1) continue;
+        z = Math.min(z, shape.positions[i * 3 + 2]);
+        r = Math.max(r, Math.hypot(shape.positions[i * 3], shape.positions[i * 3 + 1]));
+      }
+      return { z, r };
+    };
+    for (const variant of [0, 1, 2]) {
+      const { z, r } = lowest(nearTreeShape(variant));
+      expect(z).toBeGreaterThanOrEqual(CROWN_FRAMES.broadleaf.base - 1e-6);
+      expect(r).toBeLessThanOrEqual(CROWN_FRAMES.broadleaf.radius + 1e-6);
+    }
+    const conifer = lowest(nearConiferShape());
+    expect(conifer.z).toBeCloseTo(CROWN_FRAMES.conifer.base, 6);
+    expect(conifer.r).toBeCloseTo(CROWN_FRAMES.conifer.radius, 6);
+  });
+
+  test('a trunk circumference is read in metres or centimetres', () => {
+    expect(parseCircumference('1.2')).toBe(1.2);
+    expect(parseCircumference('1,2 m')).toBe(1.2);
+    expect(parseCircumference('120 cm')).toBe(1.2);
+    expect(parseCircumference('huge')).toBeUndefined();
+    expect(parseCircumference('0.01')).toBeUndefined();
   });
 });
 
