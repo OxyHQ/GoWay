@@ -340,7 +340,7 @@ load average of 75–105 from other work, so wall times are pessimistic):
 | Set | Cells | Tiles | Archives | Time |
 | --- | ---: | ---: | ---: | --- |
 | `blue-marble-2004` z0–7, one cell | 1 (0/0/0) | 21,845 | 103.8 MB | 154 s |
-| `worldcover-2021` z8–13 over Catalonia | 9 z8 | 6,493 | 175.9 MB (27.1 KB a tile) | 28–185 s a cell, ~70% of it the fetch from AWS |
+| `worldcover-2021` z8–13 over Catalonia, water masked | 9 z8 | 6,200 | 176.3 MB (27.8 KB a tile) | 15–155 s a cell, ~60% of it the fetch from AWS |
 | `icgc-ortofoto-2025` z13–18, central Barcelona (4 × 4 z13 cells, from the 2025 GeoPackage) | 13 (3 all sea: skipped) | 15,253 | 774.2 MB (dense cells 78–107 MB) | 66–86 s a dense cell |
 | `icgc-ortofoto-2025`, two rural cells read straight from ICGC's server | **failed closed**: after the Barcelona fetch, `datacloud.icgc.cat` stopped accepting connections from this machine (connect timeouts of 135 s, while icgc.cat and AWS answered); every strip was retried 5 times, then the cell failed — no archive, no entry, no blank tile |
 
@@ -365,7 +365,14 @@ directory as the bucket), in headless Chromium (SwiftShader). Screenshots in
 | `satellite-08-hybrid-phone-z17` | Hybrid on a 390 × 844 phone at z17, the credit in the corner |
 | `satellite-09-map-same-view` | The ordinary map at shot 01's camera, for comparison |
 
-Two things the run taught: under this machine's load a hybrid view needed
+Three things the run taught. **Never reuse a stamp**, even locally: the
+WorldCover cells were rebuilt (water masked) under the same stamp while the
+server ran, and its isolate's directory memo (`tiles.js`) kept the old
+archives' directories — every tile read was garbage at stale offsets, MapLibre
+could not decode them, and its `load` never fired, so the credit never
+appeared. In production the keys are dated and the upload refuses an
+overwrite (`city-r2.sh`); this is that rule's reason, measured. Second, under
+this machine's load a hybrid view needed
 ~60 s to place its labels (the vector tiles of central Barcelona are 1.2 MB
 each), so the shots wait 70 s; and an imagery tier's 404s must not reach the
 canvas's "Map data unavailable" state (fixed, `MapCanvas.web.tsx`).
@@ -381,7 +388,7 @@ repository (a private one: $0.016/runner-minute, 4 vCPU).
 | --- | ---: | ---: | --- |
 | The proof (Blue Marble + Catalonia WorldCover + 13 Barcelona cells) | ~1.05 GB | ~$0.02 | done locally |
 | Blue Marble z0–7, planet | 0.10 GB | $0.002 | 3 min |
-| WorldCover 2021 z8–13, planet (19,174 cells, ~31.9 M tiles at the measured 27.1 KB) | **≈ 0.86 TB** | **≈ $13** | ~32 M tiles × ~0.15 CPU-s ≈ 1,300 runner-hours of 4 vCPU → ~128 jobs, 20 at a time ≈ **10–14 h wall**, $0; ~7 TB read from AWS eu-central-1 (free to read) |
+| WorldCover 2021 z8–13, planet (19,174 cells, ~31.9 M tiles at the measured 27.8 KB; fewer with water masked) | **≈ 0.9 TB** | **≈ $14** | ~32 M tiles × ~0.15 CPU-s ≈ 1,300 runner-hours of 4 vCPU → ~128 jobs, 20 at a time ≈ **10–14 h wall**, $0; ~7 TB read from AWS eu-central-1 (free to read) |
 | ICGC Catalonia, all of it (~2,400 z13 land cells, 32,108 km²) | **≈ 106–257 GB** | **≈ $1.6–3.9** | ~3.2 M tiles × 0.24 CPU-s ≈ 215 CPU-h ≈ 54 runner-hours → 100 jobs of 24 cells ≈ **3 h wall**, $0; 210 GB read from ICGC |
 | An own planet Sentinel-2 mosaic (instead of WorldCover 2021) | ~1 TB | ~$15 | ≈300 TB read in AWS us-west-2 ($0), 2–4 k vCPU-h ($75–150 on demand, a third on spot), egress of ~1 TB to R2 ≈ $80–130: **≈ $300–600 a year's mosaic** |
 
@@ -429,7 +436,7 @@ GitHub's free 4-vCPU runners, 20 jobs at a time; storage $0.015/GB-month.
 
 | # | Set (licence) | People | Area km² | Zoom | Storage | R2 / month | Tiles | Runner-hours |
 | ---: | --- | ---: | ---: | --- | ---: | ---: | ---: | ---: |
-| 0 | **Base: Blue Marble z0–7 + WorldCover 2021 z8–13** (public domain; CC BY 4.0) | 8.1 B | planet land | z0–13 | 0.86 TB | $13 | 32 M | ~1,300 |
+| 0 | **Base: Blue Marble z0–7 + WorldCover 2021 z8–13** (public domain; CC BY 4.0) | 8.1 B | planet land | z0–13 | 0.9 TB | $14 | 32 M | ~1,300 |
 | 1 | Spain — PNOA 25 cm (CC BY 4.0, COG per sheet); Catalonia from ICGC yearly | 48.6 M | 506,000 | z18 | 1.6–3.9 TB | $24–58 | 49 M | 820 |
 | 2 | France — BD ORTHO 20 cm (Etalab 2.0) | 68 M | 551,700 | z18 | 2.1–5.2 TB | $32–77 | 65 M | 1,090 |
 | 3 | USA — NAIP 60 cm, lower 48 (public domain) | 330 M | 8,080,000 | z17 | 6.1–14.9 TB | $92–223 | 188 M | 3,140 |
@@ -466,7 +473,7 @@ allow z11–z12 cells and a quarter of the objects.
 ## Decisions
 
 1. **Approve the base set** (Blue Marble z0–7 + ESA WorldCover 2021 z8–13,
-   ~0.86 TB, ~$13/month) for a first published run. Its credit is
+   ~0.9 TB, ~$14/month) for a first published run. Its credit is
    "© ESA WorldCover 2021 · Copernicus Sentinel-2" and "NASA Blue Marble".
 2. **Where the upload runs and with what credentials.** Either keep the city
    build's `CLOUDFLARE_API_TOKEN` + wrangler (≤ 300 MiB objects: z13 cells for

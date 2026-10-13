@@ -175,6 +175,20 @@ describe('the credit', () => {
     ]);
   });
 
+  test('a pitched view with unusable bounds over-credits rather than under-credits', () => {
+    const horizon = { west: 1.2, south: 41.5, east: 2.6, north: Number.NaN };
+    // Counted as the whole world: every set drawn at z13 is credited.
+    expect(imagerySourcesInView(coverage, { zoom: 13, ...horizon })).toEqual([
+      'icgc-ortofoto',
+      'esa-worldcover-2021',
+    ]);
+    const inverted = { west: 2.6, south: 41.5, east: 1.2, north: 42.5 };
+    expect(imagerySourcesInView(coverage, { zoom: 16, ...inverted })).toEqual([
+      'icgc-ortofoto',
+      'esa-worldcover-2021',
+    ]);
+  });
+
   test('a source is not credited where it has no cell', () => {
     const lisbon = { west: -9.2, south: 38.7, east: -9.1, north: 38.75 };
     expect(imagerySourcesInView(coverage, { zoom: 16, ...lisbon })).toEqual([]);

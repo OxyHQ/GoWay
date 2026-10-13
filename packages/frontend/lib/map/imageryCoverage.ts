@@ -132,11 +132,26 @@ function meetsView(set: ImageryCoverageSet, view: ImageryView): boolean {
   return false;
 }
 
+/**
+ * The view the credit is decided for. A pitched camera over 3D terrain can
+ * report bounds that are not finite, or not ordered, once the horizon is in
+ * the frame; every comparison against them would then be false and nothing
+ * would be credited — the failure that matters. So such a view counts as the
+ * whole world: a source is over-credited rather than under-credited.
+ */
+function creditableView(view: ImageryView): ImageryView {
+  const { west, south, east, north } = view;
+  const sane = [west, south, east, north].every(Number.isFinite) && west < east && south < north;
+  if (sane) return view;
+  return { zoom: view.zoom, west: -180, south: -85.05, east: 180, north: 85.05 };
+}
+
 /** The sources on screen, in the order their sets are listed (finest tier first). */
 export function imagerySourcesInView(
   coverage: ImageryCoverage,
-  view: ImageryView,
+  rawView: ImageryView,
 ): ImagerySourceId[] {
+  const view = creditableView(rawView);
   const out: ImagerySourceId[] = [];
   const add = (source: ImagerySourceId) => {
     if (!out.includes(source)) out.push(source);
