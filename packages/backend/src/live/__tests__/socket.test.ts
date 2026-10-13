@@ -11,6 +11,7 @@
 
 import '../../__tests__/testEnv';
 import { afterEach, describe, expect, it } from 'bun:test';
+import { gunzipSync } from 'node:zlib';
 import { createServer, type Server as HttpServer } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import {
@@ -163,12 +164,17 @@ describe('the /live namespace', () => {
       zoom: 12,
       kinds: ['transit', 'aircraft'],
     });
-    expect(liveSubscriptionStateSchema.parse(await answer)).toEqual({
-      state: 'ok',
-      tiles: [liveTileOf({ latitude: 41.39, longitude: 2.17 })],
-      kinds: ['transit', 'aircraft'],
-      retryAfterSeconds: null,
-    });
+    const state = liveSubscriptionStateSchema.parse(await answer);
+    expect(state).toMatchObject({ state: 'ok', retryAfterSeconds: null });
+    // Each kind's rooms at its own zoom, listed per kind: transit z11,
+    // aircraft z7 — the aircraft tile is not a transit room.
+    expect(state.tiles.transit).toContain(
+      liveTileOf({ latitude: 41.39, longitude: 2.17 }, 'transit'),
+    );
+    expect(state.tiles.aircraft).toEqual([
+      liveTileOf({ latitude: 41.39, longitude: 2.17 }, 'aircraft'),
+    ]);
+    expect(state.tiles.transit).not.toContain(state.tiles.aircraft?.[0]);
     // Nothing polled yet: an empty, authoritative snapshot.
     expect(liveSnapshotSchema.parse(await snapshot).entities).toEqual([]);
 
@@ -176,7 +182,7 @@ describe('the /live namespace', () => {
     await server.live.hub.tick();
     const received = liveDeltaSchema.parse(await delta);
     expect(received.upserts.map((entity) => entity.id)).toEqual(['renfe-cercanias:1']);
-    expect(received.tile).toBe('7/64/47');
+    expect(received.tile).toBe(liveTileOf({ latitude: 41.39, longitude: 2.17 }, 'transit'));
   });
 
   it('sends a room only to its members', async () => {
@@ -214,7 +220,7 @@ describe('the /live namespace', () => {
       zoom: 3,
       kinds: ['transit'],
     });
-    expect(await answer).toMatchObject({ state: 'too_wide', tiles: [], kinds: [] });
+    expect(await answer).toMatchObject({ state: 'too_wide', tiles: {} });
 
     for (const junk of [
       null,
@@ -226,8 +232,28 @@ describe('the /live namespace', () => {
     ]) {
       answer = next<LiveSubscriptionState>(visitor, LIVE_SOCKET_EVENTS.subscription);
       visitor.emit(LIVE_SOCKET_EVENTS.subscribe, junk);
-      expect(await answer).toMatchObject({ state: 'invalid', tiles: [] });
+      expect(await answer).toMatchObject({ state: 'invalid', tiles: {} });
     }
+  });
+
+  it('sends a large message as gzip bytes that inflate to the same JSON', async () => {
+    const server = await start();
+    server.feed.result = {
+      entities: Array.from({ length: 60 }, (_, i) => vehicle(String(i), 41.39, 2.17 + i * 1e-4)),
+      rejected: 0,
+    };
+    const visitor = client(server);
+    await next(visitor, 'connect');
+    visitor.emit(LIVE_SOCKET_EVENTS.subscribe, { ...BARCELONA_BOX, zoom: 12, kinds: ['transit'] });
+    await next(visitor, LIVE_SOCKET_EVENTS.subscription);
+    const delta = next<unknown>(visitor, LIVE_SOCKET_EVENTS.delta);
+    await server.live.hub.tick();
+    const packed = await delta;
+    expect(packed).toBeInstanceOf(Buffer);
+    const json = gunzipSync(packed as Buffer).toString('utf8');
+    expect(liveDeltaSchema.parse(JSON.parse(json)).upserts).toHaveLength(60);
+    // Several times smaller on the wire.
+    expect((packed as Buffer).length).toBeLessThan(json.length / 5);
   });
 
   it('rate-limits subscriptions and keeps the rooms it had', async () => {
@@ -244,7 +270,8 @@ describe('the /live namespace', () => {
     }
     await new Promise((resolve) => setTimeout(resolve, 200));
     expect(answers.map((answer) => answer.state)).toEqual(['ok', 'ok', 'rate_limited']);
-    expect(answers[2]).toMatchObject({ tiles: ['7/64/47'], retryAfterSeconds: 10 });
+    expect(answers[2]).toMatchObject({ tiles: answers[1]?.tiles, retryAfterSeconds: 10 });
+    expect(answers[2]?.tiles.transit?.length).toBeGreaterThan(0);
   });
 
   it('refuses the handshake beyond the connection cap', async () => {
@@ -290,6 +317,51 @@ describe('live configuration', () => {
       sources: ['adsb-lol'],
       settings: { 'adsb-lol': { url: 'https://mirror.example', key: 'k' } },
     });
+  });
+
+  it('shares polling through Valkey when REDIS_URL is set', () => {
+    const listed = { LIVE_SOURCES: 'adsb-lol' };
+    expect(parseLiveConfig(listed, ['adsb-lol']).valkeyUrl).toBeNull();
+    expect(
+      parseLiveConfig({ ...listed, REDIS_URL: 'redis://cache.internal:6379' }, ['adsb-lol'])
+        .valkeyUrl,
+    ).toBe('redis://cache.internal:6379');
+    // One name for it: no second variable kept in case.
+    expect(
+      parseLiveConfig({ ...listed, LIVE_VALKEY_URL: 'redis://other:6379' }, ['adsb-lol']).valkeyUrl,
+    ).toBeNull();
+  });
+
+  it('a malformed shared REDIS_URL never stops the backend booting: live runs without a bus', () => {
+    const warnings: Record<string, unknown>[] = [];
+    for (const REDIS_URL of [
+      'valkey://cache:6379',
+      'cache.internal:6379',
+      'https://user:secret@x',
+    ]) {
+      const config = parseLiveConfig({ LIVE_SOURCES: 'renfe-cercanias', REDIS_URL }, [
+        'renfe-cercanias',
+      ]);
+      expect(config).toMatchObject({ sources: ['renfe-cercanias'], valkeyUrl: null });
+      expect(config.valkeyUrlProblem).toContain('REDIS_URL');
+      const service = createLiveService({
+        config,
+        logger: { info: () => {}, warn: (object) => warnings.push(object) },
+      });
+      expect(service).not.toBeNull();
+      service?.stop();
+    }
+    // Reported, never echoed: it may carry a password.
+    expect(warnings).toHaveLength(3);
+    expect(JSON.stringify(warnings)).not.toContain('secret');
+    expect(JSON.stringify(warnings)).not.toContain('cache.internal');
+  });
+
+  it('with no source listed (live off), the bus setting cannot stop the backend booting', () => {
+    for (const LIVE_SOURCES of [undefined, '', '  ']) {
+      const config = parseLiveConfig({ LIVE_SOURCES, REDIS_URL: 'not-a-url' }, ['adsb-lol']);
+      expect(config).toMatchObject({ sources: [], valkeyUrl: null });
+    }
   });
 
   it('is on exactly when a source is listed: no switch, and the retired one is ignored', () => {

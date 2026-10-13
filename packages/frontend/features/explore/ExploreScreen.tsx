@@ -699,7 +699,7 @@ export default function ExploreScreen({
               ) : null}
               {live && !mapError ? (
                 <Suspense fallback={null}>
-                  <LiveHost onLayer={setLiveLayer} compact={layout === 'sheet'} />
+                  <LiveHost onLayer={setLiveLayer} />
                 </Suspense>
               ) : null}
             </View>

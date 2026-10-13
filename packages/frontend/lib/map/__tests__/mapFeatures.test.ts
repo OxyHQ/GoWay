@@ -49,7 +49,7 @@ describe('the registry', () => {
     expect(new Set(queries).size).toBe(queries.length);
   });
 
-  test('defaults: everything on goway.to but the woods fill and live data', () => {
+  test('defaults: everything on goway.to but the woods fill', () => {
     const features = resolve();
     expect(features.list.map((state) => [state.id, state.on])).toEqual([
       ['globe', true],
@@ -64,7 +64,7 @@ describe('the registry', () => {
       ['cityLife', true],
       ['cityStreets', true],
       ['landmarks', true],
-      ['live', false],
+      ['live', true],
       ['flyover', true],
     ]);
     // Every stable feature is on and offered in production; every Labs one starts off.
@@ -134,8 +134,19 @@ describe('the person decides', () => {
 
   test('a choice also reaches a feature the panel does not offer in this build', () => {
     // How the benchmark switches production-unserved features on: it stores
-    // the choices the panel would (`scripts/bench-map.ts`).
-    const features = resolve({ choices: { live: true } });
+    // the choices the panel would (`scripts/bench-map.ts`). No feature is
+    // development-only today, so one is made so here.
+    const features = resolveMapFeatures({
+      features: FEATURES.map((feature) =>
+        feature.id === 'live'
+          ? { ...feature, defaultOn: false, offer: 'development' as const }
+          : feature,
+      ),
+      choices: { live: true },
+      platform: 'web',
+      development: false,
+      search: '',
+    });
     expect(features.get('live').available).toBe(false);
     expect(features.on('live')).toBe(true);
   });
@@ -268,8 +279,10 @@ describe('what the panel offers', () => {
     }
   });
 
-  test('what production cannot serve yet only in a development build: live data', () => {
-    expect(resolve().get('live').available).toBe(false);
-    expect(resolve({ development: true }).get('live').available).toBe(true);
+  test('live data is offered on the web everywhere, and on by default; not on native', () => {
+    for (const development of [false, true]) {
+      expect(resolve({ development }).get('live')).toMatchObject({ available: true, on: true });
+    }
+    expect(resolve({ platform: 'ios' }).get('live').available).toBe(false);
   });
 });
