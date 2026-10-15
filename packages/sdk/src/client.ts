@@ -1,3 +1,4 @@
+import { createOrganizationListsApi, type GoWayOrganizationListsApi } from './organizationLists';
 import {
   accountClaimListQuerySchema,
   assetPathSchema,
@@ -851,6 +852,7 @@ export interface GoWayRoadsApi {
 }
 
 export interface GoWayClient {
+  readonly organizationLists: GoWayOrganizationListsApi;
   readonly places: GoWayPlacesApi;
   readonly categories: GoWayCategoriesApi;
   readonly claims: GoWayClaimsApi;
@@ -2161,6 +2163,7 @@ export function createGoWayClient(options: GoWayClientOptions = {}): GoWayClient
   });
 
   return Object.freeze({
+    organizationLists: createOrganizationListsApi(config),
     places,
     categories,
     claims,

@@ -1,3 +1,5 @@
+import { createOrganizationListsRouter } from './routes/organizationLists';
+import { createOrganizationAuthority } from './oxy/organizationAuthority';
 /**
  * Builds the HTTP application.
  *
@@ -136,6 +138,12 @@ export function createApp(options: CreateAppOptions = {}): Express {
 
   const v1: Router = Router();
   v1.use(createOpenApiRouter());
+  v1.use(
+    createOrganizationListsRouter({
+      requireAuth,
+      authorize: createOrganizationAuthority(config.oxyApiUrl),
+    }),
+  );
   v1.use(createCategoriesRouter());
   v1.use(createPlacesRouter({ optionalAuth, requireAuth, accountRoles, reportRateLimit }));
   /**

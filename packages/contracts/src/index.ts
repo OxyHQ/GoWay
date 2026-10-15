@@ -17,6 +17,7 @@
  * internal Drizzle/PostGIS schema is never published at all.
  */
 
+export * from './organization-lists';
 export * from './geo';
 export * from './language';
 export * from './time';

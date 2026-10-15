@@ -545,3 +545,15 @@ export type {
   ModelPlacement,
   ModelPlacementInput,
 } from './contract';
+
+export type {
+  OrganizationList,
+  OrganizationListEntry,
+  OrganizationListInput,
+  OrganizationListUpdate,
+  OrganizationListEntryInput,
+  OrganizationListQuery,
+  OrganizationListEntryQuery,
+  OrganizationListOrderInput,
+} from './contract';
+export type { GoWayOrganizationListsApi } from './organizationLists';

@@ -172,6 +172,17 @@ interface PublicRoute {
  *   - `GET /health`, `GET /ready` — operational probes, not an API.
  */
 export const PUBLIC_READ_ROUTES: readonly PublicRoute[] = [
+  { method: 'GET', path: '/organization-lists', because: 'public organization activity lists' },
+  {
+    method: 'GET',
+    path: '/organization-lists/:listId',
+    because: 'public organization activity list',
+  },
+  {
+    method: 'GET',
+    path: '/organization-lists/:listId/entries',
+    because: 'public organization activities',
+  },
   {
     method: 'GET',
     path: '/openapi.json',
