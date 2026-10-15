@@ -72,6 +72,79 @@ export const OPENMAPTILES_SOURCE_LAYER_NAMES: readonly string[] = Object.values(
 );
 
 // ---------------------------------------------------------------------------
+// GoWay's own layers, beside the OpenMapTiles ones
+// ---------------------------------------------------------------------------
+
+/**
+ * Layers GoWay's Planetiler adds to the archive through the OpenMapTiles
+ * profile's addon extension point (`tiles/openmaptiles-addons/`,
+ * `scripts/build-planetiler.ts`). ADDED beside the sixteen OpenMapTiles
+ * layers, which stay exactly what the schema says they are.
+ *
+ * Until a planet built with them is published, the archive in R2 has none of
+ * these and every style layer reading them draws nothing — the Outdoors style
+ * degrades to the trails OpenMapTiles' `transportation` layer carries.
+ */
+export const GOWAY_SOURCE_LAYERS = {
+  /** Hiking difficulty and visibility, via ferratas, ski pistes, climbing. */
+  outdoors: 'outdoors',
+} as const;
+
+export const GOWAY_SOURCE_LAYER_NAMES: readonly string[] = Object.values(GOWAY_SOURCE_LAYERS);
+
+/**
+ * The `outdoors` layer's vocabulary. The same lists, in the same order, as
+ * `tiles/openmaptiles-addons/.../Outdoors.java` (the addon drops anything
+ * else); `outdoorsSchema.test.ts` reads the Java and holds them equal.
+ */
+export const OUTDOORS_CLASSES = ['trail', 'via_ferrata', 'piste', 'climbing'] as const;
+/** OSM's `sac_scale`, easiest first: SAC T1 … T6. */
+export const SAC_SCALES = [
+  'hiking',
+  'mountain_hiking',
+  'demanding_mountain_hiking',
+  'alpine_hiking',
+  'demanding_alpine_hiking',
+  'difficult_alpine_hiking',
+] as const;
+export type SacScale = (typeof SAC_SCALES)[number];
+/** OSM's `trail_visibility`, best first. */
+export const TRAIL_VISIBILITIES = [
+  'excellent',
+  'good',
+  'intermediate',
+  'bad',
+  'horrible',
+  'no',
+] as const;
+/** OSM's `piste:difficulty`, easiest first. */
+export const PISTE_DIFFICULTIES = [
+  'novice',
+  'easy',
+  'intermediate',
+  'advanced',
+  'expert',
+  'freeride',
+  'extreme',
+] as const;
+export type PisteDifficulty = (typeof PISTE_DIFFICULTIES)[number];
+export const PISTE_TYPES = [
+  'downhill',
+  'nordic',
+  'skitour',
+  'sled',
+  'hike',
+  'sleigh',
+  'snow_park',
+  'connection',
+  'ice_skate',
+  'ski_jump',
+  'playground',
+  'fatbike',
+] as const;
+export const CLIMBING_KINDS = ['area', 'crag', 'boulder'] as const;
+
+// ---------------------------------------------------------------------------
 // Observed `class` vocabularies
 // ---------------------------------------------------------------------------
 

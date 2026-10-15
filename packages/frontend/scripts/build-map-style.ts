@@ -94,8 +94,11 @@ import {
   AVAILABLE_FONTS,
   LANDCOVER_CLASSES,
   LANDUSE_CLASSES,
+  GOWAY_SOURCE_LAYER_NAMES,
+  GOWAY_SOURCE_LAYERS,
   OPENMAPTILES_SOURCE_LAYER_NAMES,
   OPENMAPTILES_SOURCE_LAYERS,
+  OUTDOORS_CLASSES,
   PLACE_CLASSES,
   POI_CLASSES,
   TRANSPORTATION_CLASSES,
@@ -265,6 +268,8 @@ const CLASS_VOCABULARY: Partial<Record<string, readonly string[]>> = {
   [OPENMAPTILES_SOURCE_LAYERS.place]: PLACE_CLASSES,
   [OPENMAPTILES_SOURCE_LAYERS.water]: WATER_CLASSES,
   [OPENMAPTILES_SOURCE_LAYERS.poi]: POI_CLASSES,
+  // GoWay's own layer (`tiles/openmaptiles-addons/`).
+  [GOWAY_SOURCE_LAYERS.outdoors]: OUTDOORS_CLASSES,
 };
 
 /**
@@ -313,7 +318,7 @@ function checkOne(name: string, style: StyleSpecification, problems: string[]): 
   }
 
   const declaredSources = new Set(Object.keys(style.sources));
-  const knownSourceLayers = new Set(OPENMAPTILES_SOURCE_LAYER_NAMES);
+  const knownSourceLayers = new Set([...OPENMAPTILES_SOURCE_LAYER_NAMES, ...GOWAY_SOURCE_LAYER_NAMES]);
   const knownFonts = new Set<string>(AVAILABLE_FONTS);
   const catalogue = new Set(GOWAY_STYLE_LAYER_ID_LIST);
   const seen = new Set<string>();

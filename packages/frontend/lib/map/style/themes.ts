@@ -164,6 +164,7 @@ export function enforceTypeContrast(palette: CartographyPalette): CartographyPal
               4.5,
             ),
             labelContour: ensureContrast(palette.outdoors.labelContour, ground, 4.5),
+            labelClimbing: ensureContrast(palette.outdoors.labelClimbing, ground, 4.5),
           },
         }
       : {}),
@@ -322,8 +323,9 @@ function streetsDay(): CartographyPalette {
 /**
  * The terrain map's extra ink. Contours are warm browns by day (the colour
  * every topographic map has taught its readers) and cool blue-greys at night
- * over Standard's slate; trails are red-brown, red where `mtb_scale` says
- * hard, near-black (by day) where it says expert; rock is a pale stone and
+ * over Standard's slate; a path with no grade is red-brown, a graded trail
+ * takes the Swiss waymark colours (`sac`), a ski run the European piste
+ * colours (`piste`); rock is a pale stone and
  * glaciers white with a blue edge. Chosen against Chamonix, the Pyrenees and
  * Montserrat on the contact sheet.
  */
@@ -337,8 +339,28 @@ const OUTDOORS_INK: Record<MapAppearance, NonNullable<CartographyPalette['outdoo
     contourIndex: '#b49260',
     labelContour: '#8a6a3d',
     trail: '#b4532d',
-    trailHard: '#cf2f1f',
-    trailExpert: '#2f2626',
+    sac: {
+      hiking: '#d29b00',
+      mountain_hiking: '#d6352b',
+      demanding_mountain_hiking: '#a3231c',
+      alpine_hiking: '#2f72db',
+      demanding_alpine_hiking: '#1f50b2',
+      difficult_alpine_hiking: '#13307a',
+    },
+    piste: {
+      novice: '#2e9e4f',
+      easy: '#2563d8',
+      intermediate: '#d3302b',
+      advanced: '#1b1b1b',
+      expert: '#e07612',
+      freeride: '#e6ad12',
+      extreme: '#6b1717',
+    },
+    pisteUngraded: '#7d8a99',
+    pisteNordic: '#6a4fc3',
+    viaFerrata: '#3a2b1f',
+    climbing: '#8a3fb4',
+    labelClimbing: '#6f2c96',
     aerialway: '#545a61',
     labelPeak: '#4a3925',
     hillshade: { shadow: '#5b5244', highlight: '#ffffff', accent: '#6d614e' },
@@ -352,8 +374,28 @@ const OUTDOORS_INK: Record<MapAppearance, NonNullable<CartographyPalette['outdoo
     contourIndex: '#7587a8',
     labelContour: '#a3b3ce',
     trail: '#e3955d',
-    trailHard: '#ff6f5c',
-    trailExpert: '#f3e8da',
+    sac: {
+      hiking: '#f2c94c',
+      mountain_hiking: '#ff6b5e',
+      demanding_mountain_hiking: '#ff9b90',
+      alpine_hiking: '#5c93f5',
+      demanding_alpine_hiking: '#89b2ff',
+      difficult_alpine_hiking: '#bcd2ff',
+    },
+    piste: {
+      novice: '#45c46a',
+      easy: '#5a8dff',
+      intermediate: '#ff5a50',
+      advanced: '#f2f2f2',
+      expert: '#ff9a3c',
+      freeride: '#f7c948',
+      extreme: '#ff7d7d',
+    },
+    pisteUngraded: '#9aa7b7',
+    pisteNordic: '#a593ff',
+    viaFerrata: '#efe6d8',
+    climbing: '#c58bf0',
+    labelClimbing: '#d6a8f5',
     aerialway: '#9ba7b9',
     labelPeak: '#e6d8c4',
     hillshade: { shadow: '#04070e', highlight: '#6c82a3', accent: '#0a111f' },

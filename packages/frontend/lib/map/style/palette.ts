@@ -156,6 +156,8 @@ export interface PoiPalette {
   other: string;
 }
 
+import type { PisteDifficulty, SacScale } from './schema';
+
 /**
  * The Outdoors style's extra ink (`themes.ts`): what only a terrain map draws.
  * Absent on every other style, whose layer list then emits none of it.
@@ -172,10 +174,30 @@ export interface OutdoorsPalette {
   contour: string;
   contourIndex: string;
   labelContour: string;
-  /** Hiking trails by difficulty: no `mtb_scale` or 0–1, 2–3, 4 and up. */
+  /** A path or track the map knows no hiking grade for. */
   trail: string;
-  trailHard: string;
-  trailExpert: string;
+  /**
+   * Hiking difficulty, OSM's `sac_scale` (GoWay's `outdoors` layer): the Swiss
+   * waymarking every Alpine hiker reads — YELLOW for a hiking trail (T1), RED
+   * for a mountain trail (T2–T3, white-red-white on the rock), BLUE for an
+   * alpine route (T4–T6, white-blue-white) — each band deepening with the grade.
+   */
+  sac: Record<SacScale, string>;
+  /**
+   * Ski runs by `piste:difficulty`, the European convention: green novice,
+   * blue easy, red intermediate, black advanced; orange expert, yellow
+   * freeride, and a dark red for the extreme. On the night map the black run
+   * turns white — black on a dark ground would vanish.
+   */
+  piste: Record<PisteDifficulty, string>;
+  /** A run with no grade, and every non-downhill piste (nordic, touring, sled). */
+  pisteUngraded: string;
+  pisteNordic: string;
+  /** Via ferratas: the protected climbing path, drawn as a cable. */
+  viaFerrata: string;
+  /** Crags, climbing areas and boulders, and their names. */
+  climbing: string;
+  labelClimbing: string;
   /** Cable cars, gondolas, chair and drag lifts. */
   aerialway: string;
   /** Mountain peaks' names and heights. */

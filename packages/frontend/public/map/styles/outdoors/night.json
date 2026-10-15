@@ -30,6 +30,7 @@
       "hillshade",
       "contour",
       "contour-index",
+      "outdoors-piste-area",
       "water",
       "waterway",
       "aeroway-area",
@@ -58,6 +59,11 @@
       "road-motorway-link",
       "road-motorway",
       "road-path",
+      "outdoors-trail",
+      "outdoors-trail-faint",
+      "outdoors-via-ferrata",
+      "outdoors-piste",
+      "outdoors-piste-dashed",
       "road-ferry",
       "road-rail",
       "road-rail-hatch",
@@ -70,6 +76,7 @@
       "poi-dot",
       "poi-dot-minor",
       "poi-transit-dot",
+      "outdoors-climbing-dot",
       "road-oneway",
       "label-housenumber",
       "label-contour",
@@ -78,10 +85,12 @@
       "label-water-point",
       "label-road-local",
       "label-road-arterial",
+      "label-piste",
       "label-road-highway",
       "label-poi-minor",
       "label-poi",
       "label-poi-transit",
+      "label-climbing",
       "label-aerodrome",
       "label-peak",
       "label-park",
@@ -764,6 +773,23 @@
         ]
       },
       {
+        "layer": "outdoors-climbing-dot",
+        "property": "circle-stroke-color",
+        "value": [
+          "interpolate",
+          [
+            "linear"
+          ],
+          [
+            "zoom"
+          ],
+          14.5,
+          "#34445b",
+          15.5,
+          "#3d4a66"
+        ]
+      },
+      {
         "layer": "label-park",
         "property": "text-color",
         "value": [
@@ -1350,6 +1376,61 @@
           9.6,
           1
         ]
+      }
+    },
+    {
+      "id": "outdoors-piste-area",
+      "type": "fill",
+      "source": "openmaptiles",
+      "source-layer": "outdoors",
+      "minzoom": 12,
+      "filter": [
+        "all",
+        [
+          "match",
+          [
+            "geometry-type"
+          ],
+          [
+            "Polygon",
+            "MultiPolygon"
+          ],
+          true,
+          false
+        ],
+        [
+          "==",
+          [
+            "get",
+            "class"
+          ],
+          "piste"
+        ]
+      ],
+      "paint": {
+        "fill-color": [
+          "match",
+          [
+            "get",
+            "piste_difficulty"
+          ],
+          "novice",
+          "#45c46a",
+          "easy",
+          "#5a8dff",
+          "intermediate",
+          "#ff5a50",
+          "advanced",
+          "#f2f2f2",
+          "expert",
+          "#ff9a3c",
+          "freeride",
+          "#f7c948",
+          "extreme",
+          "#ff7d7d",
+          "#9aa7b7"
+        ],
+        "fill-opacity": 0.16
       }
     },
     {
@@ -3309,29 +3390,7 @@
             "platform"
           ],
           "#5a6a7f",
-          [
-            "match",
-            [
-              "coalesce",
-              [
-                "get",
-                "mtb_scale"
-              ],
-              0
-            ],
-            [
-              4,
-              5,
-              6
-            ],
-            "#f3e8da",
-            [
-              2,
-              3
-            ],
-            "#ff6f5c",
-            "#e3955d"
-          ]
+          "#e3955d"
         ],
         "line-width": [
           "interpolate",
@@ -3356,6 +3415,427 @@
         "line-dasharray": [
           2.2,
           1.4
+        ]
+      }
+    },
+    {
+      "id": "outdoors-trail",
+      "type": "line",
+      "source": "openmaptiles",
+      "source-layer": "outdoors",
+      "minzoom": 12,
+      "filter": [
+        "all",
+        [
+          "match",
+          [
+            "geometry-type"
+          ],
+          [
+            "LineString",
+            "MultiLineString"
+          ],
+          true,
+          false
+        ],
+        [
+          "==",
+          [
+            "get",
+            "class"
+          ],
+          "trail"
+        ],
+        [
+          "!",
+          [
+            "match",
+            [
+              "get",
+              "trail_visibility"
+            ],
+            [
+              "bad",
+              "horrible",
+              "no"
+            ],
+            true,
+            false
+          ]
+        ]
+      ],
+      "layout": {
+        "line-cap": "round",
+        "line-join": "round"
+      },
+      "paint": {
+        "line-color": [
+          "match",
+          [
+            "get",
+            "sac_scale"
+          ],
+          "hiking",
+          "#f2c94c",
+          "mountain_hiking",
+          "#ff6b5e",
+          "demanding_mountain_hiking",
+          "#ff9b90",
+          "alpine_hiking",
+          "#5c93f5",
+          "demanding_alpine_hiking",
+          "#89b2ff",
+          "difficult_alpine_hiking",
+          "#bcd2ff",
+          "#e3955d"
+        ],
+        "line-width": [
+          "interpolate",
+          [
+            "exponential",
+            1.4
+          ],
+          [
+            "zoom"
+          ],
+          12,
+          1.2,
+          14,
+          1.9,
+          16,
+          2.6,
+          18,
+          3.6,
+          20,
+          5.5
+        ],
+        "line-dasharray": [
+          3,
+          1.2
+        ]
+      }
+    },
+    {
+      "id": "outdoors-trail-faint",
+      "type": "line",
+      "source": "openmaptiles",
+      "source-layer": "outdoors",
+      "minzoom": 12,
+      "filter": [
+        "all",
+        [
+          "match",
+          [
+            "geometry-type"
+          ],
+          [
+            "LineString",
+            "MultiLineString"
+          ],
+          true,
+          false
+        ],
+        [
+          "==",
+          [
+            "get",
+            "class"
+          ],
+          "trail"
+        ],
+        [
+          "match",
+          [
+            "get",
+            "trail_visibility"
+          ],
+          [
+            "bad",
+            "horrible",
+            "no"
+          ],
+          true,
+          false
+        ]
+      ],
+      "layout": {
+        "line-cap": "round",
+        "line-join": "round"
+      },
+      "paint": {
+        "line-color": [
+          "match",
+          [
+            "get",
+            "sac_scale"
+          ],
+          "hiking",
+          "#f2c94c",
+          "mountain_hiking",
+          "#ff6b5e",
+          "demanding_mountain_hiking",
+          "#ff9b90",
+          "alpine_hiking",
+          "#5c93f5",
+          "demanding_alpine_hiking",
+          "#89b2ff",
+          "difficult_alpine_hiking",
+          "#bcd2ff",
+          "#e3955d"
+        ],
+        "line-width": [
+          "interpolate",
+          [
+            "exponential",
+            1.4
+          ],
+          [
+            "zoom"
+          ],
+          12,
+          1.2,
+          14,
+          1.9,
+          16,
+          2.6,
+          18,
+          3.6,
+          20,
+          5.5
+        ],
+        "line-dasharray": [
+          0.6,
+          1.6
+        ],
+        "line-opacity": 0.85
+      }
+    },
+    {
+      "id": "outdoors-via-ferrata",
+      "type": "line",
+      "source": "openmaptiles",
+      "source-layer": "outdoors",
+      "minzoom": 12,
+      "filter": [
+        "all",
+        [
+          "match",
+          [
+            "geometry-type"
+          ],
+          [
+            "LineString",
+            "MultiLineString"
+          ],
+          true,
+          false
+        ],
+        [
+          "==",
+          [
+            "get",
+            "class"
+          ],
+          "via_ferrata"
+        ]
+      ],
+      "layout": {
+        "line-cap": "butt",
+        "line-join": "round"
+      },
+      "paint": {
+        "line-color": "#efe6d8",
+        "line-width": [
+          "interpolate",
+          [
+            "exponential",
+            1.4
+          ],
+          [
+            "zoom"
+          ],
+          12,
+          1.6,
+          14,
+          2.4,
+          16,
+          3.4,
+          18,
+          4.6
+        ],
+        "line-dasharray": [
+          1,
+          0.7
+        ]
+      }
+    },
+    {
+      "id": "outdoors-piste",
+      "type": "line",
+      "source": "openmaptiles",
+      "source-layer": "outdoors",
+      "minzoom": 11,
+      "filter": [
+        "all",
+        [
+          "match",
+          [
+            "geometry-type"
+          ],
+          [
+            "LineString",
+            "MultiLineString"
+          ],
+          true,
+          false
+        ],
+        [
+          "==",
+          [
+            "get",
+            "class"
+          ],
+          "piste"
+        ],
+        [
+          "match",
+          [
+            "get",
+            "piste_type"
+          ],
+          [
+            "downhill",
+            "connection",
+            "snow_park",
+            "playground"
+          ],
+          true,
+          false
+        ]
+      ],
+      "layout": {
+        "line-cap": "round",
+        "line-join": "round"
+      },
+      "paint": {
+        "line-color": [
+          "match",
+          [
+            "get",
+            "piste_difficulty"
+          ],
+          "novice",
+          "#45c46a",
+          "easy",
+          "#5a8dff",
+          "intermediate",
+          "#ff5a50",
+          "advanced",
+          "#f2f2f2",
+          "expert",
+          "#ff9a3c",
+          "freeride",
+          "#f7c948",
+          "extreme",
+          "#ff7d7d",
+          "#9aa7b7"
+        ],
+        "line-width": [
+          "interpolate",
+          [
+            "exponential",
+            1.4
+          ],
+          [
+            "zoom"
+          ],
+          11,
+          1,
+          13,
+          1.8,
+          15,
+          3,
+          17,
+          4.4,
+          19,
+          6
+        ]
+      }
+    },
+    {
+      "id": "outdoors-piste-dashed",
+      "type": "line",
+      "source": "openmaptiles",
+      "source-layer": "outdoors",
+      "minzoom": 12,
+      "filter": [
+        "all",
+        [
+          "match",
+          [
+            "geometry-type"
+          ],
+          [
+            "LineString",
+            "MultiLineString"
+          ],
+          true,
+          false
+        ],
+        [
+          "==",
+          [
+            "get",
+            "class"
+          ],
+          "piste"
+        ],
+        [
+          "!",
+          [
+            "match",
+            [
+              "get",
+              "piste_type"
+            ],
+            [
+              "downhill",
+              "connection",
+              "snow_park",
+              "playground"
+            ],
+            true,
+            false
+          ]
+        ]
+      ],
+      "layout": {
+        "line-cap": "round",
+        "line-join": "round"
+      },
+      "paint": {
+        "line-color": "#a593ff",
+        "line-width": [
+          "interpolate",
+          [
+            "exponential",
+            1.4
+          ],
+          [
+            "zoom"
+          ],
+          12,
+          1,
+          14,
+          1.8,
+          16,
+          2.6,
+          18,
+          3.6
+        ],
+        "line-dasharray": [
+          2.5,
+          1.5
         ]
       }
     },
@@ -5131,6 +5611,70 @@
       }
     },
     {
+      "id": "outdoors-climbing-dot",
+      "type": "circle",
+      "source": "openmaptiles",
+      "source-layer": "outdoors",
+      "minzoom": 11,
+      "filter": [
+        "all",
+        [
+          "match",
+          [
+            "geometry-type"
+          ],
+          [
+            "Point",
+            "MultiPoint"
+          ],
+          true,
+          false
+        ],
+        [
+          "==",
+          [
+            "get",
+            "class"
+          ],
+          "climbing"
+        ]
+      ],
+      "paint": {
+        "circle-color": "#c58bf0",
+        "circle-radius": [
+          "interpolate",
+          [
+            "exponential",
+            1.2
+          ],
+          [
+            "zoom"
+          ],
+          11,
+          2.6,
+          14,
+          3.6,
+          17,
+          5
+        ],
+        "circle-stroke-color": "#34445b",
+        "circle-stroke-width": [
+          "interpolate",
+          [
+            "exponential",
+            1
+          ],
+          [
+            "zoom"
+          ],
+          11,
+          0.6,
+          16,
+          1.2
+        ]
+      }
+    },
+    {
       "id": "label-contour",
       "type": "symbol",
       "source": "goway-contours",
@@ -5545,6 +6089,104 @@
         "text-halo-color": "rgba(32,42,58,0.95)",
         "text-halo-width": 1.3,
         "text-halo-blur": 0.4
+      }
+    },
+    {
+      "id": "label-piste",
+      "type": "symbol",
+      "source": "openmaptiles",
+      "source-layer": "outdoors",
+      "minzoom": 14,
+      "filter": [
+        "all",
+        [
+          "match",
+          [
+            "geometry-type"
+          ],
+          [
+            "LineString",
+            "MultiLineString"
+          ],
+          true,
+          false
+        ],
+        [
+          "==",
+          [
+            "get",
+            "class"
+          ],
+          "piste"
+        ],
+        [
+          "has",
+          "name"
+        ]
+      ],
+      "layout": {
+        "symbol-placement": "line",
+        "text-field": [
+          "coalesce",
+          [
+            "get",
+            "name:latin"
+          ],
+          [
+            "get",
+            "name"
+          ],
+          ""
+        ],
+        "text-font": [
+          "Inter Regular"
+        ],
+        "text-size": [
+          "interpolate",
+          [
+            "exponential",
+            1.2
+          ],
+          [
+            "zoom"
+          ],
+          14,
+          9,
+          17,
+          11
+        ],
+        "text-rotation-alignment": "map",
+        "text-pitch-alignment": "viewport",
+        "symbol-spacing": 360,
+        "text-max-angle": 30,
+        "text-padding": 4
+      },
+      "paint": {
+        "text-color": [
+          "match",
+          [
+            "get",
+            "piste_difficulty"
+          ],
+          "novice",
+          "#45c46a",
+          "easy",
+          "#5a8dff",
+          "intermediate",
+          "#ff5a50",
+          "advanced",
+          "#f2f2f2",
+          "expert",
+          "#ff9a3c",
+          "freeride",
+          "#f7c948",
+          "extreme",
+          "#ff7d7d",
+          "#9aa7b7"
+        ],
+        "text-halo-color": "rgba(32,42,58,0.95)",
+        "text-halo-width": 1.6,
+        "text-halo-blur": 0.3
       }
     },
     {
@@ -7314,6 +7956,122 @@
           "#9eade7",
           "#adafb3"
         ],
+        "text-halo-color": "rgba(40,53,72,0.9)",
+        "text-halo-width": 1.4,
+        "text-halo-blur": 0.4
+      }
+    },
+    {
+      "id": "label-climbing",
+      "type": "symbol",
+      "source": "openmaptiles",
+      "source-layer": "outdoors",
+      "minzoom": 13,
+      "filter": [
+        "all",
+        [
+          "match",
+          [
+            "geometry-type"
+          ],
+          [
+            "Point",
+            "MultiPoint"
+          ],
+          true,
+          false
+        ],
+        [
+          "==",
+          [
+            "get",
+            "class"
+          ],
+          "climbing"
+        ],
+        [
+          "has",
+          "name"
+        ]
+      ],
+      "layout": {
+        "text-field": [
+          "case",
+          [
+            "all",
+            [
+              "has",
+              "grade_min"
+            ],
+            [
+              "has",
+              "grade_max"
+            ]
+          ],
+          [
+            "concat",
+            [
+              "coalesce",
+              [
+                "get",
+                "name:latin"
+              ],
+              [
+                "get",
+                "name"
+              ],
+              ""
+            ],
+            " · ",
+            [
+              "get",
+              "grade_min"
+            ],
+            "–",
+            [
+              "get",
+              "grade_max"
+            ]
+          ],
+          [
+            "coalesce",
+            [
+              "get",
+              "name:latin"
+            ],
+            [
+              "get",
+              "name"
+            ],
+            ""
+          ]
+        ],
+        "text-font": [
+          "Inter Regular"
+        ],
+        "text-size": [
+          "interpolate",
+          [
+            "exponential",
+            1.2
+          ],
+          [
+            "zoom"
+          ],
+          13,
+          9,
+          16,
+          10.5
+        ],
+        "text-max-width": 9,
+        "text-anchor": "top",
+        "text-offset": [
+          0,
+          0.8
+        ]
+      },
+      "paint": {
+        "text-color": "#d6a8f5",
         "text-halo-color": "rgba(40,53,72,0.9)",
         "text-halo-width": 1.4,
         "text-halo-blur": 0.4

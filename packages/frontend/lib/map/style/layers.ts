@@ -43,7 +43,13 @@ import { GOWAY_LABEL_ANCHOR_LAYER_ID } from '../provider';
 import { BUILDING_3D_LAYER_ID, buildBuildings3dLayer } from './buildings3d';
 import type { CartographyPalette, RoadTier, RoadTone } from './palette';
 import { STANDARD_OPTIONS, type StyleOptions } from './options';
-import { FONT_STACKS, OPENMAPTILES_SOURCE_LAYERS as SL } from './schema';
+import {
+  FONT_STACKS,
+  GOWAY_SOURCE_LAYERS,
+  PISTE_DIFFICULTIES,
+  SAC_SCALES,
+  OPENMAPTILES_SOURCE_LAYERS as SL,
+} from './schema';
 import { LOCAL_ROAD_FILL, SHOW_BASEMAP_POIS, SHOW_ROAD_AND_POI_LABELS } from './tuning';
 
 /**
@@ -123,7 +129,7 @@ export const GOWAY_STYLE_LAYER_IDS = {
    * lines. *(style)* — Outdoors only; over the land fills, under water, so a
    * lake is flat and the shading never dirties a road or a label.
    */
-  relief: ['hillshade', 'contour', 'contour-index'],
+  relief: ['hillshade', 'contour', 'contour-index', 'outdoors-piste-area'],
   water: ['water', 'waterway'],
   aeroway: ['aeroway-area', 'aeroway-runway', 'aeroway-taxiway'],
   /** Casings first, then fills — see the stacking note above. */
@@ -157,6 +163,11 @@ export const GOWAY_STYLE_LAYER_IDS = {
     'road-motorway-link',
     'road-motorway',
     'road-path',
+    'outdoors-trail',
+    'outdoors-trail-faint',
+    'outdoors-via-ferrata',
+    'outdoors-piste',
+    'outdoors-piste-dashed',
     'road-ferry',
     'road-rail',
     'road-rail-hatch',
@@ -167,7 +178,7 @@ export const GOWAY_STYLE_LAYER_IDS = {
   /** The reserved overlay anchor. Nothing renders it. */
   anchor: [LABEL_ANCHOR_LAYER_ID],
   /** POI markers. All *(flag)* — `SHOW_BASEMAP_POIS` — and *(style)*. */
-  poi: ['poi-dot', 'poi-dot-minor', 'poi-transit-dot'],
+  poi: ['poi-dot', 'poi-dot-minor', 'poi-transit-dot', 'outdoors-climbing-dot'],
   /** Type. `label-road-*` and `label-poi*` are *(flag)* —
    *  `SHOW_ROAD_AND_POI_LABELS`; `road-oneway`, `label-housenumber`,
    *  `label-road-local` and `label-poi*` are *(style)*. */
@@ -180,10 +191,12 @@ export const GOWAY_STYLE_LAYER_IDS = {
     'label-water-point',
     'label-road-local',
     'label-road-arterial',
+    'label-piste',
     'label-road-highway',
     'label-poi-minor',
     'label-poi',
     'label-poi-transit',
+    'label-climbing',
     'label-aerodrome',
     'label-peak',
     'label-park',
@@ -233,6 +246,16 @@ function colorByZoom(stops: readonly (readonly [number, string])[]): ExpressionS
 const IS_POINT = expr(['match', ['geometry-type'], ['Point', 'MultiPoint'], true, false]);
 const IS_LINE = expr(['match', ['geometry-type'], ['LineString', 'MultiLineString'], true, false]);
 const IS_POLYGON = expr(['match', ['geometry-type'], ['Polygon', 'MultiPolygon'], true, false]);
+
+/** A piste's colour by `piste_difficulty`, from the Outdoors ink; ungraded otherwise. */
+function pisteColourOf(outdoors: NonNullable<CartographyPalette['outdoors']>): ExpressionSpecification {
+  return expr([
+    'match',
+    ['get', 'piste_difficulty'],
+    ...PISTE_DIFFICULTIES.flatMap((grade) => [grade, outdoors.piste[grade]]),
+    outdoors.pisteUngraded,
+  ]);
+}
 
 /** `class` is one of these. */
 const classIn = (...values: string[]): ExpressionSpecification =>
@@ -918,6 +941,17 @@ export function buildLayers(
     };
     contour('contour', 0, outdoors.contour, [[11, 0.4], [14, 0.7], [17, 1]], 11);
     contour('contour-index', 1, outdoors.contourIndex, [[9, 0.6], [12, 0.9], [14, 1.2], [17, 1.6]], 9);
+    // A ski run mapped as an area: a wash of its difficulty colour under the
+    // run lines (GoWay's `outdoors` layer).
+    layers.push({
+      id: 'outdoors-piste-area',
+      type: 'fill',
+      source,
+      'source-layer': GOWAY_SOURCE_LAYERS.outdoors,
+      minzoom: 12,
+      filter: filter(['all', IS_POLYGON, ['==', ['get', 'class'], 'piste']]),
+      paint: { 'fill-color': pisteColourOf(outdoors), 'fill-opacity': 0.16 },
+    });
   }
 
   // --- Water -------------------------------------------------------------
@@ -1000,11 +1034,11 @@ export function buildLayers(
   // Footways last of the road block so a park path is not buried under the
   // service road beside it. Dashed, and therefore casing-less — a dashed line
   // inside a casing reads as a ladder.
-  // On the terrain map a path is a TRAIL: from z12, wider, and coloured by
-  // how hard it is. The tiles carry `mtb_scale` (OSM's mountain-bike scale,
-  // 0–6) and not `sac_scale`, so that is the difficulty drawn — honestly
-  // named in `docs/MAP_STYLES.md` → Data gaps. Footways and steps in a town
-  // stay the quiet path colour.
+  // On the terrain map a path is a TRAIL: from z12, wider, in the trail
+  // colour. Its hiking GRADE is GoWay's `outdoors` layer's (drawn over it,
+  // below); this is what a path with no grade — and every path on an archive
+  // built before that layer — looks like. Footways and steps in a town stay
+  // the quiet path colour.
   line(
     PATH_TIER.id,
     SL.transportation,
@@ -1015,20 +1049,40 @@ export function buildLayers(
           ['get', 'subclass'],
           ['footway', 'pedestrian', 'steps', 'cycleway', 'platform'],
           toneFor(palette, PATH_TIER.tier).fill,
-          [
-            'match',
-            ['coalesce', ['get', 'mtb_scale'], 0],
-            [4, 5, 6],
-            outdoors.trailExpert,
-            [2, 3],
-            outdoors.trailHard,
-            outdoors.trail,
-          ],
+          outdoors.trail,
         ])
       : toneFor(palette, PATH_TIER.tier).fill,
     outdoors ? [[12, 0.8], [14, 1.4], [16, 2], [18, 3], [20, 5]] : PATH_TIER.widths,
     { minzoom: outdoors ? 12 : PATH_TIER.minzoom, dash: outdoors ? [2.2, 1.4] : PATH_TIER.dash },
   );
+
+  if (outdoors) {
+    // GoWay's `outdoors` layer (`tiles/openmaptiles-addons/`): the trail's
+    // GRADE over the trail, the pistes, the via ferratas. Data-driven colour
+    // from the palette's tokens; a dash cannot be data-driven on every
+    // renderer, so visibility splits into two layers.
+    const OUT = GOWAY_SOURCE_LAYERS.outdoors;
+    const sacColour = expr([
+      'match',
+      ['get', 'sac_scale'],
+      ...SAC_SCALES.flatMap((grade) => [grade, outdoors.sac[grade]]),
+      outdoors.trail,
+    ]);
+    const pisteColour = pisteColourOf(outdoors);
+    const faint = ['match', ['get', 'trail_visibility'], ['bad', 'horrible', 'no'], true, false];
+    const trailWidths = [[12, 1.2], [14, 1.9], [16, 2.6], [18, 3.6], [20, 5.5]] as const;
+    // A trail you can follow: a long dash. One that is hard to find on the
+    // ground: a dotted line, fainter — the visibility is the warning.
+    line('outdoors-trail', OUT, filter(['all', IS_LINE, ['==', ['get', 'class'], 'trail'], ['!', faint]]), sacColour, trailWidths, { minzoom: 12, dash: [3, 1.2] });
+    line('outdoors-trail-faint', OUT, filter(['all', IS_LINE, ['==', ['get', 'class'], 'trail'], faint]), sacColour, trailWidths, { minzoom: 12, dash: [0.6, 1.6], opacity: 0.85 });
+    // A via ferrata: the cable — a dark, tight dash, wider than a trail.
+    line('outdoors-via-ferrata', OUT, filter(['all', IS_LINE, ['==', ['get', 'class'], 'via_ferrata']]), outdoors.viaFerrata, [[12, 1.6], [14, 2.4], [16, 3.4], [18, 4.6]], { minzoom: 12, dash: [1, 0.7], cap: 'butt' });
+    // Ski runs, solid in their difficulty colour; nordic, touring and sled
+    // pistes dashed in the nordic colour.
+    const downhill = ['match', ['get', 'piste_type'], ['downhill', 'connection', 'snow_park', 'playground'], true, false];
+    line('outdoors-piste', OUT, filter(['all', IS_LINE, ['==', ['get', 'class'], 'piste'], downhill]), pisteColour, [[11, 1], [13, 1.8], [15, 3], [17, 4.4], [19, 6]], { minzoom: 11 });
+    line('outdoors-piste-dashed', OUT, filter(['all', IS_LINE, ['==', ['get', 'class'], 'piste'], ['!', downhill]]), outdoors.pisteNordic, [[12, 1], [14, 1.8], [16, 2.6], [18, 3.6]], { minzoom: 12, dash: [2.5, 1.5] });
+  }
 
   line('road-ferry', SL.transportation, filter(['all', IS_LINE, classIn('ferry')]), palette.ferry, ROAD_WIDTHS.ferry, { minzoom: 8, dash: [3, 3] });
   line('road-rail', SL.transportation, filter(['all', IS_LINE, NOT_TUNNEL, classIn('rail', 'transit')]), palette.rail, ROAD_WIDTHS.rail, { minzoom: 11 });
@@ -1217,6 +1271,24 @@ export function buildLayers(
     dot('poi-dot', poiFilter('major', dotCaps, pois), 14, [[14, 2.8], [15, 3.2], [17, 4.4], [19, 5.4]]);
     dot('poi-dot-minor', poiFilter('minor', dotCaps, pois), dense ? 16 : 17, dense ? [[16, 2.6], [17, 3], [19, 4]] : [[17, 3], [19, 4]]);
     dot('poi-transit-dot', poiFilter('station', dotCaps, pois), 14, [[14, 3.2], [17, 5], [19, 6]]);
+    if (outdoors) {
+      // Crags, climbing areas and boulders (GoWay's `outdoors` layer): a
+      // dot in the climbing colour, ringed like every POI's.
+      layers.push({
+        id: 'outdoors-climbing-dot',
+        type: 'circle',
+        source,
+        'source-layer': GOWAY_SOURCE_LAYERS.outdoors,
+        minzoom: 11,
+        filter: filter(['all', IS_POINT, ['==', ['get', 'class'], 'climbing']]),
+        paint: {
+          'circle-color': outdoors.climbing,
+          'circle-radius': byZoom([[11, 2.6], [14, 3.6], [17, 5]], 1.2),
+          'circle-stroke-color': palette.land,
+          'circle-stroke-width': byZoom([[11, 0.6], [16, 1.2]], 1),
+        },
+      });
+    }
   }
 
   // --- Type --------------------------------------------------------------
@@ -1504,6 +1576,34 @@ export function buildLayers(
       lineLabel('label-road-local', SL.transportationName, filter(['all', IS_LINE, classIn('minor', 'service', 'track')]), palette.labelRoad, sized([[15, 7.5], [18, 9], [20, 10.5]]), { minzoom: 15, spacing: 380, uppercase: upper, letterSpacing: tracking(0.05), padding: 6 });
     }
     lineLabel('label-road-arterial', SL.transportationName, filter(['all', IS_LINE, classIn('primary', 'secondary', 'tertiary')]), palette.labelRoad, sized([[13, 7.5], [16, 9], [20, 11]]), { minzoom: 13, spacing: 400, uppercase: upper, letterSpacing: tracking(0.05), padding: 7 });
+    if (outdoors) {
+      // Ski runs named along themselves, in their difficulty colour.
+      layers.push({
+        id: 'label-piste',
+        type: 'symbol',
+        source,
+        'source-layer': GOWAY_SOURCE_LAYERS.outdoors,
+        minzoom: 14,
+        filter: filter(['all', IS_LINE, ['==', ['get', 'class'], 'piste'], ['has', 'name']]),
+        layout: {
+          'symbol-placement': 'line',
+          'text-field': LABEL_TEXT,
+          'text-font': REGULAR,
+          'text-size': byZoom([[14, 9], [17, 11]], 1.2),
+          'text-rotation-alignment': 'map',
+          'text-pitch-alignment': 'viewport',
+          'symbol-spacing': 360,
+          'text-max-angle': 30,
+          'text-padding': 4,
+        },
+        paint: {
+          'text-color': pisteColourOf(outdoors),
+          'text-halo-color': palette.haloStrong,
+          'text-halo-width': 1.6,
+          'text-halo-blur': 0.3,
+        },
+      });
+    }
     lineLabel('label-road-highway', SL.transportationName, filter(['all', IS_LINE, classIn('motorway', 'trunk')]), palette.labelRoad, sized([[12, 8], [16, 9.5], [20, 11.5]]), { minzoom: 12, spacing: 440, uppercase: upper, letterSpacing: tracking(0.06), padding: 8 });
 
     // The POI label carries the CATEGORY COLOUR. See `poiLabelColor`.
@@ -1550,6 +1650,29 @@ export function buildLayers(
       padding: byZoom([[14, 34], [16, 18], [18, 8]], 1),
     });
     }
+  }
+
+  if (outdoors) {
+    // A crag's name and its grades ("Les Gaillands · 5a–7b+"), from z13.
+    pointLabel(
+      'label-climbing',
+      GOWAY_SOURCE_LAYERS.outdoors,
+      filter(['all', IS_POINT, ['==', ['get', 'class'], 'climbing'], ['has', 'name']]),
+      outdoors.labelClimbing,
+      [[13, 9], [16, 10.5]],
+      {
+        minzoom: 13,
+        anchor: 'top',
+        offset: [0, 0.8],
+        maxWidth: 9,
+        textField: expr([
+          'case',
+          ['all', ['has', 'grade_min'], ['has', 'grade_max']],
+          ['concat', LABEL_TEXT, ' · ', ['get', 'grade_min'], '–', ['get', 'grade_max']],
+          LABEL_TEXT,
+        ]),
+      },
+    );
   }
 
   pointLabel('label-aerodrome', SL.aerodromeLabel, filter(['all', IS_POINT, ['has', 'iata']]), palette.labelPlaceMinor, [[10, 10.5], [14, 13]], {

@@ -55,8 +55,10 @@
  * A planet build that happened once on somebody's laptop is not infrastructure.
  * Everything that decides the output is pinned or recorded here:
  *
- *  - **Planetiler** is pinned to {@link PLANETILER_VERSION} and its jar is
- *    checked against {@link PLANETILER_SHA256} after download. An unpinned
+ *  - **Planetiler** is built from pinned, hash-checked sources — the
+ *    {@link PLANETILER_TAG} release, the OpenMapTiles profile commit it pins,
+ *    and GoWay's addon layers (`scripts/build-planetiler.ts`) — and refused if
+ *    the jar was built from other addon sources than this tree's. An unpinned
  *    build tool is an unpinned schema.
  *  - **The OSM extract** comes from {@link AREAS}, which names a real URL per
  *    area rather than relying on Planetiler's `--area` shorthand, so the
@@ -94,9 +96,12 @@ import {
   type VectorTileLayer,
 } from './mapgen/mvt';
 import {
+  GOWAY_SOURCE_LAYER_NAMES,
+  GOWAY_SOURCE_LAYERS,
   OPENMAPTILES_SOURCE_LAYER_NAMES,
   OPENMAPTILES_SOURCE_LAYERS,
 } from '../lib/map/style/schema';
+import { GOWAY_PLANETILER_JAR, OPENMAPTILES_COMMIT, PLANETILER_TAG } from './build-planetiler';
 
 const FRONTEND_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -110,10 +115,13 @@ const FRONTEND_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
  */
 const BUILD_DIR = join(FRONTEND_ROOT, '.tiles');
 
-/** The pinned build tool. An unpinned build tool is an unpinned schema. */
-const PLANETILER_VERSION = 'v0.10.2';
-const PLANETILER_SHA256 = 'f310bd0413e2e4512b27f4046d418664e8e1d3bf31603c2a70e23de06c167e4d';
-const PLANETILER_URL = `https://github.com/onthegomap/planetiler/releases/download/${PLANETILER_VERSION}/planetiler.jar`;
+/**
+ * The build tool: Planetiler {@link PLANETILER_TAG} with GoWay's OpenMapTiles
+ * addons, built from pinned sources by `scripts/build-planetiler.ts`
+ * (`map:planetiler`). The release jar this used to download carries the
+ * sixteen OpenMapTiles layers and nothing else; GoWay's `outdoors` layer
+ * (hiking difficulty, pistes, via ferratas, climbing) needs the addon.
+ */
 
 /**
  * The maximum zoom GoWay builds to, and the number the rest of the stack
@@ -141,7 +149,7 @@ const MAX_ZOOM = 14;
  * build machine is half an hour — not enough to justify the ambiguity of a
  * mirror.
  */
-const AREAS: Record<string, { url: string; file?: string; note: string }> = {
+const AREAS: Record<string, { url: string; file?: string; bounds?: string; note: string }> = {
   monaco: {
     url: 'https://download.geofabrik.de/europe/monaco-latest.osm.pbf',
     note: 'The fast loop. ~700 kB in, ~420 kB out, about a minute end to end.',
@@ -149,6 +157,16 @@ const AREAS: Record<string, { url: string; file?: string; note: string }> = {
   cataluna: {
     url: 'https://download.geofabrik.de/europe/spain/cataluna-latest.osm.pbf',
     note: 'The reference extract: Barcelona, and the two places the OSM id join is asserted on.',
+  },
+  alps: {
+    // The French Alps — Savoie and Haute-Savoie, cut out of the Rhône-Alpes
+    // extract by `bounds` — for the `outdoors` layer's dry run: Chamonix and
+    // Mont Blanc (SAC-graded trails to T6, glaciers), the Tarentaise and
+    // Portes du Soleil ski areas, the via ferratas of the Maurienne and the
+    // Aravis, and the crags of the Chablais.
+    url: 'https://download.geofabrik.de/europe/france/rhone-alpes-latest.osm.pbf',
+    bounds: '5.6,45.05,7.2,46.45',
+    note: 'The outdoors dry run. ~530 MB in, a few minutes, Savoie and Haute-Savoie out.',
   },
   planet: {
     // A MIRROR, and not `planet.openstreetmap.org`, which is a measurement
@@ -200,6 +218,8 @@ const EXPECTED_JOINS: Record<string, { osm: string; name: string }[]> = {
 const SAMPLES: Record<string, { lat: number; lon: number; radius: number }> = {
   monaco: { lat: 43.7384, lon: 7.4246, radius: 1 },
   cataluna: { lat: 41.3851, lon: 2.1734, radius: 3 },
+  // Chamonix: the town (POIs for the id join) at the foot of the trails.
+  alps: { lat: 45.9237, lon: 6.8694, radius: 2 },
   planet: { lat: 41.3851, lon: 2.1734, radius: 3 },
 };
 
@@ -365,15 +385,28 @@ async function fetchOnce(url: string, destination: string, label: string): Promi
   throw new Error(`${label} did not finish in ${DOWNLOAD_ATTEMPTS} attempts`);
 }
 
+/**
+ * GoWay's Planetiler, and only if it was built from the addon sources in this
+ * tree: a jar from an older checkout would build an archive whose `outdoors`
+ * layer is not the one the style and `schema.ts` describe.
+ */
 async function planetilerJar(): Promise<string> {
-  const jar = join(BUILD_DIR, `planetiler-${PLANETILER_VERSION}.jar`);
-  await fetchOnce(PLANETILER_URL, jar, `Planetiler ${PLANETILER_VERSION}`);
-  const digest = await sha256(jar);
-  if (digest !== PLANETILER_SHA256) {
-    throw new Error(
-      `Planetiler jar sha256 is ${digest}, expected ${PLANETILER_SHA256}. ` +
-        'Refusing to build a map with an unverified build tool.',
-    );
+  const jar = GOWAY_PLANETILER_JAR;
+  if (!(await exists(jar)) || !(await exists(`${jar}.receipt.json`))) {
+    throw new Error(`${jar} is missing: run \`bun run map:planetiler\` first (needs a JDK 21).`);
+  }
+  const receipt = JSON.parse(await Bun.file(`${jar}.receipt.json`).text()) as {
+    sha256: string;
+    addons: Record<string, string>;
+  };
+  if ((await sha256(jar)) !== receipt.sha256) {
+    throw new Error(`${jar} does not match its receipt; rebuild it with \`bun run map:planetiler\`.`);
+  }
+  const addons = join(FRONTEND_ROOT, 'tiles', 'openmaptiles-addons', 'src');
+  for (const [file, digest] of Object.entries(receipt.addons)) {
+    if ((await sha256(join(addons, file))) !== digest) {
+      throw new Error(`${jar} was built from an older ${file}; rebuild it with \`bun run map:planetiler\`.`);
+    }
   }
   return jar;
 }
@@ -424,6 +457,7 @@ async function build(area: string, force: boolean): Promise<string> {
       `--download-dir=${join(OSM_DIR, 'planetiler-sources')}`,
       '--download',
       '--nodemap-type=sparsearray',
+      ...(source.bounds ? [`--bounds=${source.bounds}`] : []),
       '--force',
     ],
     'planetiler',
@@ -464,7 +498,73 @@ function tileFor(lat: number, lon: number, z: number): { z: number; x: number; y
   };
 }
 
+export interface OutdoorsCensus {
+  tiles: number;
+  /** Features per class. */
+  classes: Record<string, number>;
+  /** The distinct values of each attribute the style reads. */
+  values: Record<string, string[]>;
+}
+
+/**
+ * What a dry run must show in the `outdoors` layer: every class, and enough
+ * distinct grades that the difficulty colours are really driven by the data.
+ */
+const EXPECTED_OUTDOORS: Record<string, { classes: string[]; distinct: Record<string, number> }> = {
+  alps: {
+    classes: ['trail', 'via_ferrata', 'piste', 'climbing'],
+    distinct: { sac_scale: 5, trail_visibility: 3, piste_type: 2, piste_difficulty: 3, via_ferrata_scale: 3 },
+  },
+};
+
+const CENSUS_ATTRIBUTES = [
+  'sac_scale',
+  'trail_visibility',
+  'via_ferrata_scale',
+  'piste_type',
+  'piste_difficulty',
+  'piste_grooming',
+  'climbing',
+  'grade_system',
+];
+
+/** Every z14 tile in the archive's bounds, the `outdoors` layer counted (extracts only; the planet is sampled). */
+async function outdoorsCensus(
+  archive: PMTiles,
+  header: { bounds: number[] },
+): Promise<OutdoorsCensus> {
+  const census: OutdoorsCensus = { tiles: 0, classes: {}, values: {} };
+  const [west, south, east, north] = header.bounds;
+  if (east - west > 20 || north - south > 20) return census;
+  const values = new Map<string, Set<string>>();
+  const from = tileFor(north, west, MAX_ZOOM);
+  const to = tileFor(south, east, MAX_ZOOM);
+  for (let x = from.x; x <= to.x; x += 1) {
+    for (let y = from.y; y <= to.y; y += 1) {
+      const tile = await archive.getTile(MAX_ZOOM, x, y);
+      if (!tile) continue;
+      census.tiles += 1;
+      const layer = decodeVectorTile(Bun.gunzipSync(tile.bytes)).find(
+        (candidate) => candidate.name === GOWAY_SOURCE_LAYERS.outdoors,
+      );
+      for (const feature of layer?.features ?? []) {
+        const klass = String(feature.properties.class ?? '');
+        census.classes[klass] = (census.classes[klass] ?? 0) + 1;
+        for (const attribute of CENSUS_ATTRIBUTES) {
+          const value = feature.properties[attribute];
+          if (value === undefined || value === null) continue;
+          if (!values.has(attribute)) values.set(attribute, new Set());
+          values.get(attribute)?.add(String(value));
+        }
+      }
+    }
+  }
+  census.values = Object.fromEntries([...values].map(([key, set]) => [key, [...set].sort()]));
+  return census;
+}
+
 export interface VerificationReport {
+  outdoors: OutdoorsCensus;
   archive: string;
   bytes: number;
   header: Record<string, unknown>;
@@ -529,14 +629,15 @@ export async function verify(archivePath: string, area: string): Promise<Verific
     (layer) => layer.id,
   );
   const worldCovering = header.bounds[0] <= -179 && header.bounds[2] >= 179;
-  const missing = OPENMAPTILES_SOURCE_LAYER_NAMES.filter((name) => !vectorLayers.includes(name));
+  const recorded = [...OPENMAPTILES_SOURCE_LAYER_NAMES, ...GOWAY_SOURCE_LAYER_NAMES];
+  const missing = recorded.filter((name) => !vectorLayers.includes(name));
   for (const name of missing) {
     const message = `the archive has no "${name}" layer, which lib/map/style/schema.ts promises`;
     if (worldCovering) problems.push(message);
     else console.log(`  note            ${message} (extract, not the planet)`);
   }
   for (const name of vectorLayers) {
-    if (!OPENMAPTILES_SOURCE_LAYER_NAMES.includes(name)) {
+    if (!recorded.includes(name)) {
       problems.push(
         `the archive carries an unrecorded layer "${name}"; schema.ts has not been told`,
       );
@@ -629,9 +730,27 @@ export async function verify(archivePath: string, area: string): Promise<Verific
     if (!join.found) problems.push(`${join.osm} (${join.name}) was not found in any sampled tile`);
   }
 
+  // 5. The `outdoors` layer, where the area promises it: every class and the
+  //    attributes the Outdoors style colours by, read out of every z14 tile in
+  //    the archive's bounds — the dry run's proof that the addon wrote them.
+  const outdoors = await outdoorsCensus(archive, header);
+  const promised = EXPECTED_OUTDOORS[area];
+  if (promised) {
+    for (const klass of promised.classes) {
+      if (!outdoors.classes[klass]) problems.push(`outdoors: no "${klass}" feature in the archive`);
+    }
+    for (const [attribute, least] of Object.entries(promised.distinct)) {
+      const seen = outdoors.values[attribute]?.length ?? 0;
+      if (seen < least) {
+        problems.push(`outdoors: ${seen} distinct ${attribute} value(s), expected at least ${least}`);
+      }
+    }
+  }
+
   await source.close();
 
   return {
+    outdoors,
     archive: archivePath,
     bytes: size,
     header: header as unknown as Record<string, unknown>,
@@ -740,6 +859,13 @@ function summarise(report: VerificationReport): void {
   for (const join of report.joins) {
     console.log(`  join            ${join.osm} → ${join.found ?? 'NOT FOUND'}`);
   }
+  if (report.outdoors.tiles > 0) {
+    console.log(`  outdoors        ${report.outdoors.tiles} z14 tiles: ${JSON.stringify(report.outdoors.classes)}`);
+    for (const [attribute, seen] of Object.entries(report.outdoors.values)) {
+      console.log(`    ${attribute.padEnd(18)} ${seen.join(' ')}`);
+    }
+  }
+  console.log(`  built with      Planetiler ${PLANETILER_TAG} + OpenMapTiles ${OPENMAPTILES_COMMIT.slice(0, 7)} + GoWay addons`);
 }
 
 async function main(): Promise<void> {
@@ -775,7 +901,7 @@ async function main(): Promise<void> {
         ...report,
         area: args.area,
         source: AREAS[args.area]?.url,
-        planetilerPin: { version: PLANETILER_VERSION, sha256: PLANETILER_SHA256 },
+        planetilerBuild: JSON.parse(await Bun.file(`${GOWAY_PLANETILER_JAR}.receipt.json`).text()),
         buildSeconds: process.env.GOWAY_TILES_BUILD_SECONDS
           ? Number(process.env.GOWAY_TILES_BUILD_SECONDS)
           : undefined,
