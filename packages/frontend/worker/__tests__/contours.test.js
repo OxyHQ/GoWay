@@ -11,7 +11,15 @@ import { describe, expect, test } from 'bun:test';
 import { VectorTile } from '@mapbox/vector-tile';
 import { PbfReader } from 'pbf';
 
-import { CONTOUR_LEVELS, contourTileOf, createContourService, serveContours } from '../contours.js';
+import { MEMORY_BUDGET } from '../budget.js';
+import {
+  CONTOUR_CACHE_ENTRIES,
+  CONTOUR_ENTRY_BYTES,
+  CONTOUR_LEVELS,
+  contourTileOf,
+  createContourService,
+  serveContours,
+} from '../contours.js';
 import worker from '../index.js';
 
 const SIZE = 512;
@@ -85,6 +93,16 @@ describe('the contour tracer', () => {
   test('outside the zooms it makes, nothing', async () => {
     const service = serviceOver(12, 2100, 1460);
     expect((await service.tile(8, 10, 10)).length).toBe(0);
+  });
+
+  test('a reader panning far holds no more than the isolate budget allows', async () => {
+    // One tile's 3×3 DEM neighbourhood fits, and the caches fit their line.
+    expect(CONTOUR_CACHE_ENTRIES).toBeGreaterThanOrEqual(9);
+    expect(CONTOUR_CACHE_ENTRIES * CONTOUR_ENTRY_BYTES).toBeLessThanOrEqual(MEMORY_BUDGET.contours);
+    // Thirty tiles apart from each other: ~270 distinct DEM tiles asked for.
+    const service = serviceOver(12, 2100, 1460);
+    for (let i = 0; i < 30; i += 1) await service.tile(12, 2000 + i * 4, 1400 + (i % 5) * 4);
+    for (const held of service.held()) expect(held).toBeLessThanOrEqual(CONTOUR_CACHE_ENTRIES);
   });
 });
 
