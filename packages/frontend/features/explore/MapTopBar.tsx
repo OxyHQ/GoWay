@@ -12,7 +12,7 @@
  * to run the action and opens the in-app Oxy dialog instead. Either way the map
  * stays mounted underneath — there is no route to come back from.
  */
-import { useCallback, useState } from 'react';
+import { useCallback, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'expo-router';
 import { Button } from '@oxy.so/bloom/button';
 import { Pressable, View } from 'react-native';
@@ -23,6 +23,9 @@ import { Avatar } from '@oxy.so/bloom/avatar';
 import { useTheme } from '@oxy.so/bloom/theme';
 import { useClaimTopEdge, windowEdgeGap } from '@oxy.so/bloom/layout';
 import { RiUserLine } from '@oxy.so/bloom/icons/RiUserLine';
+import { RiSparklingLine } from '@oxy.so/bloom/icons/RiSparklingLine';
+import { AliaChatSheet, type AliaChatSheetRef } from '@alia.onl/sdk';
+import { VoiceSession } from '@alia.onl/sdk/voice';
 
 import { GowayLogo } from '@/components/brand';
 import { useAuthGate } from '@/lib/authGate';
@@ -45,6 +48,16 @@ export function MapTopBar() {
   const gate = useAuthGate();
   const { user, openAccountDialog } = useOxy();
 
+  const aliaChatRef = useRef<AliaChatSheetRef>(null);
+  const aliaWelcomeSuggestions = useMemo(
+    () => [
+      { id: 'nearby', text: t('map.aliaSuggestion.nearby') },
+      { id: 'directions', text: t('map.aliaSuggestion.directions') },
+      { id: 'contribute', text: t('map.aliaSuggestion.contribute') },
+    ],
+    [t],
+  );
+
   const [height, setHeight] = useState(0);
   useClaimTopEdge(height);
 
@@ -59,14 +72,19 @@ export function MapTopBar() {
     gate.run(() => openAccountDialog('accounts'));
   }, [gate, openAccountDialog]);
 
+  const handleAskAlia = useCallback(() => {
+    gate.run(() => aliaChatRef.current?.present());
+  }, [gate]);
+
   return (
-    <View
-      pointerEvents="box-none"
-      onLayout={(event) => setHeight(event.nativeEvent.layout.height)}
-      className="absolute left-0 right-0 top-0 flex-row items-center justify-between gap-space-12"
-      style={{ paddingTop: topGap, paddingHorizontal: sideGap, paddingBottom: 0 }}
-    >
-      {/* The logo, not the word, and standing on the map rather than on a
+    <>
+      <View
+        pointerEvents="box-none"
+        onLayout={(event) => setHeight(event.nativeEvent.layout.height)}
+        className="absolute left-0 right-0 top-0 flex-row items-center justify-between gap-space-12"
+        style={{ paddingTop: topGap, paddingHorizontal: sideGap, paddingBottom: 0 }}
+      >
+        {/* The logo, not the word, and standing on the map rather than on a
           plate. Both follow from the artwork: it is a sticker whose heavy
           outline is what separates it from whatever it sits on, measured over
           the eight colours that actually cover a GoWay map (see `MapBrand`). A
@@ -74,28 +92,47 @@ export function MapTopBar() {
 
           `t('map.title')` stays as the accessible label — the logo is the app's
           name drawn rather than typed, and a screen reader should hear a name. */}
-      <GowayLogo width={BRAND_WIDTH} label={t('map.title')} />
-      <Button size="sm" appearance="outline" onPress={() => router.push('/contribute')}>
-        Contribute
-      </Button>
-
-      <Pressable
-        accessibilityRole="button"
-        accessibilityLabel={accountLabel}
-        onPress={handleAccount}
-        className="h-11 w-11 items-center justify-center rounded-radius-max bg-card shadow-m active:opacity-80"
-      >
-        {user ? (
-          <Avatar
-            source={user.avatar ?? null}
-            initials={displayName ? displayName.slice(0, 2).toUpperCase() : undefined}
+        <GowayLogo width={BRAND_WIDTH} label={t('map.title')} />
+        <View className="flex-row items-center gap-space-8">
+          <Button
             size="sm"
-            alt={accountLabel}
-          />
-        ) : (
-          <RiUserLine width={20} height={20} fill={theme.colors.text} />
-        )}
-      </Pressable>
-    </View>
+            appearance="outline"
+            leadingIcon={RiSparklingLine}
+            onPress={handleAskAlia}
+          >
+            {t('map.askAlia')}
+          </Button>
+          <Button size="sm" appearance="outline" onPress={() => router.push('/contribute')}>
+            Contribute
+          </Button>
+        </View>
+
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel={accountLabel}
+          onPress={handleAccount}
+          className="h-11 w-11 items-center justify-center rounded-radius-max bg-card shadow-m active:opacity-80"
+        >
+          {user ? (
+            <Avatar
+              source={user.avatar ?? null}
+              initials={displayName ? displayName.slice(0, 2).toUpperCase() : undefined}
+              size="sm"
+              alt={accountLabel}
+            />
+          ) : (
+            <RiUserLine width={20} height={20} fill={theme.colors.text} />
+          )}
+        </Pressable>
+      </View>
+      {gate.canUsePrivateApi && (
+        <AliaChatSheet
+          ref={aliaChatRef}
+          voiceSession={VoiceSession}
+          clientContext={t('map.aliaClientContext')}
+          welcomeSuggestions={aliaWelcomeSuggestions}
+        />
+      )}
+    </>
   );
 }
