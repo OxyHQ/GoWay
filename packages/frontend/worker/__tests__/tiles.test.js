@@ -351,6 +351,7 @@ describe('the memory budget', () => {
       MEMORY_BUDGET.directories +
         MEMORY_BUDGET.ownershipTrees +
         MEMORY_BUDGET.manifest +
+        MEMORY_BUDGET.contours +
         MEMORY_BUDGET.satellite,
     ).toBeLessThanOrEqual(MEMORY_BUDGET.total);
     // A compact tree counts 5 bytes a node, and that is its arrays.

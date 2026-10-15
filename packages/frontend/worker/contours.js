@@ -38,6 +38,7 @@
  * smooth at street zoom.
  */
 import mlcontour from 'maplibre-contour';
+import { MEMORY_BUDGET } from './budget.js';
 
 export const CONTOUR_PATH = /^\/map\/contours\/(\d{1,2})\/(\d{1,7})\/(\d{1,7})\.pbf$/;
 
@@ -61,6 +62,19 @@ export const CONTOUR_ZOOMS = { min: 9, max: 14 };
 /** The elevation tiles' own limits (`lib/map/style/relief.ts` → `RELIEF_DEM`). */
 const DEM = { maxzoom: 12, encoding: 'terrarium', tileSize: 512 };
 
+/**
+ * What one entry of maplibre-contour's caches can hold: it keeps the WebP, the
+ * decoded heights (512² Float32 = 1 MiB) and the traced tile, each in its own
+ * cache of `cacheSize` entries. Bounded by {@link MEMORY_BUDGET}.contours — the
+ * library's default of 100 (and the 64 this used) held ~200 MiB after one
+ * reader panned the Alps, past the isolate's 128 MB, taking every map route in
+ * the isolate down with it.
+ */
+export const CONTOUR_ENTRY_BYTES = Math.ceil(1.8 * 1024 * 1024);
+
+/** Entries per cache: a tile's 3×3 DEM neighbourhood (9) fits, the isolate does too. */
+export const CONTOUR_CACHE_ENTRIES = Math.floor(MEMORY_BUDGET.contours / CONTOUR_ENTRY_BYTES);
+
 /** A day at the edge for a miss, a year for a tile: contours change only with the DEM archive. */
 const CONTOUR_TTL_SECONDS = 31_536_000;
 
@@ -77,7 +91,7 @@ const CONTOUR_TTL_SECONDS = 31_536_000;
 export function createContourService({ fetchDem, decode }) {
   const manager = new mlcontour.LocalDemManager({
     demUrlPattern: 'dem://{z}/{x}/{y}',
-    cacheSize: 64,
+    cacheSize: CONTOUR_CACHE_ENTRIES,
     encoding: DEM.encoding,
     maxzoom: DEM.maxzoom,
     timeoutMs: 20_000,
@@ -103,6 +117,10 @@ export function createContourService({ fetchDem, decode }) {
   });
 
   return {
+    /** Entries each of the manager's three caches holds now (the budget's test seam). */
+    held() {
+      return [manager.tileCache.size(), manager.parsedCache.size(), manager.contourCache.size()];
+    },
     /** The contour tile's MVT bytes; empty where nothing crosses a level. */
     async tile(z, x, y) {
       const levels = CONTOUR_LEVELS[z];
