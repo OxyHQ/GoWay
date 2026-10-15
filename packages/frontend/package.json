@@ -45,7 +45,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@alia.onl/sdk": "^15.4.0",
+    "@alia.onl/sdk": "^15.6.0",
     "@expo/vector-icons": "^15.1.1",
     "@goway.to/sdk": "workspace:*",
     "@jsquash/webp": "1.5.0",
