@@ -358,6 +358,10 @@ const FRAME_BUDGETS: Record<string, Record<QualityTier, Budget>> = {
   // medium and high, the same draws; each tile's ground slot holds the mesh's
   // 133² corners (was a 33² grid), a layer of an array texture uploaded on
   // its own. Measured on this branch, plus 10% / 25%.
+  // Lowered with each vertex's height in its attr's spare byte
+  // (`cityStreets/meshBuffers.ts`): a street vertex is 2 floats, not 3 —
+  // −1.05 MB of GPU memory at every preset, −9.5% of the street detail's own;
+  // `gpuBytes` measured, plus 10%.
   'street-detail': {
     low: {
       draws: 38,
@@ -365,7 +369,7 @@ const FRAME_BUDGETS: Record<string, Record<QualityTier, Budget>> = {
       offscreenPasses: 0,
       loadUploadBytes: 25_247_605,
       shadowRedraws: 0,
-      gpuBytes: 20_939_569,
+      gpuBytes: 19_814_335,
     },
     medium: {
       draws: 48,
@@ -373,7 +377,7 @@ const FRAME_BUDGETS: Record<string, Record<QualityTier, Budget>> = {
       offscreenPasses: 0,
       loadUploadBytes: 25_295_050,
       shadowRedraws: 0,
-      gpuBytes: 26_744_260,
+      gpuBytes: 25_634_022,
     },
     high: {
       draws: 48,
@@ -381,7 +385,7 @@ const FRAME_BUDGETS: Record<string, Record<QualityTier, Budget>> = {
       offscreenPasses: 0,
       loadUploadBytes: 25_291_690,
       shadowRedraws: 0,
-      gpuBytes: 44_045_764,
+      gpuBytes: 42_935_526,
     },
   },
   skyline: {

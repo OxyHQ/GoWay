@@ -7,10 +7,13 @@
  * Two meshes per tile, two draw calls:
  *
  * - **Surfaces** (opaque, depth-written): asphalt, paving, sidewalk slabs and
- *   their kerb faces. `position` (3 × f32, tile-local metres, x east, y north,
- *   z above the ground) and `attr` (4 × u8: material, shade, depth layer, 0).
+ *   their kerb faces. `position` (2 × f32, tile-local metres, x east, y north)
+ *   and `attr` (4 × u8: material, shade, depth layer, and the height above the
+ *   ground in millimetres — a kerb is 150: {@link STREET_Z_PER_M}). A third
+ *   float for a height that is 0 or a kerb's was a quarter of every vertex.
  * - **Markings** (blended over the surfaces, no depth write): tints, lines,
- *   and SDF quads. `position` (3 × f32: a line's CENTRE point), `offset`
+ *   and SDF quads, all ON the ground (height 0). `position` (2 × f32: a line's
+ *   CENTRE point), `offset`
  *   (2 × f32: half the line's width across it, metres — the shader widens
  *   it to a pixel when it is thinner, trading width for alpha), `uv` (2 × f32:
  *   across-coordinate ±1 for a line, atlas texels for an SDF quad) and `attr`
@@ -77,8 +80,14 @@ export class Buffers {
   }
 }
 
-/** Two levels of one mesh, packed: the simple level's indices first. */
-function concat(simple: Buffers[], full: Buffers[]) {
+/**
+ * Steps of a surface's height above the ground per metre, in its `attr`'s
+ * last byte: millimetres, so up to 25.5 cm (a kerb is `STREET.kerbM`, 15 cm).
+ */
+export const STREET_Z_PER_M = 1000;
+
+/** Two levels of one mesh, packed: the simple level's indices first; each vertex's height in its last `attr` byte. */
+function concat(simple: Buffers[], full: Buffers[], heights: boolean) {
   const all = [...simple, ...full];
   let vertices = 0;
   let indexCount = 0;
@@ -86,7 +95,7 @@ function concat(simple: Buffers[], full: Buffers[]) {
     vertices += b.vertexCount;
     indexCount += b.indices.length;
   }
-  const positions = new Float32Array(vertices * 3);
+  const positions = new Float32Array(vertices * 2);
   const offsets = new Float32Array(vertices * 2);
   const uvs = new Float32Array(vertices * 2);
   const attrs = new Uint8Array(vertices * 4);
@@ -95,10 +104,23 @@ function concat(simple: Buffers[], full: Buffers[]) {
   let i = 0;
   let simpleCount = 0;
   for (const [n, b] of all.entries()) {
-    positions.set(b.positions, v * 3);
     if (b.offsets.length) offsets.set(b.offsets, v * 2);
     if (b.uvs.length) uvs.set(b.uvs, v * 2);
     attrs.set(b.attrs, v * 4);
+    for (let k = 0; k < b.vertexCount; k++) {
+      positions[(v + k) * 2] = b.positions[k * 3];
+      positions[(v + k) * 2 + 1] = b.positions[k * 3 + 1];
+      const z = b.positions[k * 3 + 2];
+      if (!heights) {
+        if (z !== 0)
+          throw new Error(`street markings lie on the ground; a vertex is ${z} m above it`);
+        continue;
+      }
+      const steps = Math.round(z * STREET_Z_PER_M);
+      if (steps < 0 || steps > 255)
+        throw new Error(`a street surface ${z} m above the ground: over a byte`);
+      attrs[(v + k) * 4 + 3] = steps;
+    }
     for (const index of b.indices) indices[i++] = index + v;
     v += b.vertexCount;
     if (n === simple.length - 1) simpleCount = i;
@@ -108,12 +130,12 @@ function concat(simple: Buffers[], full: Buffers[]) {
 }
 
 export function packSurfaces(simple: Buffers[], full: Buffers[]): PackedSurfaces {
-  const { positions, attrs, indices, simpleCount } = concat(simple, full);
+  const { positions, attrs, indices, simpleCount } = concat(simple, full, true);
   return { positions, attrs, indices, simpleCount };
 }
 
 export function packMarkings(simple: Buffers[], full: Buffers[]): PackedMarkings {
-  return concat(simple, full);
+  return concat(simple, full, false);
 }
 
 /** Lift over the ground, metres: above the terrain mesh's own interpolation error at street zooms. */

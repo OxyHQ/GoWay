@@ -12,13 +12,20 @@ import { selectLodTiles } from '@/components/map/engine/city3d/lod';
 import type { DecodedRoadTile, RoadNode, RoadPiece } from '@/components/map/engine/roads/roadTiles';
 import { parseTurnLanes } from '@/components/map/engine/roads/roadTiles';
 import { simFrame } from '@/components/map/engine/roads/roadGraph';
-import { MODE } from '@/components/map/engine/cityStreets/meshBuffers';
+import {
+  Buffers,
+  MODE,
+  packMarkings,
+  packSurfaces,
+  STREET_Z_PER_M,
+} from '@/components/map/engine/cityStreets/meshBuffers';
 import { StreetAtlas } from '@/components/map/engine/cityStreets/streetAtlas';
 import {
   meshStreetTile,
   paintableScript,
   paintedName,
   resample,
+  STREET,
 } from '@/components/map/engine/cityStreets/streetMesher';
 import { streetLodPolicy } from '@/components/map/engine/cityStreets/streetRenderer';
 import { decodeGlyphs } from '@/scripts/mapgen/glyph-pbf';
@@ -126,8 +133,8 @@ const mesh = (data: DecodedRoadTile, tile = TILE, atlas = new StreetAtlas()) =>
 function markingPoints(m: ReturnType<typeof mesh>, mode: number): [number, number][] {
   const out: [number, number][] = [];
   const { positions, attrs } = m.markings;
-  for (let i = 0; i < positions.length / 3; i++) {
-    if (attrs[i * 4 + 1] === mode) out.push([positions[i * 3], positions[i * 3 + 1]]);
+  for (let i = 0; i < positions.length / 2; i++) {
+    if (attrs[i * 4 + 1] === mode) out.push([positions[i * 2], positions[i * 2 + 1]]);
   }
   return out;
 }
@@ -137,9 +144,39 @@ describe('junctions and surfaces', () => {
     const m = mesh(crossroads({}));
     expect(m.stats.junctions).toBe(1);
     expect(m.stats.surfaceTriangles).toBeGreaterThan(20);
-    const vertices = m.surfaces.positions.length / 3;
+    const vertices = m.surfaces.positions.length / 2;
+    expect(m.surfaces.attrs.length).toBe(vertices * 4);
     expect(Math.max(...m.surfaces.indices)).toBeLessThan(vertices);
     for (const v of m.surfaces.positions) expect(Number.isFinite(v)).toBe(true);
+  });
+
+  test("a surface's height is in its attr's last byte, in millimetres: the kerb's 150", () => {
+    const street = road([at(200, 2048), at(3900, 2048)], { sidewalk: 'both' });
+    const m = mesh({ pieces: [street], nodes: [], restrictions: [] });
+    expect(m.stats.sidewalks).toBeGreaterThan(0);
+    const heights = new Set<number>();
+    for (let v = 0; v < m.surfaces.attrs.length / 4; v++) heights.add(m.surfaces.attrs[v * 4 + 3]);
+    expect([...heights].sort((a, b) => a - b)).toEqual([0, STREET.kerbM * STREET_Z_PER_M]);
+    // Markings lie on the ground: x and y only, and their last byte unused.
+    const markings = m.markings;
+    expect(markings.positions.length).toBe((markings.attrs.length / 4) * 2);
+    for (let v = 0; v < markings.attrs.length / 4; v++) expect(markings.attrs[v * 4 + 3]).toBe(0);
+  });
+
+  test('a height the byte cannot hold is an error, never a silently wrong vertex', () => {
+    const one = (z: number) => {
+      const b = new Buffers();
+      b.triangle(
+        b.vertex(0, 0, z, [0, 0, 0]),
+        b.vertex(1, 0, z, [0, 0, 0]),
+        b.vertex(0, 1, z, [0, 0, 0]),
+      );
+      return b;
+    };
+    expect(packSurfaces([one(0.255)], []).attrs[3]).toBe(255);
+    expect(() => packSurfaces([one(0.3)], [])).toThrow();
+    expect(() => packSurfaces([one(-0.01)], [])).toThrow();
+    expect(() => packMarkings([one(0.001)], [])).toThrow();
   });
 
   test('a tile draws only what lies in it: its neighbour draws none of this crossroads', () => {

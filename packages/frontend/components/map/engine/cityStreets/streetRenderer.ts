@@ -299,7 +299,8 @@ export function createCityStreets(options: CityStreetsOptions): CityOverlay {
     kind: 'surfaces' | 'markings',
   ): THREE.Mesh => {
     const geometry = new THREE.BufferGeometry();
-    geometry.setAttribute('position', new THREE.BufferAttribute(data.positions, 3));
+    // x and y only: a surface's height is in its `attr` (`meshBuffers.ts`), a marking's is 0.
+    geometry.setAttribute('position', new THREE.BufferAttribute(data.positions, 2));
     geometry.setAttribute('attr', new THREE.BufferAttribute(data.attrs, 4));
     if ('offsets' in data) {
       geometry.setAttribute('offset', new THREE.BufferAttribute(data.offsets, 2));
