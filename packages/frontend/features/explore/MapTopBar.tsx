@@ -14,7 +14,8 @@
  */
 import { useCallback, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'expo-router';
-import { Button } from '@oxy.so/bloom/button';
+import { Button, GlyphButton } from '@oxy.so/bloom/button';
+import { RiListUnordered } from '@oxy.so/bloom/icons/RiListUnordered';
 import { Pressable, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useOxy } from '@oxy.so/services';
@@ -93,7 +94,7 @@ export function MapTopBar() {
           `t('map.title')` stays as the accessible label — the logo is the app's
           name drawn rather than typed, and a screen reader should hear a name. */}
         <GowayLogo width={BRAND_WIDTH} label={t('map.title')} />
-        <View className="flex-row items-center gap-space-8">
+        <View className="flex-1 flex-row flex-wrap items-center justify-end gap-space-8">
           <Button
             size="sm"
             appearance="outline"
@@ -102,6 +103,12 @@ export function MapTopBar() {
           >
             {t('map.askAlia')}
           </Button>
+          <GlyphButton
+            icon={RiListUnordered}
+            accessibilityLabel={t('lists.title')}
+            size={36}
+            onPress={() => router.push('/lists')}
+          />
           <Button size="sm" appearance="outline" onPress={() => router.push('/contribute')}>
             Contribute
           </Button>

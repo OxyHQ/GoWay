@@ -614,3 +614,23 @@ require all seven days explicitly; a partial edit returns `GoWayConflictError`
 without changing the schedule. The final week permits at most 64 intervals.
 This is not available in published SDK 0.3.0; upgrade only after the server and
 the SDK release carrying this contract are available.
+
+### Public organization activity lists
+
+`client.organizationLists` reads public lists without a session. `list({ oxyAccountId })`
+filters by organization; `get(listId)` reads its title and description. `entries(listId)`
+returns unfinished current and upcoming activities; `{ state: 'all' }` also returns
+completed and expired activities. Times are UTC instants; `timezone` comes from the
+current GoWay place. Resolve entry `placeId` references with `client.places.getMany`.
+
+Organization owners, administrators and editors can `create`, `update`, `delete`,
+`addEntry`, `updateEntry`, `completeEntry` and `deleteEntry`. These methods use the
+caller's Oxy session, with organization authority checked afresh on every mutation.
+`order(listId, { revision, entryIds })` requires every current entry exactly once and
+the latest list revision. Entry cursors become invalid after a list changes: reload
+from the first page. `iterate` and `iterateEntries` walk pages with repeated-cursor
+protection. Lists contain at most 200 activities; pages contain at most 50.
+
+Public links use `https://goway.to/lists/<listId>`. The app can browse and share these
+links signed out, and offers organization management after sign-in. The editor
+accepts UTC schedule times and visitors see the current place's local timezone.

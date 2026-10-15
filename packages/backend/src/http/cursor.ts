@@ -40,6 +40,8 @@ import { ApiError } from './apiError';
 
 /** The lists a cursor can belong to. */
 export const CURSOR_KINDS = [
+  'organization-lists',
+  'organization-list-entries',
   'places-nearby',
   'places-bounds',
   'place-claims',

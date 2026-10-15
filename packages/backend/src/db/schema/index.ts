@@ -51,6 +51,7 @@ export * from './categories';
 // Road rules reference nothing: a sync keeps them, `places` never reads them.
 export * from './roadRules';
 export * from './places';
+export * from './organizationLists';
 export * from './capture';
 // After `capture`: derivatives, jobs and scene inputs reference `capture_assets`.
 export * from './street3d';
