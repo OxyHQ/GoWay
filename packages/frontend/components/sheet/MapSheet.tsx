@@ -318,6 +318,16 @@ export function MapSheet({
    * back up"), and on an UPWARD drag only while the sheet is not yet fully
    * expanded (otherwise the user means "read further down the list"). Anything
    * else fails the pan and hands the gesture straight back.
+   *
+   * The two touch callbacks say `'worklet'` themselves. The worklets Babel
+   * plugin only workletizes a callback chained straight off `Gesture.Pan()`;
+   * these are chained off `gated`, a variable, so without the directive they
+   * stay plain JS functions beside `makePan`'s worklets. RNGH then logs
+   * "Some of the callbacks in the gesture are worklets and some are not" on
+   * every attach (the dev error toast), and — since a gesture runs on the UI
+   * thread only when EVERY callback is a worklet — drives the whole body drag
+   * from the JS thread on native, in every build. `gestureWorklets.test.ts`
+   * holds every gesture callback in the app to this.
    */
   const bodyPan = useMemo(() => {
     // eslint-disable-next-line react-hooks/refs -- `makePan` only READS shared values inside worklets that run later; the rule cannot see that a SharedValue is not a ref.
@@ -329,11 +339,13 @@ export function MapSheet({
     if (scrollable) gated.blocksExternalGesture(scrollGesture);
     return gated
       .onTouchesDown((event) => {
+        'worklet';
         const touch = event.allTouches[0];
         // eslint-disable-next-line react-hooks/immutability -- Reanimated SharedValue write, never during render; the React Compiler rule does not model SharedValue mutation.
         touchStartY.value = touch ? touch.absoluteY : 0;
       })
       .onTouchesMove((event, state) => {
+        'worklet';
         const touch = event.changedTouches[0] ?? event.allTouches[0];
         if (!touch) return;
         const delta = touch.absoluteY - touchStartY.value;

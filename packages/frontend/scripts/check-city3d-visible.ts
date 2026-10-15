@@ -79,15 +79,16 @@
  * Without #152's re-grounding it fails (three runs of three; the no-sky trees
  * are buried every time). Measured numbers: the doc.
  */
-import { existsSync, mkdirSync, readFileSync, statSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync } from 'node:fs';
 import { deflateSync } from 'node:zlib';
-import { extname, join, resolve } from 'node:path';
+import { join, resolve } from 'node:path';
 import { type Browser, chromium, type Page, type Route } from 'playwright-core';
 
 import { CITY_COVERAGE_PATH } from '../lib/map/cityTiles';
 import { BUILDINGS_3D_FADE } from '../lib/map/style/buildings3d';
 import { centreFor, landmarkPosition, sweepThrough } from './cameraClearanceDrive';
 import { type PublishedStats, type SettledWants, unsettled } from './city3dSettled';
+import { serveDevExport } from './serveDevExport';
 import {
   cityTile,
   openMapTilesTile,
@@ -239,53 +240,6 @@ function creasedTile(z: number, x: number, y: number, size = 512): Uint8Array {
 
 /** How much of the flat ground's street change the creased ground must keep. */
 const CREASED_MIN_SHARE = 0.85;
-
-// --- The app: a dev server, or an `expo export --dev` output served here ----
-
-const TYPES: Record<string, string> = {
-  '.html': 'text/html; charset=utf-8',
-  '.js': 'text/javascript',
-  // MapLibre's worker is a module: a module script of any other type is refused.
-  '.mjs': 'text/javascript',
-  '.css': 'text/css',
-  '.json': 'application/json',
-  '.png': 'image/png',
-  '.svg': 'image/svg+xml',
-  '.ttf': 'font/ttf',
-  '.woff2': 'font/woff2',
-  '.pbf': 'application/x-protobuf',
-  '.wasm': 'application/wasm',
-};
-
-function serveDist(dir: string) {
-  const root = resolve(dir);
-  const file = (path: string) => {
-    const full = join(root, decodeURIComponent(path));
-    return full.startsWith(root) && existsSync(full) && statSync(full).isFile() ? full : null;
-  };
-  const server = Bun.serve({
-    port: 0,
-    hostname: '127.0.0.1',
-    websocket: { message() {} },
-    fetch(request, server) {
-      const { pathname } = new URL(request.url);
-      // A development build's runtime opens these and reloads the page while
-      // they fail: accept them and say nothing.
-      if ((pathname === '/hot' || pathname === '/message') && server.upgrade(request)) {
-        return undefined;
-      }
-      if (DEBUG)
-        console.error(`[server] ${pathname.replace(/\/\d+\/\d+\/\d+\.pbf$/, '/{z}/{x}/{y}.pbf')}`);
-      const fixture = fixtureResponse(pathname);
-      if (fixture) return fixture;
-      const hit = file(pathname) ?? file(`${pathname}.html`) ?? join(root, 'index.html');
-      return new Response(Bun.file(hit), {
-        headers: { 'content-type': TYPES[extname(hit)] ?? 'application/octet-stream' },
-      });
-    },
-  });
-  return { origin: `http://127.0.0.1:${server.port}`, stop: () => server.stop(true) };
-}
 
 // --- The network, replaced ---------------------------------------------------
 
@@ -1183,7 +1137,13 @@ const outDir = resolve(arg('out', '.city3d-visible'));
 mkdirSync(outDir, { recursive: true });
 const dist = arg('dist');
 if (!dist) throw new Error('--dist=<an `expo export --platform web --dev` output> is required');
-const served = serveDist(dist);
+const served = serveDevExport(dist, {
+  respond: fixtureResponse,
+  log: DEBUG
+    ? (pathname) =>
+        console.error(`[server] ${pathname.replace(/\/\d+\/\d+\/\d+\.pbf$/, '/{z}/{x}/{y}.pbf')}`)
+    : undefined,
+});
 const origin = served.origin;
 
 const browser = await chromium.launch({
