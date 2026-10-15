@@ -14,7 +14,9 @@ name: Refresh image build cache
 
 on:
   schedule:
-    - cron: '17 4 * * 1'
+    # Tuesday, not Monday: ten OxyHQ repositories ran this at 04:17 every
+    # Monday, all at once, against one org-wide Actions concurrency cap.
+    - cron: '17 4 * * 2'
   workflow_dispatch:
 
 permissions:
