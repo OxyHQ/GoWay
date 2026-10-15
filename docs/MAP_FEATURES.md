@@ -373,3 +373,5 @@ not one new family. Measured by A/B build, never by per-source attribution
   every controlled toggle. Harmless, and Bloom's to fix.
 - The 3D city attaches asynchronously: for the second or so its chunk and
   first tiles take, the flat footprints show where the extrusions were.
+
+<!-- ci probe -->
