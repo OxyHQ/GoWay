@@ -149,6 +149,16 @@ module.exports = {
             'GoWay reads which way your phone is tilted while you record a street capture. It does not count your steps or track your activity.',
         },
       ],
+      // Dictation and voice calls with Alia (`@alia.onl/sdk`) recognise speech on
+      // the device; the plugin writes the two iOS purpose strings and the
+      // Android RECORD_AUDIO permission.
+      [
+        'expo-speech-recognition',
+        {
+          microphonePermission: 'Allow GoWay to hear what you dictate and say to Alia.',
+          speechRecognitionPermission: 'Allow GoWay to turn your speech into text.',
+        },
+      ],
       // Shared Oxy native config: the iOS keychain group, expo-build-properties
       // defaults, and withOxySharedPermissions (GoWay runs on its own Android
       // UID and reaches the Commons/Accounts providers over signature IPC).

@@ -40,7 +40,7 @@ export function CategoryShortcuts({ selected, onSelect, testID }: CategoryShortc
           <Chip
             key={shortcut.id}
             role="radio"
-            size="large"
+            size="lg"
             variant="inverted"
             selected={isSelected}
             // Pressing the selected chip clears the filter, which is the only

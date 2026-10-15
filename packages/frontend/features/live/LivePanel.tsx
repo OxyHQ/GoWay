@@ -223,7 +223,7 @@ function LivePanelComponent(props: LivePanelProps) {
                   <Chip
                     key={kind}
                     role="checkbox"
-                    size="small"
+                    size="sm"
                     variant="inverted"
                     selected={on}
                     onPress={() => props.onToggleKind(kind)}
