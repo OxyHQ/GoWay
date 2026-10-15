@@ -23,8 +23,8 @@ import { Avatar } from '@oxy.so/bloom/avatar';
 import { useTheme } from '@oxy.so/bloom/theme';
 import { useClaimTopEdge, windowEdgeGap } from '@oxy.so/bloom/layout';
 import { RiUserLine } from '@oxy.so/bloom/icons/RiUserLine';
-import { RiSparklingLine } from '@oxy.so/bloom/icons/RiSparklingLine';
 import { AliaChatSheet, type AliaChatSheetRef } from '@alia.onl/sdk';
+import { AliaAvatarIcon } from '@alia.onl/sdk/avatar';
 import { VoiceSession } from '@alia.onl/sdk/voice';
 
 import { GowayLogo } from '@/components/brand';
@@ -97,7 +97,7 @@ export function MapTopBar() {
           <Button
             size="sm"
             appearance="outline"
-            leadingIcon={RiSparklingLine}
+            leadingIcon={AliaAvatarIcon}
             onPress={handleAskAlia}
           >
             {t('map.askAlia')}
