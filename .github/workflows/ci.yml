@@ -328,6 +328,47 @@ jobs:
           path: ${{ runner.temp }}/city3d-visible
           retention-days: 14
 
+  # The DEVELOPMENT CONSOLE gate (`packages/frontend/scripts/check-dev-console.ts`):
+  # the real app, a development export, at phone size in headless Chromium,
+  # driven through map settings, the style picker, the sheet's drags and a
+  # place. React Native Gesture Handler, Reanimated and Worklets report their
+  # misuse only in a development build, at runtime, as a red toast
+  # ("[react-native-gesture-handler] Some of the callbacks in the gesture are
+  # worklets and some are not": the map sheet's body pan) — no type, unit
+  # test or production build sees it. Nothing from the stack may speak, and
+  # nothing may throw. Fixtures answer places; every other request is refused.
+  devconsole:
+    name: Development console
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        with:
+          bun-version-file: package.json
+      - name: Install exact dependency graph
+        run: bun install --frozen-lockfile --ignore-scripts
+      - name: Build the contracts
+        run: bun run build:contracts
+      - name: Build the SDK
+        run: bun run build:sdk
+      - name: Install Chromium for playwright-core
+        run: bunx playwright-core install --with-deps chromium
+      - name: Export the web app (development build)
+        working-directory: packages/frontend
+        run: bun run export:web --dev --output-dir "$RUNNER_TEMP/dev-console"
+      - name: Nothing from the gesture and animation stack, nothing uncaught
+        run: >-
+          bun run --cwd packages/frontend check:dev-console
+          --dist="$RUNNER_TEMP/dev-console" --out="$RUNNER_TEMP/dev-console-shots"
+      - name: Keep the screenshots of a failed run
+        if: failure()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v4
+        with:
+          name: dev-console
+          path: ${{ runner.temp }}/dev-console-shots
+          retention-days: 14
+
   worker:
     name: Reconstruction worker
     runs-on: ubuntu-latest
@@ -491,7 +532,7 @@ jobs:
   # required check reporting `skipped` — is never satisfied.
   ci-complete:
     name: CI complete
-    needs: [quality, gates, city3d, lockfile, test]
+    needs: [quality, gates, city3d, devconsole, lockfile, test]
     if: always()
     runs-on: ubuntu-latest
     timeout-minutes: 5
@@ -507,7 +548,7 @@ jobs:
           #
           # Every name is listed here AND in `needs:` above. A job missing from
           # NEEDS_JSON fails: unknown is not good news.
-          expected="quality gates city3d lockfile test"
+          expected="quality gates city3d devconsole lockfile test"
           verdict=0
           for job in $expected; do
             result=$(printf '%s' "$NEEDS_JSON" | jq -r --arg j "$job" '.[$j].result // "MISSING"')
@@ -539,7 +580,7 @@ jobs:
   # reusable workflow. The budget lives on the called workflow's own job.
   deploy:
     name: Deploy
-    needs: [quality, gates, city3d, worker, lockfile, test]
+    needs: [quality, gates, city3d, devconsole, worker, lockfile, test]
     # GATED ON A REPOSITORY VARIABLE, because the AWS side does not exist yet.
     #
     # `deploy-aws.yml` assumes an IAM role `oxy-goway-github-deploy`, an ECR
@@ -589,7 +630,7 @@ jobs:
   # token from `secrets`, not to AWS over OIDC, so it needs no `id-token`.
   deploy-frontend:
     name: Deploy frontend
-    needs: [quality, gates, city3d, lockfile, test]
+    needs: [quality, gates, city3d, devconsole, lockfile, test]
     if: >-
       ${{ vars.OXY_1519_ROLLOUT_HOLD != 'true' && (github.event_name == 'push' && github.ref == 'refs/heads/main') }}
     permissions:
