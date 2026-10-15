@@ -69,7 +69,7 @@ import {
   pickLabelFeature,
   type QueriedLabel,
 } from './labels';
-import type { ImageryView } from '@/lib/map/imageryCoverage';
+import { type ImageryView, imageryViewOf } from '@/lib/map/imageryCoverage';
 
 import { MapAttribution } from './MapAttribution';
 import { useCompactCredit } from './useCompactCredit';
@@ -77,7 +77,11 @@ import { useImageryCredits } from './useImageryCredits';
 import { MapBrand } from './MapBrand';
 import { MapErrorState } from './MapErrorState';
 import { drawableModels, modelFallbackMarker, modelIdOfMarker } from './models';
-import { createNativeCameraReports, type NativeCameraReports } from './nativeCameraReports';
+import {
+  createNativeCameraReports,
+  type NativeCameraReports,
+  type NativeViewState,
+} from './nativeCameraReports';
 import { useMapRelief } from './reliefFlags';
 import {
   asFinite,
@@ -175,8 +179,14 @@ export const MapCanvas = forwardRef<MapApi, MapCanvasProps>(function MapCanvas(
   // the camera it opens at.
   const viewportListener = useRef(onViewportChange);
   viewportListener.current = onViewportChange;
+  // The settled view, for the imagery credit (set below, once the style's
+  // imagery is known): every style load and every settled move.
+  const settledViewListener = useRef<((view: NativeViewState) => void) | null>(null);
   const cameraReports = useRef<NativeCameraReports | null>(null);
-  cameraReports.current ??= createNativeCameraReports(() => viewportListener.current);
+  cameraReports.current ??= createNativeCameraReports(
+    () => viewportListener.current,
+    () => settledViewListener.current,
+  );
 
   const [error, setError] = useState<MapCanvasError | null>(null);
   // Remounting the engine is the only reliable retry MapLibre Native offers:
@@ -207,6 +217,12 @@ export const MapCanvas = forwardRef<MapApi, MapCanvasProps>(function MapCanvas(
   // credit names each imagery source while it is on screen.
   const imageryMode = mapStyleDefinition(styleId).imagery ?? null;
   const [imageryView, setImageryView] = useState<ImageryView | null>(null);
+  // The credit's view: the camera each style load opens at (so a map opened
+  // in satellite and never moved credits what it shows) and every settled
+  // move after it (`nativeCameraReports.ts`). Until the first, every source.
+  settledViewListener.current = imageryMode
+    ? (view) => setImageryView(imageryViewOf(view.zoom, view.bounds))
+    : null;
   const imageryCredits = useImageryCredits(imageryMode, imageryView);
   // `undefined` when the loaded style makes no anchor promise; `<Layer>`
   // then appends on top, which is what native did before GoWay owned a style.
@@ -563,7 +579,10 @@ export const MapCanvas = forwardRef<MapApi, MapCanvasProps>(function MapCanvas(
 
   const retry = useCallback(() => {
     setError(null);
-    cameraReports.current = createNativeCameraReports(() => viewportListener.current);
+    cameraReports.current = createNativeCameraReports(
+      () => viewportListener.current,
+      () => settledViewListener.current,
+    );
     setReloadKey((key) => key + 1);
   }, []);
 
@@ -615,10 +634,6 @@ export const MapCanvas = forwardRef<MapApi, MapCanvasProps>(function MapCanvas(
           // The settled frame is also when the basemap's labels are worth
           // re-reading — see `reportLabels`.
           const [longitude, latitude] = event.nativeEvent.center;
-          if (imageryMode) {
-            const [west, south, east, north] = event.nativeEvent.bounds;
-            setImageryView({ zoom: event.nativeEvent.zoom, west, south, east, north });
-          }
           reportLabels({ latitude, longitude });
           // And when the sun is re-read for the new centre: once per settle,
           // never on `onRegionIsChanging`. Unconditional, unlike the label

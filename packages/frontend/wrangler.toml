@@ -126,7 +126,10 @@ binding = "ASSETS"
 # `/map/satellite/*` is GoWay's satellite imagery (`worker/satellite.js`,
 # `docs/MAP_SATELLITE.md`): tiles, the coverage document, the manifest and its
 # receipts. No asset either; with `MAP_SATELLITE_MANIFEST` below unset every
-# tile is 404 and the coverage document lists no sets.
+# tile is 404 and the coverage document lists no sets. The satellite and
+# hybrid STYLE documents are assets the Worker reads and returns with each
+# imagery tier bounded by the live manifest, so MapLibre asks only for tiles
+# that can exist.
 run_worker_first = [
   "/map/tiles/*",
   "/map/fonts/*",
@@ -135,6 +138,8 @@ run_worker_first = [
   "/map/city/*",
   "/map/city-roads/*",
   "/map/satellite/*",
+  "/map/styles/satellite/*",
+  "/map/styles/hybrid/*",
 ]
 
 # GoWay's OWN tiles: one PMTiles archive in R2, read by byte range.

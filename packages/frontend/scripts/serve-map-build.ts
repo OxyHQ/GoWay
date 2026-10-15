@@ -100,6 +100,26 @@ function directoryBucket(dir: string) {
   };
 }
 
+/**
+ * The satellite and hybrid documents as the Worker serves them — each tier
+ * bounded by the manifest (`withImageryBounds`) — naming this server for the
+ * imagery tiles instead of goway.to.
+ */
+async function serveImageryStyleLocally(path: string, response: ServerResponse): Promise<void> {
+  const { parseSatelliteManifest, withImageryBounds } = await import('../worker/satellite.js');
+  const manifestFile = join(satelliteDir, 'satellite', 'manifest.json');
+  const manifest = existsSync(manifestFile)
+    ? parseSatelliteManifest(JSON.parse(readFileSync(manifestFile, 'utf8')))
+    : null;
+  const style = withImageryBounds(JSON.parse(readFileSync(join(root, path), 'utf8')), manifest);
+  const document = JSON.stringify(style).replaceAll(
+    'https://goway.to/map/satellite/',
+    `http://localhost:${port}/map/satellite/`,
+  );
+  response.writeHead(200, { 'content-type': 'application/json' });
+  response.end(document);
+}
+
 async function serveSatelliteLocally(
   request: IncomingMessage,
   response: ServerResponse,
@@ -198,13 +218,10 @@ const files: Handler = (request, response) => {
     return;
   }
   if (satelliteDir && SATELLITE_STYLES.test(path)) {
-    const local = `http://localhost:${port}`;
-    const document = readFileSync(join(root, path), 'utf8').replaceAll(
-      'https://goway.to/map/satellite/',
-      `${local}/map/satellite/`,
-    );
-    response.writeHead(200, { 'content-type': 'application/json' });
-    response.end(document);
+    void serveImageryStyleLocally(path, response).catch((cause) => {
+      response.writeHead(500, { 'content-type': 'text/plain' });
+      response.end(String(cause));
+    });
     return;
   }
   let file = normalize(join(root, path));

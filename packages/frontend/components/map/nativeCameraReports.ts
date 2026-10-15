@@ -12,6 +12,13 @@
  *  - the style load: the camera the map opened at, by the rule both forks
  *    share (`loadedCamera.ts`), read with `getViewState()`.
  *
+ * And the SETTLED VIEW for whatever follows what is on screen (the imagery
+ * credit, `useImageryCredits`): every style load's `getViewState()` — the
+ * same read — and every settled region change. Unlike the viewport report it
+ * is not once per engine (a style switched to satellite under the same engine
+ * must be credited at once) and does not wait for a caller's listener (the
+ * embed passes none and is credited all the same).
+ *
  * `source` is the engine's own answer: MapLibre Native says whether a finger
  * caused the change, so GoWay never infers it from a marker on the command.
  */
@@ -60,8 +67,12 @@ export interface NativeCameraReports {
 
 export function createNativeCameraReports(
   listener: () => ((change: MapViewportChange) => void) | null | undefined,
+  viewListener: () => ((view: NativeViewState) => void) | null | undefined = () => null,
 ): NativeCameraReports {
   const loadedReport = createLoadedCameraReporter();
+  // Bumped by every settled region change, so a style load's view read that
+  // lands after one does not put back the camera it replaced.
+  let settledViews = 0;
   // A frame of a caller-driven animation is not a settled camera. The flag is
   // the latest COMMAND's: every camera command declares it, and a move the
   // reader starts ends it — a flyover the reader interrupted, or one that
@@ -95,10 +106,30 @@ export function createNativeCameraReports(
       const transient = transientCommand && !region.userInteraction;
       loadedReport.moveEnded(transient);
       report(region, !transient);
+      if (!transient) {
+        settledViews += 1;
+        viewListener()?.(region);
+      }
       return !transient;
     },
     loaded(getViewState) {
-      loadedReport.loaded(async () => cameraReadingOf(await getViewState()), listener);
+      // One `getViewState()` serves both readers; a throw becomes a rejection.
+      let read: Promise<NativeViewState> | undefined;
+      const view = () => {
+        read ??= (async () => getViewState())();
+        return read;
+      };
+      loadedReport.loaded(async () => cameraReadingOf(await view()), listener);
+      if (!viewListener()) return;
+      const readAt = settledViews;
+      view().then(
+        (state) => {
+          if (settledViews === readAt) viewListener()?.(state);
+        },
+        () => {
+          // No answer: the next settled move gives the view.
+        },
+      );
     },
   };
 }

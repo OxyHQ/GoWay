@@ -72,7 +72,7 @@
 import { serveCity } from './city.js';
 import { createContourService, serveContours } from './contours.js';
 import { archiveSource, serveArchiveTile } from './tiles.js';
-import { serveSatellite } from './satellite.js';
+import { serveImageryStyle, serveSatellite } from './satellite.js';
 
 /**
  * How long the edge may keep a vector tile.
@@ -577,6 +577,10 @@ export default {
     // Satellite imagery, per set and cell, by manifest (`satellite.js`,
     // `docs/MAP_SATELLITE.md`). Inert until `MAP_SATELLITE_MANIFEST` is set.
     if (url.pathname.startsWith('/map/satellite/')) return serveSatellite(url, request, env, ctx);
+    // The satellite and hybrid style documents, bounded by the live manifest.
+    if (/^\/map\/styles\/(satellite|hybrid)\//.test(url.pathname)) {
+      return serveImageryStyle(url, request, env, ctx);
+    }
 
     return env.ASSETS.fetch(request);
   },

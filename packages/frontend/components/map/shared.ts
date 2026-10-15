@@ -28,6 +28,8 @@ import type {
   MapOverlayPaint,
   MapViewport,
 } from './types';
+import { isImageryId } from '@/lib/map/imagery';
+import { isReliefId } from '@/lib/map/reliefFlag';
 
 /** MapLibre position order, on both engines. */
 export type LngLat = [longitude: number, latitude: number];
@@ -475,4 +477,42 @@ export function describeNumbers(value: unknown): string {
   return Object.entries(value as Record<string, unknown>)
     .map(([key, entry]) => `${key} ${String(entry)}`)
     .join(', ');
+}
+
+/**
+ * What the web canvas does with one of the engine's `error` events — pure, so
+ * the rules are tests (`__tests__/mapErrors.test.ts`):
+ *
+ * - **ignore**: an elevation tile (decoration: flat ground is still a map, and
+ *   the relief reports it itself), or an imagery tier's 404 — a normal answer
+ *   wherever nothing finer is published (the tier below shows through,
+ *   `worker/satellite.js`). Raising "Map data unavailable" for it would put
+ *   that state on every satellite map outside the published regions.
+ * - **report**: any other imagery failure — logged once, the map stays up
+ *   (roads, labels and the tier below still draw).
+ * - **error**: a basemap tile (`tiles`, recoverable) or the style (`style`).
+ */
+export type MapErrorOutcome =
+  | { kind: 'ignore' }
+  | { kind: 'report'; key: string; message: string }
+  | { kind: 'error'; reason: 'tiles' | 'style'; message: string | undefined };
+
+export function mapErrorOutcome(event: {
+  sourceId?: string;
+  error?: { message?: string; status?: number } | null;
+}): MapErrorOutcome {
+  if (isReliefId(event.sourceId)) return { kind: 'ignore' };
+  if (isImageryId(event.sourceId)) {
+    if (event.error?.status === 404) return { kind: 'ignore' };
+    return {
+      kind: 'report',
+      key: 'imagery:tiles',
+      message: `imagery: a tile failed (${event.error?.message ?? 'unknown'}).`,
+    };
+  }
+  return {
+    kind: 'error',
+    reason: event.sourceId ? 'tiles' : 'style',
+    message: event.error?.message,
+  };
 }

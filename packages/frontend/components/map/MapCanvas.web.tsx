@@ -54,9 +54,8 @@ import * as Location from 'expo-location';
 import { useTheme } from '@oxy.so/bloom/theme';
 import { parseModelPlacement, type ModelPlacement } from '@goway.to/sdk';
 
-import { isImageryId } from '@/lib/map/imagery';
-import type { ImageryView } from '@/lib/map/imageryCoverage';
-import { isReliefId, mapStyleLoading } from '@/lib/map/reliefFlag';
+import { type ImageryView, imageryViewOf } from '@/lib/map/imageryCoverage';
+import { mapStyleLoading } from '@/lib/map/reliefFlag';
 import { mapFeatureStore, useMapFeature } from '@/lib/map/useMapFeatures';
 import { clampPixelRatio } from '@/lib/map/quality/profile';
 import { useMapQuality } from '@/lib/map/quality/useMapQuality';
@@ -114,6 +113,7 @@ import {
   isDrawableBounds,
   isDrawableCoordinate,
   isViewport,
+  mapErrorOutcome,
   optionalScalar,
   reportMapDefect,
   resolveInteraction,
@@ -769,23 +769,9 @@ export const MapCanvas = forwardRef<MapApi, MapCanvasProps>(function MapCanvas(
     };
 
     const handleError = (event: maplibregl.ErrorEvent & { sourceId?: string }) => {
-      // Elevation tiles are decoration: a failed one leaves flat ground, which
-      // is still a map, and the relief layer reports it itself.
-      if (isReliefId(event.sourceId)) return;
-      // An imagery tier answers 404 wherever nothing finer is published (the
-      // tier below shows through: `worker/satellite.js`), so a 404 there is a
-      // normal answer. Anything else is reported, and the map stays up: the
-      // roads, labels and the tier below still draw.
-      if (isImageryId(event.sourceId)) {
-        const status = (event.error as { status?: number } | undefined)?.status;
-        if (status !== 404) {
-          reportMapDefect(
-            'imagery:tiles',
-            `imagery: a tile failed (${event.error?.message ?? 'unknown'}).`,
-          );
-        }
-        return;
-      }
+      // Elevation tiles and an imagery tier's 404s are not map failures; other
+      // imagery failures are reported and the map stays up (`mapErrorOutcome`).
+      //
       // A source id means a tile/source request failed; without one the style
       // document itself did not load. Both are product failures, and the user
       // gets a different sentence for each.
@@ -800,10 +786,12 @@ export const MapCanvas = forwardRef<MapApi, MapCanvasProps>(function MapCanvas(
       // for the life of the component, and `goway.to` sat in that state on a
       // map that was otherwise complete — the cause was a handful of stale
       // edge-cached tiles among thousands of good ones.
-      emitError({
-        reason: event.sourceId ? 'tiles' : 'style',
-        message: event.error?.message,
+      const outcome = mapErrorOutcome({
+        sourceId: event.sourceId,
+        error: event.error as { message?: string; status?: number } | undefined,
       });
+      if (outcome.kind === 'report') reportMapDefect(outcome.key, outcome.message);
+      if (outcome.kind === 'error') emitError({ reason: outcome.reason, message: outcome.message });
     };
 
     // Before `handleLoad`, so the camera the map opened at is reported before
@@ -1092,13 +1080,14 @@ export const MapCanvas = forwardRef<MapApi, MapCanvasProps>(function MapCanvas(
     const settle = () =>
       runEngineCommand('getBounds', () => {
         const bounds = map.getBounds();
-        setImageryView({
-          zoom: map.getZoom(),
-          west: bounds.getWest(),
-          south: bounds.getSouth(),
-          east: bounds.getEast(),
-          north: bounds.getNorth(),
-        });
+        setImageryView(
+          imageryViewOf(map.getZoom(), [
+            bounds.getWest(),
+            bounds.getSouth(),
+            bounds.getEast(),
+            bounds.getNorth(),
+          ]),
+        );
       });
     settle();
     map.on('moveend', settle);

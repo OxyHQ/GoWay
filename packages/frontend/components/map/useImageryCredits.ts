@@ -5,16 +5,22 @@
  * passes them to `MapAttribution` beside the basemap's, so they ride in the
  * compact ⓘ credit with no prop to turn them off.
  *
- * Nothing is fetched or loaded until a map draws imagery: the coverage
- * document and the tree decoder (`lib/map/imageryCoverage.ts`) are a lazy
- * import, fetched once per page and kept five minutes.
+ * The rule is `imageryCreditSources` (`lib/map/imageryCoverage.ts`): the
+ * sources on screen once the coverage and the view are known, and EVERY
+ * source until then — on the first frame, while the coverage loads, and if it
+ * cannot be read. A source drawn uncredited breaks its licence; one credited
+ * a moment early breaks nothing.
+ *
+ * Nothing is fetched until a map draws imagery: the coverage document and the
+ * tree decoder are a lazy import, fetched once per page and kept five minutes
+ * — a failed fetch is not kept, so the next settled camera asks again.
  */
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 
 import type { MapImageryMode } from '@/lib/map/imagery';
 import { IMAGERY_COVERAGE_PATH } from '@/lib/map/imagery';
 import type { ImageryCoverage, ImageryView } from '@/lib/map/imageryCoverage';
-import { IMAGERY_SOURCES } from '@/lib/map/imagerySources';
+import { IMAGERY_SOURCES, type ImagerySourceId } from '@/lib/map/imagerySources';
 import {
   IMAGERY_ATTRIBUTION_HREF,
   type MapAttributionLink,
@@ -26,12 +32,15 @@ const COVERAGE_TTL_MS = 5 * 60_000;
 
 let pending: { at: number; promise: Promise<ImageryCoverage | null> } | null = null;
 
-/** The coverage document, parsed; `null` when it cannot be read (then nothing is drawn either). */
-function loadCoverage(): Promise<ImageryCoverage | null> {
+/**
+ * The coverage document, parsed; `null` when it cannot be read. A success is
+ * kept {@link COVERAGE_TTL_MS}; a failure is not kept at all.
+ */
+export function loadImageryCoverage(): Promise<ImageryCoverage | null> {
   if (pending && Date.now() - pending.at < COVERAGE_TTL_MS) return pending.promise;
   const promise = (async () => {
-    const { parseImageryCoverage } = await import('@/lib/map/imageryCoverage');
     try {
+      const { parseImageryCoverage } = await import('@/lib/map/imageryCoverage');
       const response = await fetch(resolveMapAssetUrl(IMAGERY_COVERAGE_PATH));
       if (!response.ok) return null;
       return parseImageryCoverage(await response.json());
@@ -39,44 +48,68 @@ function loadCoverage(): Promise<ImageryCoverage | null> {
       return null;
     }
   })();
-  pending = { at: Date.now(), promise };
+  const entry = { at: Date.now(), promise };
+  pending = entry;
+  void promise.then((coverage) => {
+    if (!coverage && pending === entry) pending = null;
+  });
   return promise;
 }
 
-function sameLinks(a: readonly MapAttributionLink[], b: readonly MapAttributionLink[]): boolean {
-  return a.length === b.length && a.every((link, i) => link.label === b[i].label);
+/** For tests: forget the page's coverage. */
+export function forgetImageryCoverage(): void {
+  pending = null;
+}
+
+/**
+ * The sources to credit for `view` — the coverage loaded (or not) and
+ * `imageryCreditSources` applied: every source while it cannot be read.
+ */
+export async function imageryCreditsFor(view: ImageryView | null): Promise<ImagerySourceId[]> {
+  const coverage = await loadImageryCoverage();
+  const { imageryCreditSources } = await import('@/lib/map/imageryCoverage');
+  return imageryCreditSources(coverage, view);
+}
+
+/**
+ * The links for `sources` — every source GoWay may serve when they are not
+ * known yet (`null`), nothing when no imagery is drawn.
+ */
+export function imageryCreditLinks(
+  mode: MapImageryMode | null,
+  sources: readonly ImagerySourceId[] | null,
+): readonly MapAttributionLink[] {
+  if (!mode) return NONE;
+  const ids = sources ?? (Object.keys(IMAGERY_SOURCES) as ImagerySourceId[]);
+  return ids.map((id) => ({ label: IMAGERY_SOURCES[id].credit, href: IMAGERY_ATTRIBUTION_HREF }));
+}
+
+function sameSources(a: readonly ImagerySourceId[] | null, b: readonly ImagerySourceId[]) {
+  return a !== null && a.length === b.length && a.every((id, i) => id === b[i]);
 }
 
 /**
  * @param mode - the imagery drawn, or `null` (then no credits and no fetch).
- * @param view - the settled camera: zoom and bounds, from the engine's own
- *   end-of-move event.
+ * @param view - the camera, from the engine once the map is up and at every
+ *   settled move (`imageryViewOf`); `null` before the first.
  */
 export function useImageryCredits(
   mode: MapImageryMode | null,
   view: ImageryView | null,
 ): readonly MapAttributionLink[] {
-  const [links, setLinks] = useState<readonly MapAttributionLink[]>(NONE);
+  // `null`: not known yet, so every source is credited.
+  const [sources, setSources] = useState<readonly ImagerySourceId[] | null>(null);
   useEffect(() => {
-    if (!mode || !view) return;
+    if (!mode) return;
     let cancelled = false;
     void (async () => {
-      const coverage = await loadCoverage();
+      const next = await imageryCreditsFor(view);
       if (cancelled) return;
-      const { imagerySourcesInView } = await import('@/lib/map/imageryCoverage');
-      if (cancelled) return;
-      const next = coverage
-        ? imagerySourcesInView(coverage, view).map((id) => ({
-            label: IMAGERY_SOURCES[id].credit,
-            href: IMAGERY_ATTRIBUTION_HREF,
-          }))
-        : NONE;
-      setLinks((current) => (sameLinks(current, next) ? current : next.length ? next : NONE));
+      setSources((current) => (sameSources(current, next) ? current : next));
     })();
     return () => {
       cancelled = true;
     };
   }, [mode, view]);
-  // No imagery drawn: nothing is owed, whatever the last view computed.
-  return mode && view ? links : NONE;
+  return useMemo(() => imageryCreditLinks(mode, sources), [mode, sources]);
 }
