@@ -55,7 +55,7 @@ import { useTheme } from '@oxy.so/bloom/theme';
 import { parseModelPlacement, type ModelPlacement } from '@goway.to/sdk';
 
 import { isImageryId } from '@/lib/map/imagery';
-import type { ImageryView } from '@/lib/map/imageryCoverage';
+import type { CoverageView } from '@/lib/map/rasterCoverage';
 import { isReliefId, mapStyleLoading } from '@/lib/map/reliefFlag';
 import { mapFeatureStore, useMapFeature } from '@/lib/map/useMapFeatures';
 import { clampPixelRatio } from '@/lib/map/quality/profile';
@@ -137,7 +137,7 @@ import {
   type ResolvedMapViewport,
 } from './types';
 import { useCompactCredit } from './useCompactCredit';
-import { useImageryCredits } from './useImageryCredits';
+import { useImageryCredits, useTerrainCredits } from './useSourceCredits';
 import { useMapStyle } from './useMapStyle';
 import { applyQualityOverrides, type QualityHost } from './qualityOverrides';
 import { useSunLight } from './useSunLight';
@@ -1080,19 +1080,21 @@ export const MapCanvas = forwardRef<MapApi, MapCanvasProps>(function MapCanvas(
   const [city3dCredits, setCity3dCredits] = useState<readonly MapAttributionLink[]>(NO_CREDITS);
   // Credits for the GoWay Live data on screen (set by the live effect below).
   const [liveCredits, setLiveCredits] = useState<readonly MapCreditLink[]>(NO_CREDITS);
-  // The imagery sources on screen, re-read at every settled camera while
-  // imagery is drawn (`useImageryCredits`, `docs/MAP_SATELLITE.md`).
-  const [imageryView, setImageryView] = useState<ImageryView | null>(null);
+  // The imagery and terrain sources on screen, re-read at every settled camera
+  // while either is drawn (`useSourceCredits`, `docs/MAP_SATELLITE.md`,
+  // `docs/MAP_TERRAIN_GLOBE.md`).
+  const elevationDrawn = relief.terrain || styleDrawsRelief;
+  const [sourceView, setSourceView] = useState<CoverageView | null>(null);
   useEffect(() => {
     const map = mapRef.current;
-    if (!imageryMode || !map || !ready) {
-      setImageryView(null);
+    if ((!imageryMode && !elevationDrawn) || !map || !ready) {
+      setSourceView(null);
       return;
     }
     const settle = () =>
       runEngineCommand('getBounds', () => {
         const bounds = map.getBounds();
-        setImageryView({
+        setSourceView({
           zoom: map.getZoom(),
           west: bounds.getWest(),
           south: bounds.getSouth(),
@@ -1105,19 +1107,27 @@ export const MapCanvas = forwardRef<MapApi, MapCanvasProps>(function MapCanvas(
     return () => {
       map.off('moveend', settle);
     };
-  }, [imageryMode, ready]);
-  const imageryCredits = useImageryCredits(imageryMode, imageryView);
-  // Everything owed while it is drawn: imagery sources, landmark authors,
-  // official building data, live feeds.
+  }, [imageryMode, elevationDrawn, ready]);
+  const imageryCredits = useImageryCredits(imageryMode, sourceView);
+  const terrainCredits = useTerrainCredits(elevationDrawn, sourceView);
+  // Everything owed while it is drawn: imagery and terrain sources, landmark
+  // authors, official building data, live feeds.
   const credits = useMemo(
     () =>
       imageryCredits.length === 0 &&
+      terrainCredits.length === 0 &&
       landmarkCredits.length === 0 &&
       city3dCredits.length === 0 &&
       liveCredits.length === 0
         ? NO_CREDITS
-        : [...imageryCredits, ...landmarkCredits, ...city3dCredits, ...liveCredits],
-    [imageryCredits, landmarkCredits, city3dCredits, liveCredits],
+        : [
+            ...imageryCredits,
+            ...terrainCredits,
+            ...landmarkCredits,
+            ...city3dCredits,
+            ...liveCredits,
+          ],
+    [imageryCredits, terrainCredits, landmarkCredits, city3dCredits, liveCredits],
   );
   useEffect(() => {
     city3dLightRef.current = sunLight.light;

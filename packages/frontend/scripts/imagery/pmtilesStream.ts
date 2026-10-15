@@ -11,10 +11,10 @@
  */
 import { createHash } from 'node:crypto';
 import { createWriteStream } from 'node:fs';
-import { readdir, readFile, stat } from 'node:fs/promises';
+import { open, readdir, readFile, stat } from 'node:fs/promises';
 import { join } from 'node:path';
 
-import { COMPRESSION, TILE_TYPE, zxyToTileId } from '../../worker/pmtiles.js';
+import { COMPRESSION, PMTiles, TILE_TYPE, zxyToTileId } from '../../worker/pmtiles.js';
 import { type PmtilesEntry, pmtilesPrelude, pushEntry } from '../citygen/pmtilesWriter';
 
 export interface PackedArchive {
@@ -145,4 +145,49 @@ export async function packTileDirectory(options: {
     minZoom,
     maxZoom,
   };
+}
+
+/**
+ * Read an archive back as the Worker will (`worker/pmtiles.js`) and compare
+ * every tile to the one packed from `tileDir`: a WebP archive within the
+ * set's zooms, every tile addressed and byte-identical, its metadata naming
+ * the set.
+ */
+export async function verifyPackedArchive(
+  path: string,
+  tileDir: string,
+  expect: { set: string; minZoom: number; maxZoom: number },
+): Promise<void> {
+  const handle = await open(path, 'r');
+  try {
+    const archive = new PMTiles({
+      async read(offset: number, length: number) {
+        const buffer = Buffer.alloc(length);
+        const { bytesRead } = await handle.read(buffer, 0, length, offset);
+        return new Uint8Array(buffer.subarray(0, bytesRead));
+      },
+    });
+    const header = await archive.header();
+    if (header.tileType !== TILE_TYPE.WEBP)
+      throw new Error(`${path}: tile type ${header.tileType}, not WebP`);
+    if (header.minZoom < expect.minZoom || header.maxZoom > expect.maxZoom) {
+      throw new Error(`${path}: zooms ${header.minZoom}–${header.maxZoom} outside the set's`);
+    }
+    const tiles = await listTiles(tileDir, 'webp');
+    if (header.addressedTiles !== tiles.length) {
+      throw new Error(`${path}: ${header.addressedTiles} tiles addressed, ${tiles.length} tiled`);
+    }
+    for (const tile of tiles) {
+      const got = await archive.getTile(tile.z, tile.x, tile.y);
+      const want = await readFile(tile.path);
+      if (!got || Buffer.compare(Buffer.from(got.bytes), want) !== 0) {
+        throw new Error(`${path}: tile ${tile.z}/${tile.x}/${tile.y} does not read back`);
+      }
+    }
+    const metadata = await archive.metadata();
+    if (metadata['goway:set'] !== expect.set)
+      throw new Error(`${path}: metadata names ${metadata['goway:set']}`);
+  } finally {
+    await handle.close();
+  }
 }

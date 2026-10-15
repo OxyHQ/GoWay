@@ -69,11 +69,11 @@ import {
   pickLabelFeature,
   type QueriedLabel,
 } from './labels';
-import type { ImageryView } from '@/lib/map/imageryCoverage';
+import type { CoverageView } from '@/lib/map/rasterCoverage';
 
 import { MapAttribution } from './MapAttribution';
 import { useCompactCredit } from './useCompactCredit';
-import { useImageryCredits } from './useImageryCredits';
+import { useImageryCredits, useTerrainCredits } from './useSourceCredits';
 import { MapBrand } from './MapBrand';
 import { MapErrorState } from './MapErrorState';
 import { drawableModels, modelFallbackMarker, modelIdOfMarker } from './models';
@@ -206,8 +206,8 @@ export const MapCanvas = forwardRef<MapApi, MapCanvasProps>(function MapCanvas(
   // Satellite and hybrid are catalogue styles over GoWay's imagery: the
   // credit names each imagery source while it is on screen.
   const imageryMode = mapStyleDefinition(styleId).imagery ?? null;
-  const [imageryView, setImageryView] = useState<ImageryView | null>(null);
-  const imageryCredits = useImageryCredits(imageryMode, imageryView);
+  const [sourceView, setSourceView] = useState<CoverageView | null>(null);
+  const imageryCredits = useImageryCredits(imageryMode, sourceView);
   // `undefined` when the loaded style makes no anchor promise; `<Layer>`
   // then appends on top, which is what native did before GoWay owned a style.
   const overlayAnchor = useMemo(() => resolveMapAnchors().beforeLabels, []);
@@ -225,6 +225,14 @@ export const MapCanvas = forwardRef<MapApi, MapCanvasProps>(function MapCanvas(
         ? hillshadeLayer(resolvedAppearance)
         : null,
     [terrain, resolvedAppearance, styleDrawsRelief, imageryMode],
+  );
+  // GoWay's own terrain sources under the hillshade, named while drawn
+  // (`useSourceCredits`, `docs/MAP_TERRAIN_GLOBE.md`).
+  const elevationDrawn = hillshade !== null || styleDrawsRelief;
+  const terrainCredits = useTerrainCredits(elevationDrawn, sourceView);
+  const sourceCredits = useMemo(
+    () => (terrainCredits.length === 0 ? imageryCredits : [...imageryCredits, ...terrainCredits]),
+    [imageryCredits, terrainCredits],
   );
   const gestures = resolveInteraction(interaction);
 
@@ -615,9 +623,9 @@ export const MapCanvas = forwardRef<MapApi, MapCanvasProps>(function MapCanvas(
           // The settled frame is also when the basemap's labels are worth
           // re-reading — see `reportLabels`.
           const [longitude, latitude] = event.nativeEvent.center;
-          if (imageryMode) {
+          if (imageryMode || elevationDrawn) {
             const [west, south, east, north] = event.nativeEvent.bounds;
-            setImageryView({ zoom: event.nativeEvent.zoom, west, south, east, north });
+            setSourceView({ zoom: event.nativeEvent.zoom, west, south, east, north });
           }
           reportLabels({ latitude, longitude });
           // And when the sun is re-read for the new centre: once per settle,
@@ -752,7 +760,7 @@ export const MapCanvas = forwardRef<MapApi, MapCanvasProps>(function MapCanvas(
           somebody else's page. See MapBrand.tsx. */}
       <MapBrand />
       <MapAttribution
-        extra={imageryCredits}
+        extra={sourceCredits}
         elevation={styleDrawsRelief}
         expanded={credit.expanded}
         onToggle={credit.toggle}

@@ -11,6 +11,7 @@
  */
 import { IMAGERY_SOURCES } from './imagerySources';
 import { ATTRIBUTION_LINKS, TERRAIN_SOURCE_LINK } from './provider';
+import { TERRAIN_SOURCES } from './terrainSources';
 
 /**
  * Copernicus DEM licence (the "COPERNICUS full, free and open license" for
@@ -103,6 +104,20 @@ const IMAGERY_NOTICES: readonly string[] = Object.values(IMAGERY_SOURCES).map(
   (source) => source.notice,
 );
 
+/**
+ * Every bare-earth model GoWay may build its own terrain from
+ * (`lib/map/terrainSources.ts`), with its notice — listed whether or not a set
+ * of it is published yet, as the imagery is; the map credits each only while
+ * it is on screen (`components/map/useTerrainCredits.ts`).
+ */
+const TERRAIN_LINKS: readonly CreditLink[] = Object.values(TERRAIN_SOURCES).map((source) => ({
+  label: source.credit,
+  href: source.href,
+}));
+const TERRAIN_NOTICES: readonly string[] = Object.values(TERRAIN_SOURCES).map(
+  (source) => source.notice,
+);
+
 export interface CreditLink {
   label: string;
   href: string;
@@ -120,11 +135,12 @@ export const CREDIT_SECTIONS: readonly CreditSection[] = [
   { id: 'basemap', links: ATTRIBUTION_LINKS, notices: [] },
   {
     id: 'elevation',
-    links: [TERRAIN_SOURCE_LINK],
+    links: [TERRAIN_SOURCE_LINK, ...TERRAIN_LINKS],
     notices: [
       COPERNICUS_NOTICES.source,
       COPERNICUS_NOTICES.liability,
       COPERNICUS_NOTICES.endorsement,
+      ...TERRAIN_NOTICES,
     ],
   },
   { id: 'imagery', links: IMAGERY_LINKS, notices: IMAGERY_NOTICES },

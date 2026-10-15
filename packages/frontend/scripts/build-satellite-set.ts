@@ -34,11 +34,10 @@
  */
 import { spawn } from 'node:child_process';
 import { existsSync } from 'node:fs';
-import { mkdir, open, readFile, rm, stat, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, rm, stat, writeFile } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
 
 import { encodeCoverageTree } from '../worker/coverageTree.js';
-import { PMTiles, TILE_TYPE } from '../worker/pmtiles.js';
 import { IMAGERY_SOURCES } from '../lib/map/imagerySources';
 import {
   BLUE_MARBLE_URL,
@@ -59,7 +58,7 @@ import {
   type LonLatBox,
   parseCellKey,
 } from './imagery/cells';
-import { listTiles, packTileDirectory } from './imagery/pmtilesStream';
+import { listTiles, packTileDirectory, verifyPackedArchive } from './imagery/pmtilesStream';
 
 const TILE_SIZE = 512;
 const USER_AGENT = 'goway-satellite-tiles (+https://goway.to; https://github.com/OxyHQ/GoWay)';
@@ -509,59 +508,6 @@ ${source(4)}
   return bands.replace('</VRTDataset>', mask);
 }
 
-/** Read the archive back as the Worker will, and compare every tile to what was tiled. */
-async function verifyArchive(
-  path: string,
-  tileDir: string,
-  set: ImagerySetDefinition,
-): Promise<void> {
-  const handle = await open(path, 'r');
-  try {
-    await verifyWith(
-      new PMTiles({
-        async read(offset: number, length: number) {
-          const buffer = Buffer.alloc(length);
-          const { bytesRead } = await handle.read(buffer, 0, length, offset);
-          return new Uint8Array(buffer.subarray(0, bytesRead));
-        },
-      }),
-      path,
-      tileDir,
-      set,
-    );
-  } finally {
-    await handle.close();
-  }
-}
-
-async function verifyWith(
-  archive: PMTiles,
-  path: string,
-  tileDir: string,
-  set: ImagerySetDefinition,
-): Promise<void> {
-  const header = await archive.header();
-  if (header.tileType !== TILE_TYPE.WEBP)
-    throw new Error(`${path}: tile type ${header.tileType}, not WebP`);
-  if (header.minZoom < set.minZoom || header.maxZoom > set.maxZoom) {
-    throw new Error(`${path}: zooms ${header.minZoom}–${header.maxZoom} outside the set's`);
-  }
-  const tiles = await listTiles(tileDir, 'webp');
-  if (header.addressedTiles !== tiles.length) {
-    throw new Error(`${path}: ${header.addressedTiles} tiles addressed, ${tiles.length} tiled`);
-  }
-  for (const tile of tiles) {
-    const got = await archive.getTile(tile.z, tile.x, tile.y);
-    const want = await readFile(tile.path);
-    if (!got || Buffer.compare(Buffer.from(got.bytes), want) !== 0) {
-      throw new Error(`${path}: tile ${tile.z}/${tile.x}/${tile.y} does not read back`);
-    }
-  }
-  const metadata = await archive.metadata();
-  if (metadata['goway:set'] !== set.id)
-    throw new Error(`${path}: metadata names ${metadata['goway:set']}`);
-}
-
 async function buildCell(
   gdal: (tool: string) => string,
   gdalVersion: string,
@@ -654,7 +600,11 @@ async function buildCell(
     },
   });
   if (!packed) throw new Error(`${key}: tiles vanished between tiling and packing`);
-  await verifyArchive(out, tileDir, set);
+  await verifyPackedArchive(out, tileDir, {
+    set: set.id,
+    minZoom: set.minZoom,
+    maxZoom: set.maxZoom,
+  });
   const t3 = performance.now();
 
   const receipt: CellReceipt = {

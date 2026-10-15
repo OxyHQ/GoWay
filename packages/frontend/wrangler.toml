@@ -231,6 +231,15 @@ MAP_CITY_MANIFEST = "city/manifest.json"
 # unset, every `/map/satellite/` tile is 404 and nothing touches storage.
 # MAP_SATELLITE_MANIFEST = "satellite/manifest.json"
 
+# GoWay's own TERRAIN's manifest: its key in `MAP_TILES`. It names, per
+# bare-earth set (ICGC, IGN, USGS 3DEP, GSI, …), the dated stamp and the z7
+# cells published (`terrain/<set>/<stamp>/7/<x>/<y>.pmtiles` + receipt),
+# written by `.github/workflows/build-terrain-tiles.yml` after the archives it
+# names (`docs/MAP_TERRAIN_GLOBE.md` → "The archive"). `/map/terrain/*` asks
+# these sets first and the fallback above for every other tile. OFF until the
+# owner approves a published run: unset, every tile is the fallback's.
+# MAP_TERRAIN_MANIFEST = "terrain/manifest.json"
+
 # The only name this deployment answers to, and the reason `workers_dev` is
 # off. `goway.to` is the zone apex: Cloudflare writes and manages the record
 # for a custom domain itself, which is why the apex must carry NO pre-existing

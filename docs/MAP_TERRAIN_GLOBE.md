@@ -27,11 +27,11 @@ The elevation tiles come from GoWay's own Worker route,
 | Flags | The map-feature registry's `globe` and `terrain` (`lib/map/mapFeatures.ts`, [`MAP_FEATURES.md`](./MAP_FEATURES.md)): the person's choice in the settings modal, and `?globe=`/`?terrain=` in a development build; read live through `components/map/reliefFlags.ts` (`useMapRelief`) |
 | Style fragments (pure, spec-validated) | `lib/map/style/relief.ts` — DEM sources, hillshade, terrain, sky, globe outline, space |
 | DEM endpoint, vendor, credit | `lib/map/provider.ts` (`GOWAY_MAP_PATHS.terrain`, `MAPTERHORN_ENDPOINTS`, `TERRAIN_ATTRIBUTION_LINK`, `resolveTerrainTileUrl`) |
-| Worker route | `worker/index.js` → `serveTerrain`; `wrangler.toml` (`run_worker_first`, `MAP_TERRAIN_UPSTREAM`, optional `MAP_TERRAIN_ARCHIVE`) |
+| Worker route | `worker/index.js` → `serveTerrain`: GoWay's own sets first (`worker/terrain.js`, `MAP_TERRAIN_MANIFEST`, "The archive"), then the fallback; `wrangler.toml` (`run_worker_first`, `MAP_TERRAIN_UPSTREAM`, optional `MAP_TERRAIN_ARCHIVE`) |
 | Web adapter (lazy chunk) | `components/map/reliefLayer.web.ts`, loaded by `MapCanvas.web.tsx` |
 | Buildings on terrain | `components/map/engine/city3d/terrainGround.ts` (pure), `components/map/city3dGround.web.ts` (MapLibre side) |
 | Native hillshade | `components/map/MapCanvas.native.tsx` |
-| Credit | `components/map/MapAttribution.tsx`; the page it links to, `app/attribution.tsx` (`features/credits/`, notices in `lib/map/credits.ts`) |
+| Credit | `components/map/MapAttribution.tsx`, each own-terrain source while on screen (`useSourceCredits.ts`); the page it links to, `app/attribution.tsx` (`features/credits/`, notices in `lib/map/credits.ts`) |
 | Models on terrain | `components/map/engine/city3d/models.ts` (`setGround`) |
 
 ## The DEM
@@ -147,29 +147,348 @@ Not fixed in code, on purpose: flattening the terrain under footprints would
 invent ground the data does not have (and is wrong where a building does stand
 on a hill), and only the data is wrong here.
 
-**The fix is the data** (owner's decision; nothing published):
+**The fix is the data**, at the root and everywhere: GoWay's own bare-earth
+archive, next section. Its ICGC set has the basilica's footprints 2.1 m above
+the open ground around them, where Mapterhorn has them 16.1 m above it; and
+the gate finds the same kind of fault wherever Mapterhorn's sources have it,
+by one rule, without naming a building.
 
-1. **Report it to Mapterhorn** (open pipeline, GitHub) with the coordinates and
-   the MDT05/MET comparison: the source priority or ground classification is
-   theirs. Free; no date.
-2. **A GoWay regional archive in front of Mapterhorn**: Terrarium WebP tiles,
-   z0–12, built from ICGC's MET 2 m for Catalonia (CC BY 4.0) or IGN's MDT05 for
-   Spain (CC BY 4.0, scne.es), in a dated PMTiles key the Worker's
-   `/map/terrain/*` route reads first where it covers (Mapterhorn or
-   `MAP_TERRAIN_ARCHIVE` elsewhere), feathered into Mapterhorn over its last
-   kilometre, with the source's credit in `credits.ts` and the attribution
-   page. Size: Catalonia ~600 z12 tiles (~80 MB with the pyramid), all of
-   Spain ~10 k (~1 GB): cents a month on R2; one build job (download MDT05,
-   reproject, encode). Also check the result for the same artefact first.
-3. **Planet-wide** most of the world only has GLO-30, a surface model: cities
-   are smoothed roofs. The open bare-earth answers are model-based:
-   **GEDTM30** (OpenGeoHub, 30 m, ensemble of Copernicus/ALOS with object
-   heights removed against ICESat-2/GEDI; published as CC BY — to verify on its
-   Zenodo record before use) is the candidate; **FABDEM** is CC BY-NC-SA, not
-   usable commercially. Either way 30 m data cannot hold a street-level ground;
-   national LiDAR DTMs (Mapterhorn's z13+ sources) are the only real answer,
-   city by city.
+## The archive: GoWay's own bare-earth terrain
 
+**Built, not published** (2026-10-15). The owner's rule for the DEM: fix it at
+the root, everywhere, not a patch where a landmark shows it. Mapterhorn is a
+good aggregate, but measured it has three faults no client code can undo:
+
+- **It picks the finest source, not the cleanest.** Its pipeline stacks
+  sources by resolution (alphabetical on a tie) and checks none for ground:
+  over the Sagrada Família its coverage tile lists `es2a` (IGN's MDT02, 2 m),
+  `es5a`, `es5c` and `glo30`, and the finest, MDT02, most likely kept part
+  of the basilica as ground (+31 m). The same in Barcelona at Palau Sant Jordi (+31 m), the Zona Franca
+  warehouses (+29 m), the Fira (+23 m); in Paris on the Beaugrenelle
+  slab (+18 m). Measured below.
+- **No vertical datum.** "Vertical reference systems are not treated at the
+  moment" (Mapterhorn #255): every country's heights are its own datum
+  (Alicante, NGF-IGN69, NAVD88, Tokyo Bay MSL…), 0.3–2.3 m apart, so two
+  sources meet with a step and nothing is in one global frame.
+- **0.5 m steps at z12** (1 m at z11), which the street level draws as
+  terraces on a gentle slope.
+
+So GoWay builds its own **sets** — one bare-earth model (DTM) at one vintage,
+per region — and serves them in front of Mapterhorn, which stays the fallback
+everywhere no set is published. One pipeline, one code path for every set; no
+environment flag; nothing about a place in it.
+
+| Piece | Where |
+| --- | --- |
+| Sources and licences | `lib/map/terrainSources.ts` (credits, notices) |
+| Sets: input, datum, extent | `scripts/terrain/catalogue.ts` (order = priority) |
+| Reading a set onto a grid | `scripts/terrain/inputs.ts` (a COG by range; USGS's index of COGs; IGN's ATOM département archives; GSI's tile pyramid), `warp.ts` (GDAL + PROJ to web mercator and EGM2008) |
+| The gate and the correction | `scripts/terrain/gate.ts`, `ground.ts`, `canopy.ts`, `footprints.ts` |
+| The seam | `scripts/terrain/blend.ts` |
+| Encoding | `scripts/terrain/terrarium.ts`, `webp.ts` |
+| The build | `scripts/build-terrain-set.ts` (`map:terrain-set`), `build-satellite-manifest.ts --family=terrain` (`map:terrain-manifest`), `.github/workflows/build-terrain-tiles.yml`, GDAL/PROJ/p7zip pinned in `scripts/terrain/environment.yml` |
+| The gate as a tool | `scripts/check-terrain-ground.ts` (`check:terrain-ground`) |
+| Serving | `worker/terrain.js` over `worker/rasterSets.js` (the satellite imagery's set/cell/manifest machinery, now shared), `MAP_TERRAIN_MANIFEST` |
+| The credit | `lib/map/terrainCoverage.ts`, `components/map/useSourceCredits.ts`, `/attribution#elevation` |
+| Tests | `scripts/__tests__/terrainArchive.test.ts`, `worker/__tests__/terrain.test.js`, `lib/map/__tests__/terrainCoverage.test.ts` |
+
+### How a cell is built
+
+A set is cut into **cells** (z7 tiles, one PMTiles archive each, z7–12 inside:
+≤ 1,365 tiles), keyed exactly like the imagery:
+
+```
+terrain/<set>/<stamp>/7/<x>/<y>.pmtiles               the cell's tiles
+terrain/<set>/<stamp>/7/<x>/<y>.pmtiles.receipt.json  sources, CRS, datum pipeline, encoding, the gate's numbers, timings
+terrain/manifest.json, terrain/manifests/<stamp>.json the live manifest and every one ever published
+```
+
+A cell is processed in **blocks** (z10 tiles), each a window of the **z14
+analysis grid** (512 px tiles: 2.4–4.8 m pixels — the gate sees a house) plus
+a margin wide enough for the feather and the gate's ring:
+
+1. **Read** the set onto the window (`inputs.ts`): GDAL warps it to EPSG:3857
+   with heights converted to **EGM2008** (EPSG:3855) by PROJ, averaging when
+   the source is finer than the grid, bilinear when coarser. Several inputs
+   (3DEP tiles, IGN départements) are mosaicked into one VRT first, so one
+   no-data mask governs the average. A height no terrain has (below −12 km,
+   above 9 km) stops the build and names where it is.
+2. **Gate** it against the footprints and tree stands the map draws there
+   (below), and correct it only if the set asks to.
+3. **Feather** it into the fallback (Mapterhorn z12, bilinear as MapLibre
+   draws it) where the set ends on land (`blend.ts`, below).
+4. **Average** the block's core down to z12 (4 × 4), z11, z10; z9–z7 from the
+   blocks' z10 tiles (the fallback's own tile filling a quadrant no block
+   covered). A tile is **published only where the set has ground in it**;
+   everywhere else the fallback stays what the map draws.
+5. **Encode** Terrarium at the zoom's step, lossless WebP; pack; read every
+   tile back through `worker/pmtiles.js`; write the receipt.
+
+### One datum: EGM2008
+
+Every set's heights are converted by PROJ from the source's compound CRS
+(horizontal + its national vertical datum, in the catalogue) through the
+geoid grids of `proj-data` (pinned): EGM2008 is the frame of Copernicus
+GLO-30, GEDTM30 and every global model, and the closest thing to "sea level"
+everywhere at once. Measured at each landmark (`cs2cs`/`cct`, same pipelines
+as the build):
+
+| Set | Source datum (grid) | EGM2008 − source |
+| --- | --- | ---: |
+| ICGC, Catalonia | Alicante (`es_ign_egm08-rednap`) | −0.55 m at the Sagrada Família |
+| IGN RGE ALTI, France | NGF-IGN69 (`fr_ign_RAF20`) | −0.81 m at Notre-Dame |
+| USGS 3DEP | NAVD88 (`us_noaa_g2018u0`) + NAD83(2011) → ITRF2014 | −0.37 m at the Empire State Building |
+| GSI | JGD2011 heights, Tokyo Bay MSL (`jp_gsi_gsigeo2011`) | +0.27 m at Tokyo Tower |
+
+**3DEP needs its own pipeline.** PROJ's default from NAD83(2011) to WGS 84 is
+a null transformation ("2 m"), and it ignores that the two ellipsoids are
+1.25 m apart vertically in New York: its EGM2008 heights came out +0.88 m
+above NAVD88 where the right answer is −0.37 m. The catalogue gives the set
+the explicit pipeline (GEOID18 → NAD83(2011) → ITRF2014 by EPSG's
+time-dependent Helmert at epoch 2010.0 → EGM2008), and the build uses it
+(`-ct`). Every other set's default pipeline is cm-exact (ETRS89, RGF93 and
+JGD2011 sit on ITRF at that level).
+
+The served Mapterhorn tiles carry the national datums, so beside a set the
+fallback is 0.2–0.8 m off: the feather absorbs it (below), and measured at
+the landmarks the built ground differs from Mapterhorn's by the datum offset
+plus the source's own correction (Notre-Dame: 33.34 m against 34.00 m; Tokyo
+Tower: 18.80 against 18.57).
+
+### Precision
+
+A tile stores heights rounded to a step that grows with the pixel
+(`terrainStepM`): **1/8 m at z12** (12.5 cm: under a kerb, and under 1% of a
+pixel as a slope), 1/4 m at z11, …, 1 m from z9. Lossless WebP pays for every
+bit of noise, so the step is the size. Measured on the built urban z12 tiles
+(Paris, Tokyo; 47 tiles), re-encoded from the same heights:
+
+| Step at z12 | KB a tile | vs Mapterhorn's tiles |
+| ---: | ---: | ---: |
+| 1/16 m | 135.5 | 2.14× |
+| **1/8 m (chosen)** | **107.6** | **1.70×** |
+| 1/4 m | 82.3 | 1.30× |
+| Mapterhorn, 0.5 m | 63.3 | 1 |
+
+1/8 m because the DEM is the map's main network cost per view ("What it
+costs"): 1/16 m would add another 28 KB a tile for steps nobody can see at a
+12–19 m pixel. Below z12 the pixel doubles each zoom and so does the step.
+
+### The seam
+
+Where a set ends ON LAND (its no-data where ESA WorldCover says land: a border,
+a survey's edge, a hole), every pixel within **500 m** inside it is
+`w · set + (1 − w) · fallback`, `w` rising smoothly (smoothstep) from 0 at the
+edge to 1: a 0.8 m datum step becomes a 0.16% grade, a source's own
+correction a gentle one, and a set's ground is untouched beyond its outer half
+kilometre. Where a set ends at the SEA (WorldCover water, or outside
+WorldCover), nothing is feathered: the coast is the land's edge, not the
+source's, and Manhattan is never more than 2 km from water. Tile edges need no
+seam of their own: neighbouring tiles of one set come from one continuous
+analysis grid, and a published tile next to an unpublished one already holds
+the fallback's heights at their shared edge. Pinned by the seam and pyramid
+tests (no step, no overshoot, the set exact past the feather, the shore kept;
+a step across a tile edge is the step inside), and measured on the built
+archives (every z12 edge of the proof): across the 1,446 edges
+between two set tiles the mean step is 2.45 m against 2.33 m between two
+columns inside a tile (the Pyrenees dominate the mean), and 0.75 m across the
+118 edges from a set tile to Mapterhorn's; at z10, 8.7 m against 7.7 m.
+
+### Contamination: the gate
+
+A bare-earth model knows no ground under a building: its producer
+interpolates across the footprint from the ground around it (a LiDAR DTM
+triangulates the ground returns of the streets and yards). So a model that
+STEPS UP under a footprint, relative to the open ground right around it, kept
+the building. The gate (`ground.ts` → `footprintGround`):
+
+- **Footprints**: GoWay's own city tiles (`/map/city/15/…`, OSM), only those
+  standing on the ground (`render_min_height` 0), burnt into the z14 grid.
+- **Tree stands**: ESA WorldCover 2021 tree cover (10 m, CC BY 4.0), connected
+  stands up to 150 m across (a forest wider than that has no ground around it
+  to compare with). A surface model keeps the canopy.
+- **The ring**: every open pixel (in no footprint, not tree cover) from one
+  source pixel to 12 m beyond that around the footprint — past a kept
+  building's own smear. A least-squares **plane** through it. A hill under
+  a block of houses rises through the streets between them too, so the plane
+  follows the hill; a building kept as ground is a step up from it.
+- **The verdict**: the footprint's 90th-percentile height above that plane.
+  Reported over 2, 5 and 10 m; **fails over 5 m** (a storey and more; a LiDAR
+  DTM's own error is 0.1–0.5 m, a terrace or a garden wall a metre or two).
+
+What still stands 5 m above its ring in a clean LiDAR model is ground, and is
+named here so nobody "fixes" it: a building on a summit (the Montjuïc
+castle), dug into a hillside (Collserola's foothills, Atago hill in Tokyo), a
+stadium's earthwork stands (the Estadi Olímpic), a raised reservoir (Paris's
+Montsouris), a folly on a cliff (the Buttes-Chaumont). These set the floor:
+~0.04–0.2% of footprints in every clean model measured.
+
+**What the gate cannot see**: a surface model over a dense city raises the
+streets as much as the roofs — a blanket, not a step — so the gate measures
+GLO-30 in São Paulo cleaner (0.18% over 5 m) than GEDTM30 (1.33%), which is
+the opposite of the truth. Certifying a fallback model needs an absolute
+reference (ICESat-2's ground photons); not built.
+
+**The correction** (`correctWindow`): every failed footprint and stand, grown
+by the ring's inner distance, becomes one hole that gets the membrane — the
+smoothest surface meeting the ground around it (harmonic, so never above the
+highest edge nor below the lowest). Built and tested; **no set uses it**: the
+rule is the next-best clean source first, and every set built is clean (below).
+It is for a region whose only source fails, and only after its gate numbers
+are in this document; never by name.
+
+### Measured: before and after
+
+**Gate**, 10 × 10 km around each city's landmark (Barcelona 2.165, 41.40;
+Paris 2.342, 48.857; Manhattan −73.986, 40.748; Tokyo 139.745, 35.659), z14
+grid, footprints judged / over 5 m / over 10 m, and tree stands over 5 m:
+
+| City | Set | Footprints judged | Over 5 m: Mapterhorn → set | Over 10 m: Mapterhorn → set | Tree stands over 5 m: Mapterhorn → set |
+| --- | --- | ---: | ---: | ---: | ---: |
+| Barcelona | ICGC 5 m | 155,456 | 322 (0.21%) → **165** (0.11%) | 34 (0.02%) → **9** (0.01%) | 32 (0.44%) → **36** (0.49%) |
+| Paris | IGN RGE ALTI 1 m | 122,202 | 115 (0.09%) → **51** (0.04%) | 14 (0.01%) → **2** (0.00%) | 22 (0.26%) → **20** (0.24%) |
+| Manhattan | USGS 3DEP 1 m | 83,160 | 50 (0.06%) → **49** (0.06%) | 2 (0.00%) → **2** (0.00%) | 8 (0.13%) → **9** (0.15%) |
+| Tokyo (Minato) | GSI DEM5A | 161,738 | 161 (0.10%) → **155** (0.10%) | 8 (0.01%) → **4** (0.00%) | 32 (0.64%) → **31** (0.61%) |
+
+**The landmarks**: the landmark's footprints' 90th percentile
+above the open ground around them, and the relief within 40 m:
+
+| Landmark | Set | Its footprints: p90 above the ground around (max) — Mapterhorn → set | Relief within 40 m | Ground at the point |
+| --- | --- | ---: | ---: | ---: |
+| **Sagrada Família** | ICGC | **16.06 m** (16.18) → **2.12 m** (2.12) | 29.1 → 5.4 m | 37.59 → 29.33 m |
+| Palau Sant Jordi | ICGC | **31.47 m** (34.74) → 8.01 m (8.56): dug into Montjuïc's slope, measured as a terrace in the source | 40.2 → 15.4 m | 110.95 → 85.50 m |
+| **Notre-Dame** | IGN | 0.56 m (0.60) → **0.21 m** (0.24) | 1.84 → 1.57 m | 34.00 → 33.34 m (datum −0.81, source +0.15) |
+| Beaugrenelle (Front de Seine) | IGN | **17.63 m** (20.95) → **0.18 m** (0.38) | 22.6 → 1.7 m | 53.05 → 30.89 m |
+| **Empire State Building** | USGS 3DEP | 0.87 m (1.04) → **0.69 m** (0.81) | 2.06 → 2.17 m | 15.00 → 14.81 m (datum −0.37, source +0.18) |
+| **Tokyo Tower** | GSI | 0.93 m (1.93) → **0.95 m** (1.62): Mapterhorn is GSI's DEM5A here too | 5.81 → 5.79 m | 18.57 → 18.80 m (the datum's +0.27) |
+
+So the Sagrada Família, the Palau Sant Jordi and the Beaugrenelle slab were
+buildings in Mapterhorn's ground and are not in GoWay's; Notre-Dame, the
+Empire State Building and Tokyo Tower were already flat, and stay so in one
+datum at 1/8 m. Mapterhorn is right in Manhattan and Tokyo, as measured: a set
+there is for the datum and the precision, not a fault.
+
+Screenshots (before: what goway.to draws; after: the built set served
+locally), same camera: `goway-videos/terrain-bare-earth/`.
+
+- `relief-<landmark>-before-after.png` — the ground itself, as MapLibre reads
+  the tiles onto the z14 grid: hillshade (×3) on a colour ramp shared by both
+  halves, the footprints in blue; left Mapterhorn, right the set. Sagrada
+  Família, Palau Sant Jordi, Notre-Dame, Beaugrenelle, Tokyo Tower, Empire
+  State Building.
+- `<before|after>-<landmark>-day.png` — the app, a development export served
+  locally with `serve-map-build --upstream=https://goway.to`, after with
+  `--terrain=<build dir>` (the Worker's own `terrain.js` over the built
+  archives and manifest); `…-bare-…` the same camera with the 3D city off, so
+  the ground shows. Headless Chromium on SwiftShader, the high preset.
+
+### Global fallback: what replaces GLO-30 where no national model exists
+
+Most of the world has no open LiDAR DTM, and there Mapterhorn is Copernicus
+GLO-30 — a surface model: roofs and canopy, smoothed to 30 m. The candidates:
+
+| Model | Licence | Bare earth? | Verdict |
+| --- | --- | --- | --- |
+| **GEDTM30** (OpenGeoHub, Ho et al. 2025, v1.2) | **CC BY 4.0** (Zenodo 14900180, 18887460; code MIT); trained on GLO-30 and AW3D30 (credit JAXA) with ICESat-2/GEDI; no FABDEM input. Both records say "use for testing purposes only" | Modelled: canopy and buildings partly removed; RMSE 10.7 m vs GNSS, 2–7 m vs LiDAR DTMs | Measured in Barcelona: buildings over 5 m 4.93% (GLO-30 5.69%, Mapterhorn 0.21%, ICGC 0.17%). Better than GLO-30, nowhere near a DTM. A candidate for the GLO-30-only regions after an absolute check (ICESat-2); not adopted |
+| FABDEM | CC BY-NC-SA 4.0 | Modelled | **Out**: non-commercial |
+| FathomDEM | CC BY-NC-SA 4.0, academic access | Modelled (best of the three) | **Out** |
+| Copernicus GLO-30 | Copernicus licence (commercial OK, notices) | **No**: surface | What Mapterhorn is there today |
+| MERIT DEM, NASADEM, AW3D30 | NC / public domain / JAXA terms | Trees only, or none | No |
+| DeltaDTM, DiluviumDEM | CC BY 4.0 | Coastal lowlands only | Possible coastal patch |
+
+So the planet's street-level ground is national LiDAR DTMs, country by country
+(below); the fallback stays Mapterhorn until GEDTM30 (or a successor) is
+measured clean against ICESat-2 in GLO-30-only cities.
+
+### The planet: sources
+
+Every source GoWay may use (licence permits public, commercial redistribution
+of derived tiles). Sizes are the producers' or Mapterhorn's; "est." is area ×
+resolution. Built today: ★.
+
+| Region | Model | Licence | Res. | Datum | Coverage | Bulk access | Size |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| ★ Catalonia | ICGC terrain model (LiDAR 2021–23) | CC BY 4.0 | 0.25 (BCN), 0.5, 1, 5 m | Alicante | all | single COGs, `datacloud.icgc.cat/datacloud/model-elevacions-terreny/tif_unzip/` | 1 m 92 GB, 5 m 4.4 GB |
+| Spain | IGN MDT05 / MDT02 (2015–21) / MDT 50 cm (3rd cov., ~45%) | CC BY 4.0 ("Obra derivada de MDT… scne.es") | 5 / 2 / 0.5 m | Alicante (EGM08-REDNAP) | all / all / partial | CNIG sheets; WCS `servicios.idee.es/wcs-inspire/mdt` | est. 60 GB / 0.5 TB / 8 TB |
+| ★ France | IGN RGE ALTI 2.0 | Etalab 2.0 | 1 m | NGF-IGN69 (Corsica IGN78C: own set) | métropole | ATOM per département, `data.geopf.fr/telechargement/resource/RGEALTI` | 415 GB |
+| France | IGN LiDAR HD MNT | Etalab 2.0 | 0.5 m | NGF-IGN69 | ~78% (ZICAD holes) | `data.geopf.fr` | est. 9 TB |
+| Netherlands | AHN4 / AHN5 DTM | CC0 / CC BY 4.0 | 0.5 m | NAP | all (no data under buildings: the feather fills) | PDOK ATOM | est. 0.5 TB |
+| Belgium | Flanders DHMV II; Wallonia MNT 2021–22; Brussels | Modellicentie gratis hergebruik / CC BY 4.0 / CC0 | 1 / 0.5 / 0.5 m | TAW/Ostend (−2.3 m!) | all | WCS / ATOM / ATOM | 50 GB / 198 GB / 3 GB |
+| Luxembourg | LiDAR 2024 MNT | CC0 | 0.5 m | — | all | single COG | 40 GB |
+| Switzerland | swissALTI3D | free, "©swisstopo" | 0.5, 2 m | LN02 | all | STAC | 770 / 44 GB |
+| Germany | DGM1 of all 16 Länder | dl-de/by-2.0, dl-de/zero-2.0, CC BY 4.0 | 1 m | DHHN2016 | all | per Land (NRW, Bayern, Niedersachsen STAC, …) | est. 0.7 TB |
+| Austria | ALS DTM (BEV) | CC BY 4.0 | 1 m | EVRF2000-AT | all | `data.bev.gv.at` | ~350 GB |
+| Denmark | DHM/Terræn | CC BY 4.0 | 0.4 m | DVR90 | all (bridge decks kept) | Dataforsyningen | 258 GB |
+| Norway | DTM1 | CC BY 4.0 / NLOD | 1 m | NN2000 | mainland | ATOM, WCS | 1.6 TB |
+| Sweden | Markhöjdmodell | **CC BY 4.0** (not CC0) | 1 m | RH2000 | all | STAC (free login) | est. 1.2 TB |
+| Finland | Korkeusmalli | CC BY 4.0 | 2 m | N2000 | all | funet mirror | est. 250 GB |
+| Estonia | DTM | open licence | 1 m | EH2000 | all | Maa-amet | est. 180 GB |
+| Poland | NMT (GUGiK) | free by statute (no formal licence) | ≤1 m | PL-EVRF2007 | all | WFS index → ASC | 223 GB |
+| Czechia / Slovakia / Slovenia | DMR 5G (LAZ) / DMR 5.0 / LSS | CC BY 4.0 | points / 1 m / 1 m | Bpv / Bpv / SVS | all | ATOM / ZIP / ARSO | 120 / 183 / 54 GB |
+| Portugal | DGT LiDAR MDT | CC BY 4.0 | 0.5, 2 m | — | mainland, NW pending | STAC (account) | est. 1.7 TB |
+| UK | EA Composite DTM 2022; Scotland phases; Wales DTM | OGL v3 (not Scotland's phase 2) | 1 m | ODN | England ~99%, Wales all, Scotland patches | WCS, S3, single COG | 153 / 142 / 49 GB |
+| Ireland | GSI Open Topographic LiDAR | CC BY 4.0 | 0.13–2 m | Malin Head | partial | image services | — |
+| Italy | regions (Alto Adige CC0, Emilia-Romagna, VdA, Piemonte, Lombardia, Liguria, Sardegna CC BY 4.0); TINITALY 10 m | CC BY 4.0 / CC0 | 0.5–5 m | mixed (some ellipsoidal: use orthometric) | patchwork | WCS per region | — |
+| ★ United States | USGS 3DEP seamless 1 m (S1M); 1/3″ | public domain | 1 m / 10 m | NAVD88 | CONUS partial / all | AWS `prd-tnm`, index GeoPackage | 4.9 TB / 494 GB |
+| Canada | NRCan HRDEM mosaic; MRDEM-30 | OGL-Canada 2.0 | 1, 2 m / 30 m | CGVD2013 | LiDAR areas / all | S3 COG | 8.7 TB / 84 GB |
+| Mexico | INEGI CEM 3.0 | libre uso (commercial OK) | 15 m | — | all (from contours) | INEGI | — |
+| ★ Japan | GSI elevation tiles DEM5A (laser), DEM10B | GSI terms (credit; derived-work sentence) | 5 / 10 m | Tokyo Bay MSL | urban + plains / all | tile pyramid | — |
+| New Zealand | LINZ 1 m DEM | CC BY 4.0 | 1 m | NZVD2016 | >80% | AWS `nz-elevation` | 377 GB |
+| Australia | GA 5 m LiDAR DEM; states via ELVIS | CC BY 4.0 (QLD unclear) | 5 m; 1–5 m | AHD | 245k km²; patchy | S3 zips; ELVIS | 38 GB |
+| Out | Lithuania (NC), Hong Kong (revocable, not bare), Toscana (NC), FABDEM, FathomDEM, TanDEM-X EDEM | | | | | | |
+
+### Cost: the planet
+
+Measured per z10 block (≈ 25–40 km square) on this machine, end to end
+(read, footprints, gate, fallback, blend, encode):
+
+| Set (how it is read) | Seconds a block | of which reading | Notes |
+| --- | ---: | ---: | --- |
+| ICGC 5 m (one COG over HTTP) | **40** | 22 | Catalonia's cell 7/64/47: 48 blocks with ground, 822 tiles, 153.8 MB |
+| IGN RGE ALTI 1 m (ATOM, per département) | **81** from the cache; 1,138 for the first block | 12; 1,116 | the first block downloaded the eight départements whose envelope meets it (≈ 15 GB of 7z, 35 GB extracted, ~13 MB/s); every block of them after reads the extracted 1 m GeoTIFFs |
+| USGS 3DEP 1 m (index of COGs over HTTP) | **≈ 1,230** | ≈ 1,200 | twelve-odd 10 km LZW tiles of 1 m floats a block, read in full |
+| GSI DEM5A (tile pyramid) | **52** | 22–42 | ~1,100 PNG tiles a block |
+
+The rest of a block is the same everywhere: footprints ~7 s (1,024 city tiles,
+edge-cached), the gate ~4 s, the fallback ~1.5 s, the feather ~4 s, encoding
+~3.5 s.
+
+A block's archive share measured 2.3 MB (Tokyo), 2.5 MB (Paris) and 3.2 MB
+(Catalonia, mountains) — call it 3 MB. Blocks are z10 tiles: ~1,000 km² at
+35°, ~600 km² at 50°, ~340 km² at 62°.
+
+| Scope | Land | Blocks | Archive (R2) | Build (runner-hours) |
+| --- | ---: | ---: | ---: | ---: |
+| The four proof sets, whole (Catalonia, France, US 3DEP 1 m where flown, Japan) | 2.5 M km² | ≈ 3,300 | ≈ 10 GB, **$0.15/month** | France ≈ 24 h (≈ 4 h of it the 180 GB of archives), US 1 m ≈ 620 h, Japan ≈ 7 h, Catalonia ≈ 1 h: **≈ 650 h** |
+| + the rest of the US at 3DEP 1/3″ (10 m), its own set behind the 1 m one | + 6.6 M km² | + 7,200 | + 22 GB | + ≈ 120 h (a 10 m COG is a 5 m one's read) |
+| + every European source in the table (Spain, Germany, UK, the Nordics, Benelux, the Alps, Poland, …) | + 4 M km² | + 7,600 | + 23 GB | + ≈ 170–250 h |
+| + Canada (HRDEM areas), New Zealand, Australia's 5 m | + 2 M km² | + 4,000 | + 12 GB | + ≈ 70–200 h (HRDEM 1 m is 3DEP-like) |
+| **All of the table** | **≈ 15 M km²** | **≈ 22,000** | **≈ 67 GB, $1.00/month** | **≈ 1,000–1,200 h** |
+| For scale: Mapterhorn's whole planet z0–12 in R2 | 149 M km² | — | 356 GB, $5.30/month | — |
+
+**Money**: GitHub's standard runners are free for a public repository (GoWay is
+one), so the build costs nothing but time: 20 jobs at a time, ≈ 2–3 days of
+wall clock for the whole table, ≈ 1.5 days of it the US at 1 m. R2 storage
+≈ **$1/month** for all of it, class-A writes ≈ $0.05 (one put per cell and its
+receipt), egress $0. The footprints cost ~22 M city-tile reads at the edge
+during a full build (≈ $4 of Worker requests past the plan's 10 M; reading
+the city archives straight from R2 in CI would remove even that). Every
+source is free to read (producers' own servers; AWS Open Data buckets).
+**Users' bandwidth**: a published DEM tile is ~1.7× Mapterhorn's (1/8 m
+against 0.5 m: "Precision"), a few hundred kB more per tilted city view;
+Cloudflare's egress is free.
+
+### Publishing (owner's decision; nothing published)
+
+1. Dry run the workflow for the four proof sets (`publish` off): every cell
+   built and verified in CI, receipts and the would-be manifest as artifacts.
+2. Publish them (`publish` on): archives under dated keys, then the manifest.
+3. Set `MAP_TERRAIN_MANIFEST = "terrain/manifest.json"` in `wrangler.toml` and
+   deploy: `/map/terrain/*` answers from the sets where published, Mapterhorn
+   elsewhere; the credit names each source while it is on screen. Rollback:
+   comment the line out (every tile Mapterhorn's again) or copy an older
+   `terrain/manifests/<stamp>.json` over the live one.
+4. Then country by country in the source table's order of people per km².
 ## The globe
 
 MapLibre's `globe` projection: a sphere ("vertical perspective") to z11, easing
@@ -561,10 +880,11 @@ tilted terrain view is the one most likely to drop frames.
 
 1. Upload `planet.pmtiles` and set `MAP_TERRAIN_ARCHIVE` — before traffic grows
    (see "Is the proxy safe").
-2. The Sagrada Família's spike: report it to Mapterhorn, and decide on a
-   regional bare-earth archive (see "A building in the bare earth").
-3. Coverage-aware maxzoom for the national models (sharper Montserrat, a bare-
-   earth Barcelona).
+2. Publish GoWay's own bare-earth sets (the owner's decision: "The archive"
+   → Publishing), then country by country; report the Sagrada Família's
+   classification to Mapterhorn all the same.
+3. z13–14 tiles where a set's source is finer than z12 (the analysis grid is
+   z14 already: sharper Montserrat), with a coverage-aware `maxzoom`.
 4. Device benchmarks; then decide whether tilted terrain should follow the city
    layer's device gating on weak GPUs, and whether `Save-Data` should drop the
    hillshade.

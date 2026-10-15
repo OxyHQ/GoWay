@@ -73,6 +73,7 @@ import { serveCity } from './city.js';
 import { createContourService, serveContours } from './contours.js';
 import { archiveSource, serveArchiveTile } from './tiles.js';
 import { serveSatellite } from './satellite.js';
+import { serveTerrainDocument, terrainSetTile } from './terrain.js';
 
 /**
  * How long the edge may keep a vector tile.
@@ -390,7 +391,9 @@ async function serveTile(url, request, env, ctx) {
  * `/map/terrain/{z}/{x}/{y}.webp` — elevation tiles for the relief prototype
  * (`docs/MAP_TERRAIN_GLOBE.md`).
  *
- * The same two backends as the vector tiles, in the same order, for the same
+ * GoWay's own bare-earth sets answer first where one is published
+ * (`terrain.js`, `MAP_TERRAIN_MANIFEST`); every other tile comes from the
+ * fallback, by the same two backends as the vector tiles, in the same order, for the same
  * reasons. An R2 archive when one is configured (`MAP_TERRAIN_ARCHIVE` in the
  * `MAP_TILES` bucket — Mapterhorn's own `planet.pmtiles`, z0–12, 356 GB),
  * because then no viewer's request leaves Cloudflare. Otherwise a proxy of
@@ -415,6 +418,11 @@ async function serveTerrain(url, request, env, ctx) {
     return notFound('Zoom outside the elevation tiles.');
   const span = 2 ** z;
   if (x >= span || y >= span) return notFound('Tile coordinate outside the world at that zoom.');
+
+  // GoWay's own bare-earth sets first, where one is published (`terrain.js`);
+  // a tile none has is the fallback's, below.
+  const own = await terrainSetTile(request, env, ctx, z, x, y);
+  if (own) return own;
 
   if (env.MAP_TILES && env.MAP_TERRAIN_ARCHIVE) {
     return serveTerrainFromArchive(z, x, y, request, env, ctx);
@@ -563,7 +571,11 @@ export default {
 
     if (url.pathname.startsWith('/map/tiles/')) return serveTile(url, request, env, ctx);
     if (url.pathname.startsWith('/map/fonts/')) return serveGlyphs(url, request, env);
-    if (url.pathname.startsWith('/map/terrain/')) return serveTerrain(url, request, env, ctx);
+    if (url.pathname.startsWith('/map/terrain/')) {
+      return (
+        (await serveTerrainDocument(url, request, env, ctx)) ?? serveTerrain(url, request, env, ctx)
+      );
+    }
     // Contour lines for the Outdoors style, traced here from the elevation
     // tiles above and cached at the edge (`contours.js`).
     if (url.pathname.startsWith('/map/contours/')) {

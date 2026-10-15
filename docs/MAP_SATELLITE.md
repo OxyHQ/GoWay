@@ -13,11 +13,11 @@ published.** The owner's decisions are at the end ([Decisions](#decisions)).
 | Modes, tiers, tile paths | `lib/map/imagery.ts` |
 | Styles: `satellite` and `hybrid` in the one style catalogue | `lib/map/style/catalogue.ts` (`imagery`, `offer`), `themes.ts` (recipes), `options.ts` (`imagery`), `imagery.ts` (`applyImageryStyle`, called by `buildGowayMapStyle`) → `public/map/styles/{satellite,hybrid}/day.json` (`map:style`, `map:style:check`), thumbnails (`map:thumbs --only=`) |
 | Picker, embed | the layers picker and `/frame?style=` list them through `isMapStyleOffered` |
-| Credit while on screen | `lib/map/imageryCoverage.ts`, `components/map/useImageryCredits.ts`, `/attribution#imagery` (`lib/map/credits.ts`) |
+| Credit while on screen | `lib/map/imageryCoverage.ts` over `rasterCoverage.ts`, `components/map/useSourceCredits.ts`, `/attribution#imagery` (`lib/map/credits.ts`) |
 | Sets (what is built, from what) | `scripts/imagery/catalogue.ts` |
 | Build one set's cells | `scripts/build-satellite-set.ts` (`map:satellite-set`); `scripts/imagery/{cells,pmtilesStream}.ts`; GDAL pinned in `scripts/imagery/environment.yml` |
 | Manifest | `scripts/build-satellite-manifest.ts` (`map:satellite-manifest`) |
-| Worker | `worker/satellite.js`, routed from `worker/index.js`; `wrangler.toml` (`run_worker_first`, `MAP_SATELLITE_MANIFEST`, commented out) |
+| Worker | `worker/satellite.js` over `worker/rasterSets.js` (the set/cell/manifest machinery GoWay's own terrain shares, `MAP_TERRAIN_GLOBE.md` → "The archive"), routed from `worker/index.js`; `wrangler.toml` (`run_worker_first`, `MAP_SATELLITE_MANIFEST`, commented out) |
 | CI | `.github/workflows/build-satellite-tiles.yml` (dry run by default); uploads through `scripts/city-r2.sh` (shared with the city tiles) |
 | Local proof | `scripts/serve-map-build.ts --satellite=<dir>` |
 | Tests | `worker/__tests__/satellite.test.js`, `lib/map/__tests__/imagery.test.ts`, `scripts/__tests__/satellitePipeline.test.ts`, `components/map/__tests__/reliefAttach.test.ts` |
@@ -267,7 +267,7 @@ map stays up.
 
 ### The credit
 
-`useImageryCredits` reads `/map/satellite/coverage.json` once (five minutes),
+`useImageryCredits` (`useSourceCredits.ts`) reads `/map/satellite/coverage.json` once (five minutes),
 and at every settled camera `imagerySourcesInView` names every source of every
 set one of whose tiers is drawn at that zoom and one of whose cells meets the
 view — the over-zoomed base under an orthophoto included, because a tile edge

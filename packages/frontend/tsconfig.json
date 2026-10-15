@@ -19,6 +19,8 @@
     // own parser (`scripts/build-satellite-manifest.ts`), which reads its
     // archives with the city route's byte source.
     "worker/satellite.js",
+    "worker/rasterSets.js",
+    "worker/terrain.js",
     "worker/city.js",
     "worker/tiles.js",
     "worker/budget.js",

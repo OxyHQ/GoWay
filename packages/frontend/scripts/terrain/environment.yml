@@ -1,0 +1,20 @@
+# The GDAL the terrain build runs (`docs/MAP_TERRAIN_GLOBE.md` → "The archive"),
+# the same locally and in `.github/workflows/build-terrain-tiles.yml`:
+#
+#   micromamba create -y -p <env> -f packages/frontend/scripts/terrain/environment.yml
+#   bun run --cwd packages/frontend map:terrain-set … --gdal=<env>/bin
+#
+# The imagery build's GDAL (`scripts/imagery/environment.yml`, same pins) plus
+# what heights need: `proj-data`, PROJ's geoid and datum grids, so every
+# source's heights are converted to EGM2008 offline (EGM08-REDNAP for Spain,
+# RAF20 for France, GEOID18 for the US, GSIGEO for Japan, EGM2008 itself), and
+# p7zip for IGN's département archives. Pinned exactly: a grid or resampling
+# change moves heights, and a rebuilt cell must meet its neighbours.
+name: goway-terrain
+channels:
+  - conda-forge
+dependencies:
+  - gdal=3.13.3
+  - libgdal-core=3.13.3
+  - proj-data=1.25
+  - p7zip=16.02

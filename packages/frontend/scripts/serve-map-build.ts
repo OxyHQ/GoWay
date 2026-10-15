@@ -73,6 +73,16 @@ const UPSTREAM_PATH = /^\/(map|landmarks)\//;
 const satelliteDir = arg('satellite', '');
 const SATELLITE_STYLES = /^\/map\/styles\/(satellite|hybrid)\/[a-z]+\.json$/;
 
+/**
+ * `--terrain=<dir>`: answer `/map/terrain/*` with the WORKER's own sets
+ * (`worker/terrain.js`) over `<dir>`, laid out like the bucket
+ * (`terrain/manifest.json`, `terrain/<set>/<stamp>/…` — what `map:terrain-set`
+ * and `map:terrain-manifest` write): a set's tile where published,
+ * `--upstream`'s terrain everywhere else — the deployed Worker's order once
+ * `MAP_TERRAIN_MANIFEST` is set (`docs/MAP_TERRAIN_GLOBE.md` → "The archive").
+ */
+const terrainDir = arg('terrain', '');
+
 /** An R2 bucket over a directory: what `worker/satellite.js` reads (get with a range, head). */
 function directoryBucket(dir: string) {
   const objectOf = (bytes: Uint8Array, size: number) => ({
@@ -116,6 +126,40 @@ async function serveSatelliteLocally(
     { MAP_TILES: directoryBucket(satelliteDir), MAP_SATELLITE_MANIFEST: 'satellite/manifest.json' },
     { waitUntil: () => {} },
   );
+  const headers: Record<string, string> = {};
+  answer.headers.forEach((value: string, name: string) => {
+    headers[name] = value;
+  });
+  response.writeHead(answer.status, headers);
+  response.end(Buffer.from(await answer.arrayBuffer()));
+}
+
+async function serveTerrainLocally(
+  request: IncomingMessage,
+  response: ServerResponse,
+): Promise<void> {
+  // The Worker's edge cache, absent here: every read goes to the directory.
+  (globalThis as { caches?: unknown }).caches ??= {
+    default: { match: async () => undefined, put: async () => {} },
+  };
+  const { serveTerrainDocument, terrainSetTile } = await import('../worker/terrain.js');
+  const url = new URL(request.url ?? '/', `http://localhost:${port}`);
+  const env = {
+    MAP_TILES: directoryBucket(terrainDir),
+    MAP_TERRAIN_MANIFEST: 'terrain/manifest.json',
+  };
+  const ctx = { waitUntil: () => {} };
+  const plain = new Request(url, { method: request.method });
+  const tile = /^\/map\/terrain\/(\d{1,2})\/(\d{1,9})\/(\d{1,9})\.webp$/.exec(url.pathname);
+  const answer: Response | null =
+    (await serveTerrainDocument(url, plain, env, ctx)) ??
+    (tile
+      ? await terrainSetTile(plain, env, ctx, Number(tile[1]), Number(tile[2]), Number(tile[3]))
+      : null);
+  if (!answer) {
+    await proxy(url.pathname, url.search, response);
+    return;
+  }
   const headers: Record<string, string> = {};
   answer.headers.forEach((value: string, name: string) => {
     headers[name] = value;
@@ -192,6 +236,13 @@ const files: Handler = (request, response) => {
   const path = decodeURIComponent(rawPath);
   if (satelliteDir && path.startsWith('/map/satellite/')) {
     void serveSatelliteLocally(request, response).catch((cause) => {
+      response.writeHead(500, { 'content-type': 'text/plain' });
+      response.end(String(cause));
+    });
+    return;
+  }
+  if (terrainDir && path.startsWith('/map/terrain/')) {
+    void serveTerrainLocally(request, response).catch((cause) => {
       response.writeHead(500, { 'content-type': 'text/plain' });
       response.end(String(cause));
     });

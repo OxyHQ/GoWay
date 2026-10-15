@@ -235,7 +235,7 @@ Imagery is a style, not a mode beside the catalogue (`docs/MAP_SATELLITE.md`):
    document, the ground fills it replaces dropped, and for hybrid the roads
    (thinned), boundaries and labels kept with dark halos for photographs;
 3. the imagery origin comes in `MapStyleEndpoints.imageryOrigin`, and the
-   credit through `MapAttribution` (`useImageryCredits`);
+   credit through `MapAttribution` (`useImageryCredits`, `useSourceCredits.ts`);
 4. the picker and the embed ask `isMapStyleOffered`, so production lists them
    once the `offer` line goes.
 
