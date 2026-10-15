@@ -39,8 +39,12 @@
  */
 import mlcontour from 'maplibre-contour';
 import { MEMORY_BUDGET } from './budget.js';
+import { CONTOUR_VERSION } from './contourVersion.js';
 
-export const CONTOUR_PATH = /^\/map\/contours\/(\d{1,2})\/(\d{1,7})\/(\d{1,7})\.pbf$/;
+export { CONTOUR_VERSION };
+
+/** `/map/contours/<version>/{z}/{x}/{y}.pbf`; only {@link CONTOUR_VERSION} is served. */
+export const CONTOUR_PATH = /^\/map\/contours\/(v\d{1,3})\/(\d{1,2})\/(\d{1,7})\/(\d{1,7})\.pbf$/;
 
 /**
  * The contour interval per zoom, in metres: `[every line, every index line]`.
@@ -61,6 +65,25 @@ export const CONTOUR_ZOOMS = { min: 9, max: 14 };
 
 /** The elevation tiles' own limits (`lib/map/style/relief.ts` → `RELIEF_DEM`). */
 const DEM = { maxzoom: 12, encoding: 'terrarium', tileSize: 512 };
+
+/** The tracer's options for every tile (the levels are {@link CONTOUR_LEVELS}). */
+const TRACE = {
+  overzoom: 1,
+  elevationKey: 'ele',
+  levelKey: 'level',
+  contourLayer: 'contours',
+  extent: 4096,
+  buffer: 1,
+};
+
+/** The tracer, by package and version: a new release can trace differently. */
+export const CONTOUR_TRACER = 'maplibre-contour@0.1.1';
+
+/**
+ * Everything a tile's bytes depend on besides the DEM — what
+ * {@link CONTOUR_VERSION} stands for. The test fingerprints it.
+ */
+export const CONTOUR_PARAMETERS = { levels: CONTOUR_LEVELS, trace: TRACE, dem: DEM, tracer: CONTOUR_TRACER };
 
 /**
  * What one entry of maplibre-contour's caches can hold: it keeps the WebP, the
@@ -129,15 +152,7 @@ export function createContourService({ fetchDem, decode }) {
         z,
         x,
         y,
-        {
-          levels,
-          overzoom: 1,
-          elevationKey: 'ele',
-          levelKey: 'level',
-          contourLayer: 'contours',
-          extent: 4096,
-          buffer: 1,
-        },
+        { levels, ...TRACE },
         new AbortController(),
       );
       return new Uint8Array(result.arrayBuffer);
@@ -148,10 +163,10 @@ export function createContourService({ fetchDem, decode }) {
 /** Parse a contour path into a tile, or `null` when it is not one GoWay makes. */
 export function contourTileOf(pathname) {
   const match = CONTOUR_PATH.exec(pathname);
-  if (!match) return null;
-  const z = Number(match[1]);
-  const x = Number(match[2]);
-  const y = Number(match[3]);
+  if (!match || match[1] !== CONTOUR_VERSION) return null;
+  const z = Number(match[2]);
+  const x = Number(match[3]);
+  const y = Number(match[4]);
   if (z < CONTOUR_ZOOMS.min || z > CONTOUR_ZOOMS.max) return null;
   const span = 2 ** z;
   if (x >= span || y >= span) return null;
@@ -159,22 +174,47 @@ export function contourTileOf(pathname) {
 }
 
 /**
- * The route. `service` is made once per isolate by `index.js` (its DEM seam
- * is the terrain route); the edge cache keys on the DEM archive, so a new
- * archive is a new set of contour tiles and an old one is never served for it.
+ * Where the DEM a contour tile is traced from lives, for the cache key: GoWay's
+ * own elevation archive in R2, by its key (keys are dated and never
+ * overwritten, so a new archive is a new key). `null` when this deployment has
+ * none — and then no contour is made at all: tracing from the upstream proxy
+ * would let any client fan nine fetches out to a public endpoint per miss.
+ */
+export function contourDemSource(env) {
+  return env.MAP_TILES && env.MAP_TERRAIN_ARCHIVE ? `r2/${env.MAP_TERRAIN_ARCHIVE}` : null;
+}
+
+/** The edge cache's key for a tile: the version, the DEM it was traced from, the tile. */
+export function contourCacheKey(tile, demSource) {
+  return `https://goway.internal/map/contours/${CONTOUR_VERSION}/${encodeURIComponent(demSource)}/${tile.z}/${tile.x}/${tile.y}.pbf`;
+}
+
+/**
+ * The route. `service` is made per isolate and per DEM archive by `index.js`
+ * (its DEM seam is the terrain route's R2 reader); the edge cache keys on the
+ * contour version and the DEM archive, so neither a new tracer nor a new
+ * archive is ever answered with an old tile.
  */
 export async function serveContours(url, request, env, ctx, service, headersFor) {
   const tile = contourTileOf(url.pathname);
   if (!tile) {
-    return new Response('Not a contour tile GoWay makes (z9–14).', {
+    return new Response(`Not a contour tile GoWay makes (${CONTOUR_VERSION}, z9–14).`, {
       status: 404,
       headers: { ...headersFor(0), 'content-type': 'text/plain; charset=utf-8' },
     });
   }
-  const archive = env.MAP_TERRAIN_ARCHIVE || 'upstream';
-  const cacheKey = new Request(
-    `https://goway.internal/map/contours/${encodeURIComponent(archive)}/${tile.z}/${tile.x}/${tile.y}.pbf`,
-  );
+  const demSource = contourDemSource(env);
+  if (!demSource) {
+    return new Response(
+      "Contours are traced only from GoWay's own elevation archive in R2 (MAP_TILES + " +
+        'MAP_TERRAIN_ARCHIVE), which this deployment does not have.',
+      {
+        status: 503,
+        headers: { ...headersFor(0), 'content-type': 'text/plain; charset=utf-8' },
+      },
+    );
+  }
+  const cacheKey = new Request(contourCacheKey(tile, demSource));
   const cache = typeof caches === 'undefined' ? null : caches.default;
   const hit = cache ? await cache.match(cacheKey) : undefined;
   if (hit) {

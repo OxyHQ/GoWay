@@ -49,6 +49,9 @@ import {
   presetAppearance,
 } from './style/catalogue';
 import { OPENMAPTILES_SOURCE_LAYERS } from './style/schema';
+// The contour tiles' version: in their URL, so a year of cached tiles never
+// outlives a change to what they hold (`worker/contourVersion.js`).
+import { CONTOUR_VERSION } from '../../worker/contourVersion.js';
 
 /** Which of the two cartographic appearances a style document is for. */
 export type MapAppearance = 'light' | 'dark';
@@ -262,7 +265,7 @@ export const GOWAY_MAP_PATHS = {
    * cached at the edge (`worker/contours.js`, z9–14). Named by the Outdoors
    * style documents.
    */
-  contours: '/map/contours/{z}/{x}/{y}.pbf',
+  contours: `/map/contours/${CONTOUR_VERSION}/{z}/{x}/{y}.pbf`,
 } as const;
 
 /**

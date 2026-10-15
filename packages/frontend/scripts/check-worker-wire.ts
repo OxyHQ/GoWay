@@ -30,13 +30,15 @@ import { cpSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } f
 import { tmpdir } from 'node:os';
 import { request as httpRequest } from 'node:http';
 import { dirname, join, resolve } from 'node:path';
-import { gunzipSync } from 'node:zlib';
+import { brotliDecompressSync, gunzipSync } from 'node:zlib';
 
 import { convertV4MiniflareOptions, Miniflare } from 'miniflare';
 
 import { mergeEntries, mergeManifest } from './build-satellite-manifest';
 import { writePmtiles } from './citygen/pmtilesWriter';
 import { COMPRESSION, TILE_TYPE } from '../worker/pmtiles.js';
+import { CONTOUR_VERSION } from '../worker/contourVersion.js';
+import { decodeVectorTile } from './mapgen/mvt';
 
 const args = Object.fromEntries(
   process.argv.slice(2).map((raw) => {
@@ -163,6 +165,56 @@ async function bundle(
   return { dir, modules };
 }
 
+// The contour route (`worker/contours.js`): an elevation archive of a cone
+// 2,000 m high, as Terrarium WebP (lossless) at z11, the DEM zoom a z12
+// contour tile reads (overzoom 1), over the 3×3 block its neighbours need.
+const TERRAIN_KEY = 'terrain/wire-test.pmtiles';
+const CONTOUR_TILE = { z: 12, x: 2124, y: 1458 };
+const DEM_SIZE = 512;
+
+async function terrainArchive(): Promise<Uint8Array> {
+  const { default: encode, init } = await import('@jsquash/webp/encode.js');
+  await init(
+    await WebAssembly.compile(
+      readFileSync(Bun.resolveSync('@jsquash/webp/codec/enc/webp_enc.wasm', FRONTEND_DIR)),
+    ),
+  );
+  const parent = { x: CONTOUR_TILE.x >> 1, y: CONTOUR_TILE.y >> 1 };
+  const tiles = [];
+  for (let dx = -1; dx <= 1; dx += 1) {
+    for (let dy = -1; dy <= 1; dy += 1) {
+      const data = new Uint8ClampedArray(DEM_SIZE * DEM_SIZE * 4);
+      for (let py = 0; py < DEM_SIZE; py += 1) {
+        for (let px = 0; px < DEM_SIZE; px += 1) {
+          const gx = dx + px / DEM_SIZE - 0.5;
+          const gy = dy + py / DEM_SIZE - 0.5;
+          const v = Math.max(0, 2000 - 1800 * Math.hypot(gx, gy)) + 32768;
+          const i = (py * DEM_SIZE + px) * 4;
+          data[i] = Math.floor(v / 256);
+          data[i + 1] = Math.floor(v) % 256;
+          data[i + 2] = Math.floor((v % 1) * 256);
+          data[i + 3] = 255;
+        }
+      }
+      const webp = await encode({ data, width: DEM_SIZE, height: DEM_SIZE } as ImageData, {
+        lossless: 1,
+      });
+      tiles.push({ z: 11, x: parent.x + dx, y: parent.y + dy, bytes: new Uint8Array(webp) });
+    }
+  }
+  return writePmtiles(tiles, {
+    minZoom: 11,
+    maxZoom: 11,
+    bounds: [-180, -85, 180, 85],
+    center: [0, 0, 11],
+    metadata: {},
+    tileType: TILE_TYPE.WEBP,
+    tileCompression: COMPRESSION.NONE,
+  });
+}
+
+const TERRAIN_ARCHIVE = await terrainArchive();
+
 /** A fresh runtime (empty edge cache, empty bucket) holding the archive. */
 async function runtime(workerDir: string) {
   const bundled = await bundle(workerDir);
@@ -175,7 +227,11 @@ async function runtime(workerDir: string) {
       // wrangler.toml's, so the runtime behaves as the deployed Worker does.
       compatibilityDate: COMPATIBILITY_DATE,
       r2Buckets: ['MAP_TILES'],
-      bindings: { MAP_TILE_ARCHIVE: KEY, MAP_SATELLITE_MANIFEST: 'satellite/manifest.json' },
+      bindings: {
+        MAP_TILE_ARCHIVE: KEY,
+        MAP_SATELLITE_MANIFEST: 'satellite/manifest.json',
+        MAP_TERRAIN_ARCHIVE: TERRAIN_KEY,
+      },
     }),
   );
   const origin = await mf.ready;
@@ -190,12 +246,17 @@ async function runtime(workerDir: string) {
     put(key: string, value: Uint8Array): Promise<unknown>;
   };
   await bucket.put(KEY, archive);
+  await bucket.put(TERRAIN_KEY, TERRAIN_ARCHIVE);
   await bucket.put(SAT_KEY, SAT_ARCHIVE);
   await bucket.put(
     'satellite/manifest.json',
     new TextEncoder().encode(JSON.stringify(SAT_MANIFEST)),
   );
-  return { mf, url, satellite };
+  const contour = new URL(
+    `/map/contours/${CONTOUR_VERSION}/${CONTOUR_TILE.z}/${CONTOUR_TILE.x}/${CONTOUR_TILE.y}.pbf`,
+    origin,
+  );
+  return { mf, url, satellite, contour };
 }
 
 /** A raw GET: the body exactly as it crossed the socket, nothing decoded. */
@@ -303,7 +364,61 @@ async function checkSatellite(dir: string): Promise<string[]> {
   return problems;
 }
 
-const problems = [...(await check(workerDir)), ...(await checkSatellite(workerDir))];
+/**
+ * The contour route under workerd: the tile traced from the R2 elevation
+ * archive (the WebAssembly decoder instantiated by the runtime, not by Node),
+ * a vector tile with contour lines, the same bytes on the miss and the hit,
+ * and at most the one gzip layer the client asked for.
+ */
+async function checkContours(dir: string): Promise<string[]> {
+  const problems: string[] = [];
+  for (const client of CLIENTS) {
+    const { mf, contour } = await runtime(dir);
+    try {
+      let first: Buffer | null = null;
+      for (const pass of ['miss', 'hit']) {
+        const response = await raw(contour, client.acceptEncoding);
+        const declared = response.headers['content-encoding'] ?? null;
+        // A generated tile is compressed by the runtime for the client that
+        // asks, brotli included; what matters is that it is said, once.
+        const { count, inner } = layers(
+          declared === 'br' ? brotliDecompressSync(response.body) : response.body,
+        );
+        let lines = 0;
+        try {
+          lines = decodeVectorTile(inner).find((layer) => layer.name === 'contours')?.features.length ?? 0;
+        } catch {
+          lines = 0;
+        }
+        const ok =
+          response.status === 200 &&
+          count <= 1 &&
+          (count === 1) === (declared === 'gzip') &&
+          (declared !== 'br' || client.acceptEncoding?.includes('br') === true) &&
+          lines > 0 &&
+          (first === null || Buffer.compare(first, inner) === 0);
+        first ??= inner;
+        console.log(
+          `${ok ? '✓' : '✗'} contours  ${client.name.padEnd(9)} ${pass.padEnd(4)} status ${response.status} · ${response.body.length} B · ${count} gzip layer(s) · ${lines} line(s)`,
+        );
+        if (!ok) {
+          problems.push(
+            `contours ${client.name} ${pass}: status ${response.status}, ${count} gzip layer(s), content-encoding ${declared ?? 'none'}, ${lines} contour line(s)`,
+          );
+        }
+      }
+    } finally {
+      await mf.dispose();
+    }
+  }
+  return problems;
+}
+
+const problems = [
+  ...(await check(workerDir)),
+  ...(await checkSatellite(workerDir)),
+  ...(await checkContours(workerDir)),
+];
 if (problems.length > 0) {
   for (const problem of problems) console.error(`✗ ${problem}`);
   process.exit(1);

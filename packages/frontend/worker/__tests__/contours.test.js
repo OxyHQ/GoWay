@@ -12,15 +12,36 @@ import { VectorTile } from '@mapbox/vector-tile';
 import { PbfReader } from 'pbf';
 
 import { MEMORY_BUDGET } from '../budget.js';
+import { createHash } from 'node:crypto';
+import { readFileSync } from 'node:fs';
+
 import {
   CONTOUR_CACHE_ENTRIES,
   CONTOUR_ENTRY_BYTES,
   CONTOUR_LEVELS,
+  CONTOUR_PARAMETERS,
+  CONTOUR_TRACER,
+  CONTOUR_VERSION,
+  contourCacheKey,
+  contourDemSource,
   contourTileOf,
   createContourService,
   serveContours,
 } from '../contours.js';
 import worker from '../index.js';
+import { gowayMapEndpoints } from '../../lib/map/provider';
+
+/**
+ * What {@link CONTOUR_VERSION} stands for: the fingerprint of every parameter
+ * a tile's bytes depend on. Change a level, an option or the tracer and this
+ * fails — bump `contourVersion.js` and record the new fingerprint here.
+ */
+const FINGERPRINTS = {
+  v1: '0fa3ff749be050b1',
+};
+
+/** A worker env with GoWay's elevation archive in R2. */
+const ARCHIVE_ENV = { MAP_TILES: {}, MAP_TERRAIN_ARCHIVE: 'terrain/mapterhorn-20260901.pmtiles' };
 
 const SIZE = 512;
 
@@ -95,6 +116,23 @@ describe('the contour tracer', () => {
     expect((await service.tile(8, 10, 10)).length).toBe(0);
   });
 
+  test('missing DEM is sea level: a flat sea with no DEM anywhere has no contours, whatever its neighbours', async () => {
+    // The middle tile is at 0 m and every neighbour is missing. Were a
+    // missing tile anything but sea level, the seam between them would cross
+    // every level between and draw a ring of contours around the tile.
+    const flat = new Uint8ClampedArray(SIZE * SIZE * 4);
+    for (let i = 0; i < SIZE * SIZE; i += 1) {
+      flat[i * 4] = 128; // 128·256 − 32768 = 0 m
+      flat[i * 4 + 3] = 255;
+    }
+    const service = createContourService({
+      fetchDem: async (zoom, x, y) =>
+        zoom === 11 && x === 1050 && y === 730 ? new TextEncoder().encode('flat') : null,
+      decode: async () => ({ width: SIZE, height: SIZE, data: flat }),
+    });
+    expect(contoursOf(await service.tile(12, 2100, 1460))).toEqual([]);
+  });
+
   test('a reader panning far holds no more than the isolate budget allows', async () => {
     // One tile's 3×3 DEM neighbourhood fits, and the caches fit their line.
     expect(CONTOUR_CACHE_ENTRIES).toBeGreaterThanOrEqual(9);
@@ -110,25 +148,73 @@ describe('the route', () => {
   const headersFor = (seconds) => ({ 'cache-control': `public, max-age=${seconds}` });
   const ctx = { waitUntil() {} };
 
-  test('takes z9–14 tile paths inside the world, and nothing else', () => {
-    expect(contourTileOf('/map/contours/12/2100/1460.pbf')).toEqual({ z: 12, x: 2100, y: 1460 });
-    expect(contourTileOf('/map/contours/8/1/1.pbf')).toBeNull();
-    expect(contourTileOf('/map/contours/15/1/1.pbf')).toBeNull();
-    expect(contourTileOf('/map/contours/9/512/1.pbf')).toBeNull();
-    expect(contourTileOf('/map/contours/12/../1.pbf')).toBeNull();
+  test('takes this version’s z9–14 tile paths inside the world, and nothing else', () => {
+    const v = CONTOUR_VERSION;
+    expect(contourTileOf(`/map/contours/${v}/12/2100/1460.pbf`)).toEqual({ z: 12, x: 2100, y: 1460 });
+    expect(contourTileOf('/map/contours/12/2100/1460.pbf')).toBeNull();
+    expect(contourTileOf('/map/contours/v0/12/2100/1460.pbf')).toBeNull();
+    expect(contourTileOf(`/map/contours/${v}/8/1/1.pbf`)).toBeNull();
+    expect(contourTileOf(`/map/contours/${v}/15/1/1.pbf`)).toBeNull();
+    expect(contourTileOf(`/map/contours/${v}/9/512/1.pbf`)).toBeNull();
+    expect(contourTileOf(`/map/contours/${v}/12/../1.pbf`)).toBeNull();
+  });
+
+  test('the version stands for the parameters: a change to them without a new version fails here', () => {
+    const fingerprint = createHash('sha256')
+      .update(JSON.stringify(CONTOUR_PARAMETERS))
+      .digest('hex')
+      .slice(0, 16);
+    expect(FINGERPRINTS[CONTOUR_VERSION]).toBe(fingerprint);
+    // The tracer named is the tracer installed.
+    const installed = JSON.parse(
+      readFileSync(new URL('../../../../node_modules/maplibre-contour/package.json', import.meta.url), 'utf8'),
+    ).version;
+    expect(CONTOUR_TRACER).toBe(`maplibre-contour@${installed}`);
+  });
+
+  test('the style documents name the versioned URL', () => {
+    expect(gowayMapEndpoints('https://goway.to').contours).toBe(
+      `https://goway.to/map/contours/${CONTOUR_VERSION}/{z}/{x}/{y}.pbf`,
+    );
+  });
+
+  test('the edge cache key holds the version and the DEM archive the tile was traced from', () => {
+    const tile = { z: 12, x: 2100, y: 1460 };
+    const a = contourCacheKey(tile, contourDemSource(ARCHIVE_ENV));
+    const b = contourCacheKey(tile, contourDemSource({ ...ARCHIVE_ENV, MAP_TERRAIN_ARCHIVE: 'terrain/bare-earth-20261101.pmtiles' }));
+    expect(a).not.toBe(b);
+    expect(a).toContain(CONTOUR_VERSION);
+    expect(a).toContain(encodeURIComponent('r2/terrain/mapterhorn-20260901.pmtiles'));
+  });
+
+  test('without GoWay’s own elevation archive nothing is traced: 503, no DEM fetched', async () => {
+    let fetched = 0;
+    const service = createContourService({
+      fetchDem: async () => {
+        fetched += 1;
+        return null;
+      },
+      decode: async () => null,
+    });
+    const url = new URL(`https://goway.to/map/contours/${CONTOUR_VERSION}/12/2100/1460.pbf`);
+    for (const env of [{}, { MAP_TERRAIN_UPSTREAM: 'https://tiles.mapterhorn.com/{z}/{x}/{y}.webp' }]) {
+      const response = await serveContours(url, new Request(url), env, ctx, service, headersFor);
+      expect(response.status).toBe(503);
+    }
+    expect(fetched).toBe(0);
   });
 
   test('answers a tile as a cacheable vector tile, and a bad path as a 404', async () => {
     const service = serviceOver(12, 2100, 1460);
-    const url = new URL('https://goway.to/map/contours/12/2100/1460.pbf');
-    const response = await serveContours(url, new Request(url), {}, ctx, service, headersFor);
+    const url = new URL(`https://goway.to/map/contours/${CONTOUR_VERSION}/12/2100/1460.pbf`);
+    const response = await serveContours(url, new Request(url), ARCHIVE_ENV, ctx, service, headersFor);
     expect(response.status).toBe(200);
     expect(response.headers.get('content-type')).toBe('application/x-protobuf');
     expect(response.headers.get('cache-control')).toContain('max-age=31536000');
     expect(contoursOf(new Uint8Array(await response.arrayBuffer())).length).toBeGreaterThan(0);
 
-    const bad = new URL('https://goway.to/map/contours/20/1/1.pbf');
-    expect((await serveContours(bad, new Request(bad), {}, ctx, service, headersFor)).status).toBe(
+    const bad = new URL(`https://goway.to/map/contours/${CONTOUR_VERSION}/20/1/1.pbf`);
+    expect((await serveContours(bad, new Request(bad), ARCHIVE_ENV, ctx, service, headersFor)).status).toBe(
       404,
     );
   });
@@ -140,8 +226,8 @@ describe('the route', () => {
       },
       decode: async () => null,
     });
-    const url = new URL('https://goway.to/map/contours/12/2100/1460.pbf');
-    const response = await serveContours(url, new Request(url), {}, ctx, broken, headersFor);
+    const url = new URL(`https://goway.to/map/contours/${CONTOUR_VERSION}/12/2100/1460.pbf`);
+    const response = await serveContours(url, new Request(url), ARCHIVE_ENV, ctx, broken, headersFor);
     expect(response.status).toBe(502);
   });
 

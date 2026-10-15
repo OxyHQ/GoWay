@@ -521,25 +521,49 @@ async function serveGlyphs(url, request, env) {
 }
 
 /**
- * The contour maker for this isolate: its DEM is the terrain route itself
- * (archive or upstream, whichever this deployment serves), its WebP decoder
- * the lazily loaded WebAssembly one. Made on the first contour request and
- * kept, so its small DEM cache serves the neighbouring tiles a pan asks for.
+ * The contour maker for this isolate and this DEM archive: its DEM is GoWay's
+ * own elevation archive in R2, read as the terrain route reads it; its WebP
+ * decoder the lazily loaded WebAssembly one. Made on the first contour request
+ * and kept (its small caches serve the neighbouring tiles a pan asks for), and
+ * made again if the archive key changes.
+ *
+ * It holds NO request's `ctx`: a DEM read it starts may be awaited by later
+ * requests (the manager shares in-flight fetches), and a request's
+ * `waitUntil` is only good while that request lives. So the edge-cache write
+ * a DEM read makes is awaited in the read itself ({@link settledContext}),
+ * and each contour request's own write uses its own `ctx` (`serveContours`).
  */
 let contours = null;
-function contourService(env, ctx) {
-  if (contours) return contours;
-  contours = createContourService({
+function contourService(env) {
+  const archive = env.MAP_TERRAIN_ARCHIVE;
+  if (contours && contours.archive === archive) return contours.service;
+  const service = createContourService({
     fetchDem: async (z, x, y) => {
-      const url = new URL(`https://goway.internal/map/terrain/${z}/${x}/${y}.webp`);
-      const response = await serveTerrain(url, new Request(url), env, ctx);
-      if (response.status === 404) return null;
-      if (!response.ok) throw new Error(`elevation tile ${z}/${x}/${y}: HTTP ${response.status}`);
-      return new Uint8Array(await response.arrayBuffer());
+      const pending = [];
+      const request = new Request(`https://goway.internal/map/terrain/${z}/${x}/${y}.webp`);
+      const response = await serveTerrainFromArchive(z, x, y, request, env, settledContext(pending));
+      // The archive has no tile there (open sea): sea level, `contours.js` says.
+      const bytes = response.ok ? new Uint8Array(await response.arrayBuffer()) : null;
+      await Promise.allSettled(pending);
+      if (!response.ok && response.status !== 404) {
+        throw new Error(`elevation tile ${z}/${x}/${y}: HTTP ${response.status}`);
+      }
+      return bytes;
     },
     decode: async (bytes) => (await import('./webpDecode.js')).decodeWebp(bytes),
   });
-  return contours;
+  contours = { archive, service };
+  return service;
+}
+
+/** A `ctx` whose `waitUntil` collects the work for the caller to await itself. */
+function settledContext(pending) {
+  return {
+    waitUntil(promise) {
+      pending.push(promise);
+    },
+    passThroughOnException() {},
+  };
 }
 
 export default {
@@ -567,7 +591,7 @@ export default {
     // Contour lines for the Outdoors style, traced here from the elevation
     // tiles above and cached at the edge (`contours.js`).
     if (url.pathname.startsWith('/map/contours/')) {
-      return serveContours(url, request, env, ctx, contourService(env, ctx), publicHeaders);
+      return serveContours(url, request, env, ctx, contourService(env), publicHeaders);
     }
     // GoWay's 3D city tiles and their road graph, per region, by manifest
     // (`city.js`). Inert until `MAP_CITY_MANIFEST` is set.
