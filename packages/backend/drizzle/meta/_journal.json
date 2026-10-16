@@ -162,6 +162,13 @@
       "when": 1791859225436,
       "tag": "0022_goway_road_rules",
       "breakpoints": true
+    },
+    {
+      "idx": 23,
+      "version": "7",
+      "when": 1792056111840,
+      "tag": "0023_silent_killmonger",
+      "breakpoints": true
     }
   ]
 }

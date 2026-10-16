@@ -1,3 +1,4 @@
+import { LISTS_EN, LISTS_ES } from './messages/lists';
 import { matchLanguageTag, normalizeLanguageTag } from '@goway.to/sdk';
 import { createContext, useContext, useMemo, type ReactNode } from 'react';
 
@@ -30,6 +31,7 @@ const en: Messages = {
   ...STREET3D_EN,
   ...PRODUCTS_EN,
   ...CREDITS_EN,
+  ...LISTS_EN,
 };
 
 const es: Messages = {
@@ -49,6 +51,7 @@ const es: Messages = {
   ...STREET3D_ES,
   ...PRODUCTS_ES,
   ...CREDITS_ES,
+  ...LISTS_ES,
 };
 
 const locales: Record<string, Messages> = { en, es };
