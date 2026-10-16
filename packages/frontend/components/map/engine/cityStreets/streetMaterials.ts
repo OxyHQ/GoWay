@@ -66,7 +66,7 @@ import {
 import { mapBlending, perObject } from '../city3d/tsl/common';
 import type { SkyNodes } from '../city3d/tsl/skyNodes';
 import { STREET_GROUND_MARGIN } from '../city3d/terrainGround';
-import { MIN_HALF_PX, STREET_LIFT_M } from './meshBuffers';
+import { MIN_HALF_PX, STREET_LIFT_M, STREET_Z_PER_M } from './meshBuffers';
 import { ATLAS_SIZE, SDF_EDGE } from './streetAtlas';
 
 /** Where a street mesh carries its tile (`StreetTile`). */
@@ -200,9 +200,9 @@ export function createStreetMaterials(inputs: StreetMaterialInputs): StreetMater
   // --- Surfaces: paving, asphalt, tints ---------------------------------------
   const surfaces = mapBlending(new MeshBasicNodeMaterial());
   {
-    const position = attribute('position', 'vec3');
-    // material, shade, depth layer, —
+    // material, shade, depth layer, height above the ground (mm)
     const attr = attribute('attr', 'vec4');
+    const position = vec3(attribute('position', 'vec2'), attr.w.div(STREET_Z_PER_M));
     surfaces.vertexNode = place(position, attr.z);
     const shade = shadeAt(position);
     const vMaterial = varying(attr.x);
@@ -224,7 +224,8 @@ export function createStreetMaterials(inputs: StreetMaterialInputs): StreetMater
   // --- Markings: lines, crossings, arrows, words, names ------------------------
   const markings = new MeshBasicNodeMaterial();
   {
-    const position = attribute('position', 'vec3');
+    // On the ground: a marking has no height of its own.
+    const position = vec3(attribute('position', 'vec2'), 0);
     const offset = attribute('offset', 'vec2');
     const uv = attribute('uv', 'vec2');
     // colour, mode (0 flat, 1 line, 2 sdf), depth layer, —

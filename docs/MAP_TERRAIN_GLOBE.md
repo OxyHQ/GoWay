@@ -359,6 +359,12 @@ tile). Each tile's ground slot is a layer of one array texture, uploaded on
 its own (69 KB); a tile's two meshes go to the GPU in separate frames within
 the profile's upload budget. What the cut costs on a real GPU, per preset:
 `MAP_PERFORMANCE.md` → "The street on the terrain's facets, on a real GPU".
+A street vertex is two floats, x and y: a surface's height over the ground
+(0, or a kerb's 15 cm) is in its `attr`'s spare byte, in millimetres, and a
+marking's is 0 (`meshBuffers.ts`, `STREET_Z_PER_M`; a height the byte cannot
+hold throws in the worker). The third float was 4 of a surface vertex's 16
+bytes and of a marking's 32: −1.05 MB of GPU memory in the gate's street view at every preset, −9.5%
+of the street detail's own, every vertex exactly where it was.
 
 **Cutting only where the facets bend does not pay, measured.** The obvious
 saving — merge the facets wherever the street ground is a plane and cut only
