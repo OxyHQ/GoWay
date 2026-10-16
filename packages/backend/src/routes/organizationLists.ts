@@ -110,29 +110,33 @@ export function createOrganizationListsRouter(deps: {
     route(async (req, res) => {
       const { listId } = parsePath(organizationListPathSchema, req.params);
       const { cursor, limit, state } = parseQuery(organizationListEntryQuerySchema, req.query);
-      await getDb().transaction(async (tx) => {
-        const list = await repo.getList(tx, listId, true);
-        const binding = cursorBinding('organization-list-entries', {
-          listId,
-          state,
-          revision: list.revision,
-        });
-        const after = decodeCursor(
-          cursor,
-          binding,
-          z.tuple([z.number().int().nonnegative(), z.string().min(1)]),
-        );
-        const rows = await repo.listEntries(tx, listId, state, after, limit + 1, new Date());
-        res.json(
-          pageOf(
-            rows,
-            limit,
-            binding,
-            (r) => [r.position, r.id],
-            (r) => r,
-          ),
-        );
-      });
+      // One snapshot binds the cursor's revision to the rows read, without locking a public read behind writers.
+      res.json(
+        await getDb().transaction(
+          async (tx) => {
+            const list = await repo.getList(tx, listId);
+            const binding = cursorBinding('organization-list-entries', {
+              listId,
+              state,
+              revision: list.revision,
+            });
+            const after = decodeCursor(
+              cursor,
+              binding,
+              z.tuple([z.number().int().nonnegative(), z.string().min(1)]),
+            );
+            const rows = await repo.listEntries(tx, listId, state, after, limit + 1, new Date());
+            return pageOf(
+              rows,
+              limit,
+              binding,
+              (r) => [r.position, r.id],
+              (r) => r,
+            );
+          },
+          { isolationLevel: 'repeatable read', accessMode: 'read only' },
+        ),
+      );
     }),
   );
   router.post(

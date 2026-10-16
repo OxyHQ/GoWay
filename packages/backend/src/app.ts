@@ -1,5 +1,3 @@
-import { createOrganizationListsRouter } from './routes/organizationLists';
-import { createOrganizationAuthority } from './oxy/organizationAuthority';
 /**
  * Builds the HTTP application.
  *
@@ -35,12 +33,14 @@ import {
 } from './middleware/auth';
 import { createGoWayCors } from './middleware/cors';
 import type { LiveService } from './live';
+import { createOrganizationAuthority } from './oxy/organizationAuthority';
 import { healthRouter } from './routes/health';
 import { createCaptureRouter } from './routes/capture';
 import { createCategoriesRouter } from './routes/categories';
 import { createLiveRouter } from './routes/live';
 import { createModerationRouter } from './routes/moderation';
 import { createOpenApiRouter } from './routes/openapi';
+import { createOrganizationListsRouter } from './routes/organizationLists';
 import { createPlaceMediaRouter } from './routes/placeMedia';
 import { createPlaceReviewsRouter } from './routes/placeReviews';
 import { createPlacesRouter } from './routes/places';

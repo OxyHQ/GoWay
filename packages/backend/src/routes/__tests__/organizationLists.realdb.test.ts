@@ -311,6 +311,8 @@ describe('organization lists, real API and PostGIS with Oxy HTTP authority', () 
         await new Promise((resolve) => setTimeout(resolve, 10));
       }
       expect(waiting).toBe(true);
+      // A public read never queues behind a writer's lock.
+      expect((await api.call('GET', `/organization-lists/${list.id}/entries`)).status).toBe(200);
       oxy.memberships.delete(membershipKey('contender', org));
     } finally {
       release();
