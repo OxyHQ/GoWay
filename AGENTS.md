@@ -28,10 +28,6 @@ An env variable is only what differs per deployment (secrets, origins, buckets, 
 
 ## Packages
 
-npm releases: only Actions → Release packages (`release-packages.yml`, Oxy's shared
-workflow, OIDC); a package's gates are its `prepublishOnly`. Never publish from a laptop —
-`~/Oxy/docs/npm-releases.md`.
-
 - `packages/*` only, never `apps/`. Bun workspaces are `contracts`, `sdk`, `frontend`, `backend`.
 - `packages/reconstruction-worker` is Python/CUDA and deliberately **not** a Bun workspace; drive it through the root `worker:setup|doctor|run` scripts, which delegate to its `Makefile`/`uv`.
 - Street 3D capture and contribution UI live in `packages/frontend`. There is no second consumer app.
