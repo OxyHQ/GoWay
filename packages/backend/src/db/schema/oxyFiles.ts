@@ -45,7 +45,11 @@ export const oxyFileReferenceChanges = pgTable(
     state: text().notNull().default('pending'),
     /** Delivery attempts started, including one in flight. */
     attempts: integer().notNull().default(0),
-    /** When it may next be tried; pushed forward while an attempt holds it. */
+    /**
+     * When it may next be tried, after a failed attempt's backoff; pushed
+     * forward while an attempt holds it. Not read while `attempts` is 0: a
+     * change never attempted is due at once (`db/oxyFiles/referenceChanges`).
+     */
     nextAttemptAt: timestamptz().notNull().defaultNow(),
     /** Why the last attempt failed: an HTTP status or an error class. Never a message. */
     lastFailure: text(),
