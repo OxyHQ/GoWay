@@ -337,9 +337,9 @@ describe('wired on both canvases', () => {
     const native = read('MapCanvas.native.tsx');
     const retry = native.slice(native.indexOf('const retry = useCallback('));
     const body = retry.slice(0, retry.indexOf('\n  }, ['));
-    expect(body).toContain(
-      'cameraReports.current = createNativeCameraReports(() => viewportListener.current);',
-    );
+    // With the settled-view listener too (`imageryCredits.test.ts`).
+    expect(body).toContain('cameraReports.current = createNativeCameraReports(\n');
+    expect(body).toContain('() => viewportListener.current,');
     expect(body).toContain('setReloadKey((key) => key + 1);');
   });
 });

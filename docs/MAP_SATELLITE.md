@@ -128,6 +128,17 @@ not a tile edge. Within a tier the Worker picks, per tile, the first published
 set (catalogue order = priority) that **has** that tile, so where two sources
 overlap the preferred one wins and the other fills its holes.
 
+Each tier's raster source is **bounded by what is published in it**: the
+Worker serves the satellite and hybrid style documents itself
+(`/map/styles/{satellite,hybrid}/*`, `serveImageryStyle`) with each tier's
+`bounds` the union of its sets' boxes (`withImageryBounds`), and a tier with
+nothing published bounded to a single point at the antimeridian, so MapLibre
+asks for nothing there. Without it every `detail` and `fine` tile in view
+outside coverage is a Worker invocation answering a 404 the edge does not
+keep. One box a tier (MapLibre takes one `bounds` a source): two far-apart
+regions widen it to span both, so it saves most while coverage is regional;
+inside the box the manifest still answers 404 with no storage read.
+
 ### Sets, cells, keys
 
 A **set** is one source (or composite) at one vintage — `icgc-ortofoto-2025`.
@@ -181,22 +192,28 @@ deleted by the build.
 | `/map/satellite/{base,detail,fine}/{z}/{x}/{y}.webp` | **200** the stored WebP bytes (`image/webp`, a day at edge and browser, CORS `*`, CORP cross-origin) · **404** no published set has it (five minutes: the next manifest may). Outside the tier's zooms or the world: 404 before storage is touched |
 | `/map/satellite/coverage.json` | sets, tiers, zooms, sources, cells — what the client needs for the credit; nothing about storage |
 | `/map/satellite/manifest.json` | the manifest |
-| `/map/satellite/data/<receipt key>` | a receipt the current manifest publishes; archives and the rest of the bucket are not offered |
+| `/map/satellite/data/<receipt key>` | a receipt the current manifest publishes (a retired cell's receipt is not, though it is still in the bucket); archives and the rest of the bucket are not offered |
+| `/map/styles/{satellite,hybrid}/<light>.json` | the committed style document, each imagery tier bounded by the live manifest (five minutes, as the manifest); anything else under those paths is the asset as it is |
 
 Each archive's answer for a tile — the tile, or "absent" — is cached at the
 edge under the archive's key, so a warm tile is one cache read and a cold one
 is one R2 read plus directory reads that are themselves cached a week (the
 same reader as every other route: `tiles.js` → `readTile`, sharing the
 isolate's byte-bounded directory memo). WebP is stored as it is
-(`tileCompression: NONE` — the codec is the compression), so `tileResponse`
-sends the stored bytes to every client with **no `Content-Encoding`**, and
+(`tileCompression: NONE` — the codec is the compression), so the stored bytes
+go to every client with **no `Content-Encoding` and no `Vary`** (nothing about
+the answer varies, so nothing splits the caches), and
 `check:worker-wire` holds the route to it in the real runtime (workerd): four
 clients (gzip, identity, br-only, none), edge-cache miss and hit, each must get
 the stored bytes as `image/webp`. **Memory**: the parsed manifest — its text
 and each set's compact cell tree (5 B a node) — has its own 1 MiB line in
-`budget.js`, and the parse refuses a manifest past it. **Off
+`budget.js`, and the parse refuses a manifest past it; concurrent cold
+requests share one read and parse of it. An archive whose PMTiles tile type
+is not its set's format (a WebP set's cell packed as PNG) is a 502, never
+cached, rather than bytes served under the wrong media type. **Off
 until configured**: with `MAP_SATELLITE_MANIFEST` unset every tile is 404, the
-coverage lists no sets, and no request touches storage.
+coverage lists no sets, the style documents bound every tier to nothing, and
+no request touches storage.
 
 ### Encoding
 
@@ -268,10 +285,16 @@ map stays up.
 ### The credit
 
 `useImageryCredits` reads `/map/satellite/coverage.json` once (five minutes),
-and at every settled camera `imagerySourcesInView` names every source of every
-set one of whose tiers is drawn at that zoom and one of whose cells meets the
-view — the over-zoomed base under an orthophoto included, because a tile edge
-can show it. Each source's short credit ("© ICGC", "© ESA WorldCover 2021 ·
+and `imageryCreditSources` names every source of every set one of whose tiers
+is drawn at the view's zoom and one of whose cells meets the view — the
+over-zoomed base under an orthophoto included, because a tile edge can show
+it. Both canvases hand it the same view (`imageryViewOf`): the camera the map
+opens at — on the web at load, on native at every style load through the
+camera reports' `getViewState()` (`nativeCameraReports.ts`), so a map opened in
+satellite and never moved is credited — and every settled move after it.
+Unsure means over-credit: until the coverage and a view are known, and
+whenever coverage.json cannot be read, **every** source is named. A failed
+fetch is not kept; the next view asks again. Each source's short credit ("© ICGC", "© ESA WorldCover 2021 ·
 Copernicus Sentinel-2", "NASA Blue Marble") rides in the compact ⓘ credit
 (`MapAttribution`, both canvases), linking to `/attribution#imagery`, where
 every source's notice is quoted in full (`lib/map/credits.ts`, from

@@ -19,7 +19,7 @@
 import { coverageAt, type CoverageNode, decodeCoverageTree, EMPTY } from '@/worker/coverageTree.js';
 
 import { IMAGERY_TIER_IDS, IMAGERY_TIERS, isImageryTierId, type ImageryTierId } from './imagery';
-import { type ImagerySourceId, isImagerySourceId } from './imagerySources';
+import { IMAGERY_SOURCES, type ImagerySourceId, isImagerySourceId } from './imagerySources';
 
 export interface ImageryCoverageSet {
   id: string;
@@ -165,4 +165,43 @@ export function imagerySourcesInView(
     }
   }
   return out;
+}
+
+/**
+ * The view both canvases hand the credit — web from `getBounds()` on load and
+ * at every settled camera, native from `getBounds()` once its style has
+ * loaded and at every `onRegionDidChange` — so the two cannot differ.
+ */
+export function imageryViewOf(
+  zoom: number,
+  [west, south, east, north]: readonly [number, number, number, number],
+): ImageryView {
+  return { zoom, west, south, east, north };
+}
+
+/**
+ * The imagery sources to credit — THE rule both canvases follow:
+ *
+ * - no coverage document (not loaded yet, or its fetch failed): every source
+ *   GoWay may serve (`IMAGERY_SOURCES`), because imagery may be on screen and
+ *   a source drawn uncredited breaks its licence;
+ * - no view yet (the map has not reported one): every source a published set
+ *   is made of;
+ * - otherwise the sources on screen ({@link imagerySourcesInView}).
+ *
+ * Over-credit while unsure, never under-credit.
+ */
+export function imageryCreditSources(
+  coverage: ImageryCoverage | null,
+  view: ImageryView | null,
+): ImagerySourceId[] {
+  if (!coverage) return Object.keys(IMAGERY_SOURCES) as ImagerySourceId[];
+  if (!view) {
+    const all: ImagerySourceId[] = [];
+    for (const set of coverage.sets) {
+      for (const source of set.sources) if (!all.includes(source)) all.push(source);
+    }
+    return all;
+  }
+  return imagerySourcesInView(coverage, view);
 }

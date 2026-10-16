@@ -52,14 +52,8 @@
 
 import { MEMORY_BUDGET } from './budget.js';
 import { compactCoverageAt, compactCoverageTree, FULL } from './coverageTree.js';
-import {
-  fromTileCacheEntry,
-  newTimings,
-  readTile,
-  serverTiming,
-  tileCacheEntry,
-  tileResponse,
-} from './tiles.js';
+import { COMPRESSION, decompress, TILE_TYPE } from './pmtiles.js';
+import { fromTileCacheEntry, newTimings, readTile, serverTiming, tileCacheEntry } from './tiles.js';
 
 /** The tiers by zoom — `IMAGERY_TIERS` in `lib/map/imagery.ts`, pinned equal by a test. */
 const TIERS = {
@@ -87,6 +81,8 @@ const MANIFEST_TTL = 300;
 
 /** The image formats a set may be stored in, and their media types. */
 const CONTENT_TYPES = { webp: 'image/webp', avif: 'image/avif' };
+/** The PMTiles tile type each format's archives must declare. */
+const TILE_TYPES = { webp: TILE_TYPE.WEBP, avif: TILE_TYPE.AVIF };
 
 function headers(cacheSeconds, extra = {}) {
   return {
@@ -183,6 +179,7 @@ export function parseSatelliteManifest(document) {
       bbox,
       cells: set.cells,
       contentType: CONTENT_TYPES[set.format],
+      tileType: TILE_TYPES[set.format],
       // Compact (5 B a node), decoded once per manifest: the planet's 19,174
       // WorldCover cells are a few thousand nodes.
       tree: compactCoverageTree(set.cells),
@@ -209,12 +206,29 @@ export function satelliteManifestBytes(parsed, documentLength) {
   return bytes;
 }
 
-const memory = { key: null, at: 0, value: null };
+const memory = { key: null, at: 0, value: null, pending: null };
 
-async function loadManifest(env, ctx) {
+/**
+ * The parsed manifest, per isolate for a minute. Concurrent cold requests
+ * share ONE read and parse (`memory.pending`): a burst of tiles at a cold
+ * isolate would otherwise read and parse it once each, several manifests'
+ * worth of memory at once against a budget sized for one.
+ */
+function loadManifest(env, ctx) {
   const key = env.MAP_SATELLITE_MANIFEST;
+  if (memory.key === key && memory.value && Date.now() - memory.at < 60_000) {
+    return Promise.resolve(memory.value);
+  }
+  if (memory.pending && memory.pending.key === key) return memory.pending.promise;
+  const promise = readManifest(env, ctx, key).finally(() => {
+    if (memory.pending?.promise === promise) memory.pending = null;
+  });
+  memory.pending = { key, promise };
+  return promise;
+}
+
+async function readManifest(env, ctx, key) {
   const now = Date.now();
-  if (memory.key === key && memory.value && now - memory.at < 60_000) return memory.value;
 
   const cacheKey = new Request(
     `https://goway.internal/satellite-manifest/${encodeURIComponent(key)}`,
@@ -272,7 +286,7 @@ export function candidatesFor(manifest, tier, z, x, y) {
  * through the edge cache, in `tiles.js`'s entry form (the stored bytes,
  * opaque). Both answers are cached: an archive key is never rewritten.
  */
-async function archiveTile(env, ctx, timings, key, z, x, y) {
+async function archiveTile(env, ctx, timings, entry, key, z, x, y) {
   const cache = caches.default;
   const cacheRequest = new Request(
     `https://goway.internal/tiles/v2/satellite/${encodeURIComponent(key)}/${z}/${x}/${y}`,
@@ -283,8 +297,29 @@ async function archiveTile(env, ctx, timings, key, z, x, y) {
   timings.cacheMs += Date.now() - started;
   if (hit) return (await fromTileCacheEntry(hit)).tile;
   const tile = await readTile(env.MAP_TILES, key, ctx, timings, z, x, y);
+  // The archive must hold what the manifest says the set is: a WebP set's
+  // archive declaring PNG (a mis-packed cell) would be served as image/webp
+  // and fail to decode in every browser. Refused, and never cached.
+  if (tile && tile.type !== entry.tileType) {
+    throw new Error(`${key} holds tile type ${tile.type}, not the set's ${entry.tileType}`);
+  }
   ctx.waitUntil(cache.put(cacheRequest, tileCacheEntry(tile, TILE_TTL, 404)));
   return tile;
+}
+
+/**
+ * An image tile's answer: the stored bytes (decoded only if an archive ever
+ * stored an image compressed), the same for every client — so no
+ * `Content-Encoding` and no `Vary: Accept-Encoding`, which would only split
+ * the caches of a response that never varies.
+ */
+async function imageResponse(tile, request, out) {
+  const body =
+    tile.compression === COMPRESSION.NONE
+      ? tile.bytes
+      : await decompress(tile.bytes, tile.compression);
+  out.set('content-length', String(body.length));
+  return new Response(request.method === 'HEAD' ? null : body, { headers: out });
 }
 
 /** `/map/satellite/<tier>/<z>/<x>/<y>.webp`. */
@@ -322,17 +357,17 @@ export async function serveSatelliteTile(url, request, env, ctx) {
   for (const { entry, key } of candidatesFor(manifest, tier, z, x, y)) {
     let tile;
     try {
-      tile = await archiveTile(env, ctx, timings, key, z, x, y);
+      tile = await archiveTile(env, ctx, timings, entry, key, z, x, y);
     } catch (error) {
       return text(502, `The imagery archive could not be read: ${error.message}`, 0);
     }
     if (!tile) continue;
     // Images are stored as they are (`tileCompression: NONE`, the codec is the
-    // compression): `tileResponse` sends them with no Content-Encoding, the
-    // same bytes for every client (`check:worker-wire` holds it to that).
+    // compression): the same bytes for every client, no Content-Encoding
+    // (`check:worker-wire` holds it to that).
     const out = new Headers(headers(TILE_TTL, { 'content-type': entry.contentType }));
     out.set('server-timing', serverTiming(timings, 'tile'));
-    return tileResponse(tile, request, out);
+    return imageResponse(tile, request, out);
   }
   // Nothing published has it: the tier below shows through. Short-lived,
   // because the next manifest may publish it.
@@ -430,6 +465,73 @@ export async function serveSatelliteData(url, request, env, ctx) {
   );
 }
 
+/**
+ * The bounds a tier's raster source gets in a style document while nothing is
+ * published in it: one point at the antimeridian's southern corner, so the
+ * client asks for (almost) nothing. MapLibre has no empty bounds.
+ */
+const NO_COVERAGE = [-180, -85.0511, -179.9999, -85.05];
+
+/**
+ * The imagery style documents with each tier's raster source bounded to what
+ * the manifest publishes in it (the union of its sets' boxes; `NO_COVERAGE`
+ * for a tier with none). MapLibre then requests only tiles that can exist: a
+ * 404 is a Worker invocation the edge does not answer for us, and a satellite
+ * map over the open sea or an unpublished country would otherwise send one
+ * for every detail tile in view. Pure.
+ *
+ * One box a tier: two far-apart regions widen it to span both (MapLibre takes
+ * one `bounds` a source), so it saves most while coverage is regional.
+ */
+export function withImageryBounds(style, manifest) {
+  const sources = { ...style.sources };
+  for (const tier of Object.keys(TIERS)) {
+    const id = `goway:imagery:${tier}`;
+    if (!sources[id]) continue;
+    let box = null;
+    for (const set of manifest?.sets ?? []) {
+      if (!set.tiers.includes(tier)) continue;
+      const [w, s, e, n] = set.bbox;
+      box = box
+        ? [Math.min(box[0], w), Math.min(box[1], s), Math.max(box[2], e), Math.max(box[3], n)]
+        : [w, s, e, n];
+    }
+    sources[id] = { ...sources[id], bounds: box ?? NO_COVERAGE };
+  }
+  return { ...style, sources };
+}
+
+const IMAGERY_STYLE_PATH = /^\/map\/styles\/(satellite|hybrid)\/[a-z]+\.json$/;
+
+/**
+ * `/map/styles/satellite|hybrid/<light>.json`: the committed document (an
+ * asset), its imagery sources bounded by the live manifest
+ * ({@link withImageryBounds}) — five minutes at the edge, as the manifest.
+ */
+export async function serveImageryStyle(url, request, env, ctx) {
+  if (!IMAGERY_STYLE_PATH.test(url.pathname)) return env.ASSETS.fetch(request);
+  const asset = await env.ASSETS.fetch(new Request(url, { method: 'GET' }));
+  // The SPA fallback answers a missing file with index.html (`index.js` →
+  // `serveGlyphs`): only a JSON document is a style.
+  if (!asset.ok || !(asset.headers.get('content-type') ?? '').includes('json')) return asset;
+  const style = await asset.json();
+  let manifest = null;
+  if (configured(env)) {
+    try {
+      manifest = await loadManifest(env, ctx);
+    } catch {
+      // Unreadable manifest: nothing can be served, so nothing is asked for.
+      manifest = null;
+    }
+  }
+  return withMethod(
+    request,
+    new Response(JSON.stringify(withImageryBounds(style, manifest)), {
+      headers: headers(MANIFEST_TTL, { 'content-type': 'application/json' }),
+    }),
+  );
+}
+
 /** Route a request under `/map/satellite/`. */
 export async function serveSatellite(url, request, env, ctx) {
   if (url.pathname === '/map/satellite/coverage.json')
@@ -446,6 +548,7 @@ export function forgetSatelliteManifest() {
   memory.key = null;
   memory.at = 0;
   memory.value = null;
+  memory.pending = null;
 }
 
 /** For the test that pins these to `lib/map/imagery.ts`. */
