@@ -37,6 +37,14 @@ permissions:
   id-token: write
   contents: read
 
+# Never cancel a rollout in flight: a cancelled image push or ECS update leaves
+# the next run to redo it anyway, and a cancelled migration phase is worse.
+# Queue instead, exactly as deploy-frontend.yml does. A fixed group, so a
+# `workflow_dispatch` re-deploy and a CI-called deploy queue behind each other.
+concurrency:
+  group: deploy-goway-backend
+  cancel-in-progress: false
+
 env:
   AWS_REGION: us-west-2
   ECR_REGISTRY: 237343248947.dkr.ecr.us-west-2.amazonaws.com
