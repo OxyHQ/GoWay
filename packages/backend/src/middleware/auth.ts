@@ -34,11 +34,14 @@ import { isLiveShapeRequest } from './liveShapeRequest';
 import type { OxyActorChain } from '../oxy/caller';
 import { config } from '../config';
 import { createAccountRoleResolver, type AccountRoleResolver } from '../oxy/accountRoles';
+import { getDb } from '../db/postgres';
 import {
-  createOxyPlaceFileStore,
-  OXY_REFERENCE_CLIENT_OPTIONS,
-  type PlaceFileStore,
-} from '../oxy/placeFiles';
+  createFileReferenceWorker,
+  createOxyFileReferences,
+  type FileReferenceWorker,
+} from '../oxy/fileReferences';
+import { createOxyPlaceFileStore, type PlaceFileStore } from '../oxy/placeFiles';
+import { createLogger } from '../utils/logger';
 import { createRequireOperator } from './operator';
 
 /**
@@ -82,18 +85,25 @@ export const accountRoles: AccountRoleResolver = createAccountRoleResolver({
 });
 
 /**
- * Checks the Oxy files place galleries show, and references them — see
- * `oxy/placeFiles`. References are made and removed on a service lane of their
- * own (one attempt, five seconds): GoWay holds no Oxy key pair, so in a
- * deployment that lane is the ECS task role's attested workload identity (Oxy
- * ADR 0026), the same identity `platformActivity` publishes with. Its binding
- * must name the GoWay application and carry `files:references:write`; where
- * the process cannot mint a token, adding to a gallery answers `503`.
+ * GoWay's own Oxy file references (`oxy/fileReferences`): made and removed with
+ * GoWay's service token — in a deployment the ECS task role's attested
+ * workload identity (Oxy ADR 0026), whose binding must name the GoWay
+ * application and carry `files:references:write`. Where the process cannot
+ * mint a token, adding to a gallery answers `503` and queued changes wait.
  */
+const goWayFileReferences = createOxyFileReferences({ baseURL: config.oxyApiUrl });
+
+/** Checks the Oxy files place galleries show, and references them — see `oxy/placeFiles`. */
 export const placeFiles: PlaceFileStore = createOxyPlaceFileStore({
   oxyApiUrl: config.oxyApiUrl,
-  references: new OxyServer({ baseURL: config.oxyApiUrl, ...OXY_REFERENCE_CLIENT_OPTIONS }).assets
-    .references,
+  references: goWayFileReferences,
+});
+
+/** Delivers and reconciles GoWay's queued reference changes. Its loop is started by `server.ts`. */
+export const fileReferences: FileReferenceWorker = createFileReferenceWorker({
+  getDb,
+  references: goWayFileReferences,
+  logger: createLogger('oxy-references'),
 });
 
 /** The moderation gate for this process's operator allow-list. Mounted after `requireAuth`. */

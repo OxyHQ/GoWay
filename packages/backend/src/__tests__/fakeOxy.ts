@@ -52,6 +52,8 @@ export interface FakeOxyLink {
   entityId: string;
   /** The person who made it; `null` for an application's service token. */
   createdBy: string | null;
+  /** A counter, not a time: what a reconciliation compares against its start. */
+  sequence?: number;
 }
 
 /** The application the fake's service credential belongs to. */
@@ -77,6 +79,13 @@ export interface FakeOxy {
   referencesGranted: boolean;
   /** `down` answers the reference routes alone 503; everything else still answers. */
   referencesMode: 'ok' | 'down';
+  /** Every reconciliation step received, in order. */
+  readonly reconcileRequests: {
+    request: 'begin' | 'put' | 'commit';
+    entityType: string;
+    items?: number;
+    dryRun?: boolean;
+  }[];
   /** Every `GET /accounts/:id` received, with the bearer it carried. */
   readonly requests: { accountId: string; authorization: string | undefined }[];
   /** Files by id. A file not here is `404`. */
@@ -129,6 +138,11 @@ export function membershipKey(person: string, accountId: string): string {
 
 export async function startFakeOxy(): Promise<FakeOxy> {
   const app = express();
+  let sequence = 0;
+  const nextSequence = () => {
+    sequence += 1;
+    return sequence;
+  };
   app.use(express.json());
   const state = {
     memberships: new Map<
@@ -138,6 +152,7 @@ export async function startFakeOxy(): Promise<FakeOxy> {
     accounts: new Set<string>(),
     mode: 'ok' as FakeOxy['mode'],
     referencesGranted: true,
+    reconcileRequests: [] as FakeOxy['reconcileRequests'],
     referencesMode: 'ok' as FakeOxy['referencesMode'],
     requests: [] as FakeOxy['requests'],
     files: new Map<string, FakeOxyFile>(),
@@ -283,6 +298,7 @@ export async function startFakeOxy(): Promise<FakeOxy> {
         entityType: item.entityType,
         entityId: item.entityId,
         createdBy: null,
+        sequence: nextSequence(),
       });
       state.links.set(item.fileId, links);
       return { ...item, result: 'created' };
@@ -301,6 +317,136 @@ export async function startFakeOxy(): Promise<FakeOxy> {
       return { ...item, result: kept.length < links.length ? 'removed' : 'not_found' };
     });
     response.json({ data: { results } });
+  });
+
+  /**
+   * Reconciliation (ADR 0043 D6): begin → PUT pages → commit, one open session
+   * per (application, entity type). The commit adds every listed pair the
+   * application may reference and lacks, and removes every reference of that
+   * type the application holds, made before the begin, that the inventory
+   * does not list; `dryRun` counts and changes nothing.
+   */
+  const reconciliations = new Map<
+    string,
+    {
+      application: string;
+      entityType: string;
+      startedAt: number;
+      items: { fileId: string; entityId: string }[];
+    }
+  >();
+
+  app.post('/assets/service/references/reconcile', (request, response) => {
+    const application = referencesCaller(request, response);
+    if (application === null) return;
+    const { entityType } = request.body as { entityType: string };
+    if (
+      [...reconciliations.values()].some(
+        (open) => open.application === application && open.entityType === entityType,
+      )
+    ) {
+      response.status(409).json({ error: 'RECONCILIATION_IN_PROGRESS', message: 'busy' });
+      return;
+    }
+    const sessionId = `reconcile-${String(nextSequence())}`;
+    reconciliations.set(sessionId, {
+      application,
+      entityType,
+      startedAt: nextSequence(),
+      items: [],
+    });
+    state.reconcileRequests.push({ request: 'begin', entityType });
+    response.json({ data: { sessionId } });
+  });
+
+  app.put('/assets/service/references/reconcile/:sessionId', (request, response) => {
+    const application = referencesCaller(request, response);
+    if (application === null) return;
+    const open = reconciliations.get(request.params.sessionId);
+    if (open?.application !== application) {
+      response.status(404).json({ error: 'NOT_FOUND', message: 'No such reconciliation' });
+      return;
+    }
+    const { items } = request.body as { items: { fileId: string; entityId: string }[] };
+    open.items.push(...items);
+    state.reconcileRequests.push({
+      request: 'put',
+      entityType: open.entityType,
+      items: items.length,
+    });
+    response.json({ data: { received: open.items.length } });
+  });
+
+  app.post('/assets/service/references/reconcile/:sessionId/commit', (request, response) => {
+    const application = referencesCaller(request, response);
+    if (application === null) return;
+    const sessionId = request.params.sessionId;
+    const open = reconciliations.get(sessionId);
+    if (open?.application !== application) {
+      response.status(404).json({ error: 'NOT_FOUND', message: 'No such reconciliation' });
+      return;
+    }
+    reconciliations.delete(sessionId);
+    const dryRun = (request.body as { dryRun?: boolean }).dryRun === true;
+    const key = (fileId: string, entityId: string) => `${fileId}\u0000${entityId}`;
+    const listed = new Set(open.items.map((item) => key(item.fileId, item.entityId)));
+    let added = 0;
+    let unchanged = 0;
+    let refused = 0;
+    let removed = 0;
+    for (const item of new Map(
+      open.items.map((entry) => [key(entry.fileId, entry.entityId), entry]),
+    ).values()) {
+      const reference = {
+        fileId: item.fileId,
+        entityType: open.entityType,
+        entityId: item.entityId,
+      };
+      const links = state.links.get(item.fileId) ?? [];
+      if (links.some((link) => sameReference(link, application, reference))) {
+        unchanged += 1;
+        continue;
+      }
+      const file = state.files.get(item.fileId);
+      if (file?.status !== 'active' || file.visibility === 'private') {
+        refused += 1;
+        continue;
+      }
+      added += 1;
+      if (!dryRun) {
+        links.push({
+          app: application,
+          entityType: open.entityType,
+          entityId: item.entityId,
+          createdBy: null,
+          sequence: nextSequence(),
+        });
+        state.links.set(item.fileId, links);
+      }
+    }
+    for (const [fileId, links] of state.links) {
+      const stale = (link: FakeOxyLink) =>
+        link.app === application &&
+        link.entityType === open.entityType &&
+        (link.sequence ?? 0) < open.startedAt &&
+        !listed.has(key(fileId, link.entityId));
+      removed += links.filter(stale).length;
+      if (!dryRun)
+        state.links.set(
+          fileId,
+          links.filter((link) => !stale(link)),
+        );
+    }
+    state.reconcileRequests.push({ request: 'commit', entityType: open.entityType, dryRun });
+    response.json({
+      data: { sessionId, entityType: open.entityType, dryRun, added, removed, unchanged, refused },
+    });
+  });
+
+  app.delete('/assets/service/references/reconcile/:sessionId', (request, response) => {
+    if (referencesCaller(request, response) === null) return;
+    reconciliations.delete(request.params.sessionId);
+    response.json({ data: { released: true } });
   });
 
   app.get('/accounts/:id', (request, response) => {

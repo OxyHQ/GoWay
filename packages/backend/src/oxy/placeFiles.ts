@@ -48,14 +48,14 @@
  *    unavailable to GoWay: it FAILS CLOSED with `503 service_unavailable` and
  *    records nothing.
  *
- * ## Unreferencing is best effort
+ * ## Everything after the add is durable
  *
- * Removing an item drops its reference after the removal committed. A failure
- * is logged, not surfaced: the item is already gone from GoWay, and a reference
- * Oxy still holds costs the owner nothing but the file staying alive (Oxy's
- * reconciliation, ADR 0043 D6, is the net). A merge does NOT re-reference: the
- * reference keeps naming the absorbed place, whose id is a permanent alias of
- * the survivor (`place_media.oxyLinkPlaceId`).
+ * The add is the one synchronous reference call: its answer decides whether
+ * the item is recorded at all. Every other change — a withdrawal, the rollback
+ * of an add whose item could not be recorded, a merge moving a gallery — goes
+ * through the outbox in `oxy/fileReferences`, written in the same transaction
+ * as the write that caused it, delivered at once when Oxy answers and retried
+ * with backoff when it does not.
  */
 
 import {
@@ -64,6 +64,7 @@ import {
   type ServiceFileReference,
   type ServiceFileReferenceResult,
 } from '@oxy.so/core';
+import type { OxyFileReferences } from './fileReferences';
 import { PLACE_MEDIA_MIME_TYPES } from '@goway/contracts';
 import { ApiError } from '../http/apiError';
 import { logger } from '../utils/logger';
@@ -74,18 +75,6 @@ export const PLACE_ENTITY_TYPE = 'place';
 
 /** One question to Oxy may take this long, in milliseconds — as for account roles. */
 const OXY_REQUEST_TIMEOUT_MS = 5_000;
-
-/**
- * How the `OxyServer` behind {@link PlaceFileStoreOptions.references} is built:
- * the caller's checks' bounds — one attempt, five seconds. The SDK retries an
- * idempotent DELETE with backoff by default, and a withdrawal waits for its
- * removal, so a struggling Oxy would hold the caller's `204` for seconds for
- * a removal that is best effort anyway.
- */
-export const OXY_REFERENCE_CLIENT_OPTIONS = {
-  enableRetry: false,
-  requestTimeout: OXY_REQUEST_TIMEOUT_MS,
-} as const;
 
 /** What GoWay keeps of a file it may publish. */
 export interface PlaceFile {
@@ -103,28 +92,13 @@ export interface PlaceFileStore {
    * file GoWay may not publish.
    */
   attach(caller: OxyCaller, fileId: string, placeId: string): Promise<PlaceFile>;
-  /**
-   * Drop the place's reference to the file, as GoWay — whoever withdrew the
-   * item. Best effort: logs, never throws.
-   */
-  detach(fileId: string, placeId: string): Promise<void>;
-}
-
-/** GoWay's own references: `OxyServer#assets.references`, on GoWay's service identity. */
-export interface PlaceFileReferences {
-  add(references: ServiceFileReference[]): Promise<ServiceFileReferenceResult[]>;
-  remove(references: ServiceFileReference[]): Promise<ServiceFileReferenceResult[]>;
 }
 
 export interface PlaceFileStoreOptions {
   /** The Oxy API origin, for the caller's short-lived client. */
   readonly oxyApiUrl: string;
-  /**
-   * Adds and removes GoWay's references with GoWay's own token: the
-   * `assets.references` of an `OxyServer` built with
-   * {@link OXY_REFERENCE_CLIENT_OPTIONS}.
-   */
-  readonly references: PlaceFileReferences;
+  /** Adds GoWay's references with GoWay's own token (`createOxyFileReferences`). */
+  readonly references: Pick<OxyFileReferences, 'add'>;
 }
 
 const ACCEPTED_MIME_TYPES: ReadonlySet<string> = new Set(PLACE_MEDIA_MIME_TYPES);
@@ -250,23 +224,6 @@ export function createOxyPlaceFileStore(options: PlaceFileStoreOptions): PlaceFi
         throw refused('No Oxy file has that id.', 'not_found');
       }
       return file;
-    },
-
-    async detach(fileId, placeId) {
-      try {
-        const [result] = await references.remove([placeReference(fileId, placeId)]);
-        if (result?.result !== 'removed') {
-          logger.info(
-            { result: result?.result },
-            'Oxy held no GoWay reference to remove for a withdrawn gallery item',
-          );
-        }
-      } catch (error) {
-        logger.warn(
-          { status: oxyStatus(error) },
-          'Oxy reference removal failed; the file keeps a reference to a place that no longer shows it',
-        );
-      }
     },
   };
 }

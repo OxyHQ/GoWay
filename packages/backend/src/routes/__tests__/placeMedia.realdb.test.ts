@@ -39,8 +39,12 @@ import {
 } from '../../db/__tests__/testDatabase';
 import { createRequireOperator } from '../../middleware/operator';
 import { createAccountRoleResolver } from '../../oxy/accountRoles';
-import { OxyServer } from '@oxy.so/core/server';
-import { createOxyPlaceFileStore, OXY_REFERENCE_CLIENT_OPTIONS } from '../../oxy/placeFiles';
+import {
+  createFileReferenceWorker,
+  createOxyFileReferences,
+  type FileReferenceWorker,
+} from '../../oxy/fileReferences';
+import { createOxyPlaceFileStore } from '../../oxy/placeFiles';
 import {
   FAKE_SERVICE_APPLICATION_ID,
   FAKE_SERVICE_AUTH,
@@ -75,6 +79,27 @@ const GOWAY_SERVICE = `service:${FAKE_SERVICE_APPLICATION_ID}`;
 let suite: SuiteDatabase | null = null;
 let oxy: FakeOxy;
 let api: TestApi;
+let worker: FileReferenceWorker;
+/** How far the worker's clock runs ahead of real time — past a retry's backoff. */
+let skewMs = 0;
+
+/** The changes still queued for a file: what Oxy is still owed. */
+async function queuedFor(fileId: string) {
+  return [
+    ...(await requireSuite(suite).client<
+      {
+        action: string;
+        entity_id: string;
+        state: string;
+        attempts: number;
+        last_failure: string | null;
+      }[]
+    >`
+      SELECT action, entity_id, state, attempts, last_failure FROM oxy_file_reference_changes
+      WHERE oxy_file_id = ${fileId} ORDER BY id
+    `),
+  ];
+}
 
 /** Claimed, approved, by the organization `org-cafe`. */
 let cafe: Place;
@@ -152,14 +177,17 @@ beforeAll(async () => {
   oxy.memberships.set(membershipKey('person-viewer', 'org-cafe'), 'viewer');
 
   const accountRoles = createAccountRoleResolver({ oxyApiUrl: oxy.url, ttlMs: 0 });
-  const goway = new OxyServer({
+  // GoWay's own references client and worker, exactly as `middleware/auth` builds them.
+  const references = createOxyFileReferences({
     baseURL: oxy.url,
     serviceAuth: { ...FAKE_SERVICE_AUTH },
-    ...OXY_REFERENCE_CLIENT_OPTIONS,
   });
-  const placeFiles = createOxyPlaceFileStore({
-    oxyApiUrl: oxy.url,
-    references: goway.assets.references,
+  const placeFiles = createOxyPlaceFileStore({ oxyApiUrl: oxy.url, references });
+  const db = suite.db;
+  worker = createFileReferenceWorker({
+    getDb: () => db,
+    references,
+    now: () => new Date(Date.now() + skewMs),
   });
   api = await serve(
     createPlacesRouter({
@@ -173,6 +201,7 @@ beforeAll(async () => {
       requireAuth: fakeRequireAuth,
       accountRoles,
       placeFiles,
+      fileReferences: worker,
       reportRateLimit: NO_RATE_LIMIT,
       contributionRateLimit: NO_RATE_LIMIT,
     }),
@@ -204,6 +233,7 @@ beforeEach(() => {
   oxy.referencesGranted = true;
   oxy.referencesMode = 'ok';
   oxy.fileRequests.length = 0;
+  skewMs = 0;
 });
 
 describe('adding an Oxy file to a gallery', () => {
@@ -532,7 +562,7 @@ describe('withdrawing an item', () => {
     expect(oxy.files.get(fileId)).toMatchObject({ status: 'active', visibility: 'public' });
   });
 
-  it('still withdraws the item when Oxy cannot drop the reference, which stays behind', async () => {
+  it('still withdraws the item when Oxy cannot drop the reference, and delivers it once Oxy answers', async () => {
     for (const refusal of ['down', 'ungranted'] as const) {
       oxy.referencesMode = 'ok';
       oxy.referencesGranted = true;
@@ -551,8 +581,29 @@ describe('withdrawing an item', () => {
       );
       expect(`${refusal}: ${String(status)}`).toBe(`${refusal}: 204`);
       expect((await gallery(cafe.id)).some((entry) => entry.id === item.id)).toBe(false);
-      // Best effort, as before: logged, the item gone, the reference harmless.
+      // Not lost: queued with the withdrawal, one attempt made, waiting out its backoff.
       expect(linksOf(fileId)).toEqual([`${FAKE_SERVICE_APPLICATION_ID}/place/${cafe.id}`]);
+      expect(await queuedFor(fileId)).toEqual([
+        {
+          action: 'remove',
+          entity_id: cafe.id,
+          state: 'pending',
+          attempts: 1,
+          last_failure: refusal === 'down' ? 'http_503' : 'http_403',
+        },
+      ]);
+
+      // Not retried before its backoff, even with Oxy back...
+      oxy.referencesMode = 'ok';
+      oxy.referencesGranted = true;
+      await worker.drain();
+      expect(linksOf(fileId)).toHaveLength(1);
+      // ...and delivered once it is due.
+      skewMs = 60_000;
+      await worker.drain();
+      skewMs = 0;
+      expect(linksOf(fileId)).toEqual([]);
+      expect(await queuedFor(fileId)).toEqual([]);
     }
   });
 

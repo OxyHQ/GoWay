@@ -45,7 +45,13 @@ import {
   type ErrorBody,
   type TestApi,
 } from '../../__tests__/httpHarness';
-import { apiAuthor, NO_FILES, NO_MEMBERSHIPS, NO_RATE_LIMIT } from '../../__tests__/placesFixtures';
+import {
+  apiAuthor,
+  NO_FILES,
+  NO_MEMBERSHIPS,
+  NO_RATE_LIMIT,
+  NO_REFERENCE_DELIVERY,
+} from '../../__tests__/placesFixtures';
 import { createModerationRouter } from '../moderation';
 import { createPlaceMediaRouter } from '../placeMedia';
 import { createPlaceReviewsRouter } from '../placeReviews';
@@ -76,6 +82,7 @@ beforeAll(async () => {
       requireAuth: fakeRequireAuth,
       accountRoles: NO_MEMBERSHIPS,
       placeFiles: NO_FILES,
+      fileReferences: NO_REFERENCE_DELIVERY,
       reportRateLimit: NO_RATE_LIMIT,
       contributionRateLimit: NO_RATE_LIMIT,
     }),
@@ -299,8 +306,15 @@ describe('a merge moves descriptions, the gallery and reviews', () => {
     const gallery = await galleryOf(survivor.id);
     expect(gallery.map((item) => item.oxy_file_id)).toEqual(['file-shared', 'file-only-absorbed']);
     expect(gallery[0]?.id).toBe(survivorLogoMediaId);
-    // The Oxy link still names the place it was made for.
-    expect(gallery[1]?.oxy_link_place_id).toBe(absorbed.id);
+    // Its Oxy reference moves with it: the item names the survivor, and the
+    // move is queued in the merge's transaction for `oxy/fileReferences`.
+    expect(gallery[1]?.oxy_link_place_id).toBe(survivor.id);
+    expect([
+      ...(await requireSuite(suite).client`
+        SELECT action, from_entity_id, entity_id FROM oxy_file_reference_changes
+        WHERE oxy_file_id = 'file-only-absorbed'
+      `),
+    ]).toEqual([{ action: 'move', from_entity_id: absorbed.id, entity_id: survivor.id }]);
     // The absorbed copy of the shared file stayed behind rather than being destroyed.
     expect((await galleryOf(absorbed.id)).map((item) => item.oxy_file_id)).toEqual(['file-shared']);
   });

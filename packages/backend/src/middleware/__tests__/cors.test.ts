@@ -47,7 +47,12 @@ import { createModerationRouter } from '../../routes/moderation';
 import { createPlaceMediaRouter } from '../../routes/placeMedia';
 import { createPlaceReviewsRouter } from '../../routes/placeReviews';
 import { createPlacesRouter } from '../../routes/places';
-import { NO_FILES, NO_MEMBERSHIPS, NO_RATE_LIMIT } from '../../__tests__/placesFixtures';
+import {
+  NO_FILES,
+  NO_MEMBERSHIPS,
+  NO_RATE_LIMIT,
+  NO_REFERENCE_DELIVERY,
+} from '../../__tests__/placesFixtures';
 import { createSearchRouter } from '../../routes/search';
 import { createGoWayCors, isPublicReadRequest, PUBLIC_READ_ROUTES } from '../cors';
 
@@ -473,6 +478,7 @@ describe('the public table, checked against the routers it claims to describe', 
         requireAuth,
         accountRoles: NO_MEMBERSHIPS,
         placeFiles: NO_FILES,
+        fileReferences: NO_REFERENCE_DELIVERY,
         reportRateLimit: NO_RATE_LIMIT,
         contributionRateLimit: NO_RATE_LIMIT,
       }),

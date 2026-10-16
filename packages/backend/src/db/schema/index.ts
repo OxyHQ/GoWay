@@ -55,4 +55,6 @@ export * from './organizationLists';
 export * from './capture';
 // After `capture`: derivatives, jobs and scene inputs reference `capture_assets`.
 export * from './street3d';
+// GoWay's outbox and reconciliation log for its Oxy file references; no foreign keys.
+export * from './oxyFiles';
 export * from './valueSets';
