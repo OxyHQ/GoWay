@@ -11,16 +11,22 @@
  *
  * Files are answered the way `oxy/packages/api/src/routes/assets.ts` answers
  * them — `GET /assets/:id` to any signed-in caller with the owner and status,
- * `POST /assets/batch-access` with the visibility the caller may see,
- * `POST|DELETE /assets/:id/links` to any signed-in caller, the link SETTING
- * the visibility it is given — inside the `{ data }` envelope the real API
- * sends, so the real `@oxy.so/core` client unwraps exactly what it would.
+ * `POST /assets/batch-access` with the visibility the caller may see, and
+ * `POST|DELETE /assets/service/references` (ADR 0043 D4) to an application's
+ * SERVICE token only: the application is the token's, an add takes any active
+ * public or unlisted file and never changes its visibility, a removal drops
+ * only that application's references, and each item answers
+ * `created|exists|removed|not_found` — inside the `{ data }` envelope the real
+ * API sends, so the real `@oxy.so/core` client unwraps exactly what it would.
+ * The session routes `POST|DELETE /assets/:id/links` are not served: GoWay
+ * must not use them, and a call to one is a `404` a test sees.
  *
- * A token is an UNSIGNED JWT whose `sub` is a person — the `@oxy.so/core`
- * client attaches only a token shaped like a JWT, so a bare string would never
- * reach this server. The person is who Oxy resolves membership for, exactly as
- * a session that switched into an organization still resolves as the human
- * operating it.
+ * A token is an UNSIGNED JWT — the `@oxy.so/core` client attaches only a token
+ * shaped like a JWT, so a bare string would never reach this server. A
+ * session's `sub` is a person: who Oxy resolves membership for, exactly as a
+ * session that switched into an organization still resolves as the human
+ * operating it. A service token (`POST /auth/service-token`, which the real
+ * `OxyServer` mints from its key pair) names its application.
  */
 
 import express from 'express';
@@ -38,13 +44,20 @@ export interface FakeOxyFile {
   metadata?: Record<string, unknown>;
 }
 
-/** One link, as Oxy records it. */
+/** One reference, as Oxy records it (`file_references`). */
 export interface FakeOxyLink {
+  /** The application id. */
   app: string;
   entityType: string;
   entityId: string;
-  createdBy: string;
+  /** The person who made it; `null` for an application's service token. */
+  createdBy: string | null;
 }
+
+/** The application the fake's service credential belongs to. */
+export const FAKE_SERVICE_APPLICATION_ID = 'app-goway';
+/** The key pair `OxyServer` mints the fake's service token with. */
+export const FAKE_SERVICE_AUTH = { apiKey: 'oxy_dk_goway', apiSecret: 'goway-secret' } as const;
 
 export interface FakeOxy {
   readonly url: string;
@@ -57,13 +70,23 @@ export interface FakeOxy {
   readonly accounts: Set<string>;
   /** `ok` answers; `down` answers 503 to everything; `unauthorized` answers 401. */
   mode: 'ok' | 'down' | 'unauthorized';
+  /**
+   * Whether the service credential holds `files:references:write`. `false`
+   * answers the reference routes `403`, as Oxy does for a missing scope.
+   */
+  referencesGranted: boolean;
+  /** `down` answers the reference routes alone 503; everything else still answers. */
+  referencesMode: 'ok' | 'down';
   /** Every `GET /accounts/:id` received, with the bearer it carried. */
   readonly requests: { accountId: string; authorization: string | undefined }[];
   /** Files by id. A file not here is `404`. */
   readonly files: Map<string, FakeOxyFile>;
-  /** The links each file holds. */
+  /** The references each file holds. */
   readonly links: Map<string, FakeOxyLink[]>;
-  /** Every files request received: `METHOD /path`, and the person who made it. */
+  /**
+   * Every files request received: `METHOD /path`, and the person — or, for a
+   * service token, `service:<applicationId>` — who made it.
+   */
   readonly fileRequests: { request: string; person: string | undefined }[];
   close(): Promise<void>;
 }
@@ -76,14 +99,28 @@ export function tokenFor(person: string): string {
   return `${base64url({ alg: 'none', typ: 'JWT' })}.${base64url({ sub: person, exp: 4_102_444_800 })}.unsigned`;
 }
 
-/** The person a bearer was minted for, or `undefined` for anything else. */
-function personOf(authorization: string | undefined): string | undefined {
+/** The service token the fake mints for `appId`: bounded, like Oxy's. */
+function serviceTokenFor(appId: string): string {
+  const iat = Math.floor(Date.now() / 1000);
+  return `${base64url({ alg: 'none', typ: 'JWT' })}.${base64url({ type: 'service', appId, iat, exp: iat + 3600 })}.unsigned`;
+}
+
+function claimsOf(authorization: string | undefined): Record<string, unknown> | undefined {
   const payload = /^Bearer [^.]+\.([^.]+)\.unsigned$/.exec(authorization ?? '')?.[1];
   if (payload === undefined) return undefined;
-  const claims = JSON.parse(Buffer.from(payload, 'base64url').toString('utf8')) as {
-    sub?: unknown;
-  };
-  return typeof claims.sub === 'string' ? claims.sub : undefined;
+  return JSON.parse(Buffer.from(payload, 'base64url').toString('utf8')) as Record<string, unknown>;
+}
+
+/** The person a session bearer was minted for, or `undefined` for anything else. */
+function personOf(authorization: string | undefined): string | undefined {
+  const claims = claimsOf(authorization);
+  return claims?.type !== 'service' && typeof claims?.sub === 'string' ? claims.sub : undefined;
+}
+
+/** The application a service bearer was minted for, or `undefined` for anything else. */
+function applicationOf(authorization: string | undefined): string | undefined {
+  const claims = claimsOf(authorization);
+  return claims?.type === 'service' && typeof claims.appId === 'string' ? claims.appId : undefined;
 }
 
 export function membershipKey(person: string, accountId: string): string {
@@ -100,6 +137,8 @@ export async function startFakeOxy(): Promise<FakeOxy> {
     >(),
     accounts: new Set<string>(),
     mode: 'ok' as FakeOxy['mode'],
+    referencesGranted: true,
+    referencesMode: 'ok' as FakeOxy['referencesMode'],
     requests: [] as FakeOxy['requests'],
     files: new Map<string, FakeOxyFile>(),
     links: new Map<string, FakeOxyLink[]>(),
@@ -173,62 +212,95 @@ export async function startFakeOxy(): Promise<FakeOxy> {
     response.json({ data: { results } });
   });
 
-  app.post('/assets/:id/links', (request, response) => {
-    const person = filesCaller(request, response);
-    if (person === null) return;
-    const file = state.files.get(request.params.id);
-    if (!file) {
-      response.status(404).json({ error: 'NOT_FOUND', message: 'File not found' });
+  app.post('/auth/service-token', (request, response) => {
+    const { apiKey, apiSecret } = request.body as { apiKey?: string; apiSecret?: string };
+    if (state.mode === 'down') {
+      response.status(503).json({ error: 'SERVICE_UNAVAILABLE', message: 'down' });
       return;
     }
-    const body = request.body as {
-      app: string;
-      entityType: string;
-      entityId: string;
-      visibility?: FakeOxyFile['visibility'];
-    };
-    // The real link SETS the visibility, and infers `private` for a non-avatar type.
-    file.visibility = body.visibility ?? 'private';
-    const links = state.links.get(request.params.id) ?? [];
-    if (
-      !links.some(
-        (link) =>
-          link.app === body.app &&
-          link.entityType === body.entityType &&
-          link.entityId === body.entityId,
-      )
-    ) {
-      links.push({
-        app: body.app,
-        entityType: body.entityType,
-        entityId: body.entityId,
-        createdBy: person,
-      });
+    if (apiKey !== FAKE_SERVICE_AUTH.apiKey || apiSecret !== FAKE_SERVICE_AUTH.apiSecret) {
+      response.status(401).json({ error: 'UNAUTHORIZED', message: 'Invalid credentials' });
+      return;
     }
-    state.links.set(request.params.id, links);
     response.json({
       data: {
-        assetId: request.params.id,
-        file: { id: request.params.id, usageCount: links.length, links, status: file.status },
+        token: serviceTokenFor(FAKE_SERVICE_APPLICATION_ID),
+        expiresIn: 3600,
+        appName: 'GoWay',
       },
     });
   });
 
-  app.delete('/assets/:id/links', (request, response) => {
-    if (filesCaller(request, response) === null) return;
-    const body = request.body as { app: string; entityType: string; entityId: string };
-    const links = (state.links.get(request.params.id) ?? []).filter(
-      (link) =>
-        !(
-          link.app === body.app &&
-          link.entityType === body.entityType &&
-          link.entityId === body.entityId
-        ),
-    );
-    state.links.set(request.params.id, links);
-    response.json({
-      data: { file: { id: request.params.id, usageCount: links.length, links, status: 'active' } },
+  type ReferenceItem = { fileId: string; entityType: string; entityId: string };
+
+  /** The application a reference call is from, or an answer that ends it. */
+  function referencesCaller(request: express.Request, response: express.Response): string | null {
+    const application = applicationOf(request.header('authorization'));
+    state.fileRequests.push({
+      request: `${request.method} ${request.path}`,
+      person:
+        application === undefined
+          ? personOf(request.header('authorization'))
+          : `service:${application}`,
     });
+    if (state.mode === 'down' || state.referencesMode === 'down') {
+      response.status(503).json({ error: 'SERVICE_UNAVAILABLE', message: 'down' });
+      return null;
+    }
+    if (application === undefined) {
+      // A session is not a service token: the real route answers 401.
+      response.status(401).json({ error: 'UNAUTHORIZED', message: 'Service token required' });
+      return null;
+    }
+    if (!state.referencesGranted) {
+      response.status(403).json({ error: 'FORBIDDEN', message: 'Missing scope' });
+      return null;
+    }
+    return application;
+  }
+
+  const sameReference = (link: FakeOxyLink, application: string, item: ReferenceItem) =>
+    link.app === application &&
+    link.entityType === item.entityType &&
+    link.entityId === item.entityId;
+
+  app.post('/assets/service/references', (request, response) => {
+    const application = referencesCaller(request, response);
+    if (application === null) return;
+    const { references } = request.body as { references: ReferenceItem[] };
+    const results = references.map((item) => {
+      const file = state.files.get(item.fileId);
+      // Any owner's active public or unlisted file; never a visibility change.
+      if (file?.status !== 'active' || file.visibility === 'private') {
+        return { ...item, result: 'not_found' };
+      }
+      const links = state.links.get(item.fileId) ?? [];
+      if (links.some((link) => sameReference(link, application, item))) {
+        return { ...item, result: 'exists' };
+      }
+      links.push({
+        app: application,
+        entityType: item.entityType,
+        entityId: item.entityId,
+        createdBy: null,
+      });
+      state.links.set(item.fileId, links);
+      return { ...item, result: 'created' };
+    });
+    response.json({ data: { results } });
+  });
+
+  app.delete('/assets/service/references', (request, response) => {
+    const application = referencesCaller(request, response);
+    if (application === null) return;
+    const { references } = request.body as { references: ReferenceItem[] };
+    const results = references.map((item) => {
+      const links = state.links.get(item.fileId) ?? [];
+      const kept = links.filter((link) => !sameReference(link, application, item));
+      state.links.set(item.fileId, kept);
+      return { ...item, result: kept.length < links.length ? 'removed' : 'not_found' };
+    });
+    response.json({ data: { results } });
   });
 
   app.get('/accounts/:id', (request, response) => {

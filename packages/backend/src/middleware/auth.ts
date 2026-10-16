@@ -29,13 +29,16 @@ import {
   type OxyRateLimitOptions,
   type OxyRequestUser,
 } from '@oxy.so/core/server';
-import type { Request, RequestHandler } from 'express';
+import type { RequestHandler } from 'express';
 import { isLiveShapeRequest } from './liveShapeRequest';
 import type { OxyActorChain } from '../oxy/caller';
 import { config } from '../config';
-import { ApiError, type ApiErrorBody } from '../http/apiError';
 import { createAccountRoleResolver, type AccountRoleResolver } from '../oxy/accountRoles';
-import { createOxyPlaceFileStore, type PlaceFileStore } from '../oxy/placeFiles';
+import {
+  createOxyPlaceFileStore,
+  OXY_REFERENCE_CLIENT_OPTIONS,
+  type PlaceFileStore,
+} from '../oxy/placeFiles';
 import { createRequireOperator } from './operator';
 
 /**
@@ -78,8 +81,20 @@ export const accountRoles: AccountRoleResolver = createAccountRoleResolver({
   oxyApiUrl: config.oxyApiUrl,
 });
 
-/** Checks, links and unlinks the Oxy files place galleries reference — see `oxy/placeFiles`. */
-export const placeFiles: PlaceFileStore = createOxyPlaceFileStore({ oxyApiUrl: config.oxyApiUrl });
+/**
+ * Checks the Oxy files place galleries show, and references them — see
+ * `oxy/placeFiles`. References are made and removed on a service lane of their
+ * own (one attempt, five seconds): GoWay holds no Oxy key pair, so in a
+ * deployment that lane is the ECS task role's attested workload identity (Oxy
+ * ADR 0026), the same identity `platformActivity` publishes with. Its binding
+ * must name the GoWay application and carry `files:references:write`; where
+ * the process cannot mint a token, adding to a gallery answers `503`.
+ */
+export const placeFiles: PlaceFileStore = createOxyPlaceFileStore({
+  oxyApiUrl: config.oxyApiUrl,
+  references: new OxyServer({ baseURL: config.oxyApiUrl, ...OXY_REFERENCE_CLIENT_OPTIONS }).assets
+    .references,
+});
 
 /** The moderation gate for this process's operator allow-list. Mounted after `requireAuth`. */
 export const requireOperator: RequestHandler = createRequireOperator(
@@ -87,38 +102,21 @@ export const requireOperator: RequestHandler = createRequireOperator(
 );
 
 /**
- * The 429 body: GoWay's error envelope, never the limiter's plain text.
+ * `createOxyRateLimit` with GoWay's wording.
  *
  * `~/Oxy/docs/api-conventions.md` puts the rate limiter's 429 inside the same
  * `{ error: { code, message, details } }` as every other failure, with
  * `details.retryAfterSeconds` beside the `Retry-After` header — so an SDK maps
- * it to a typed error instead of failing to parse "Too many requests".
- *
- * `createOxyRateLimit` has no handler option and types `message` as a string,
- * but it hands `message` to `express-rate-limit` untouched, and that library's
- * documented `message` also takes a FUNCTION of the request, called per
- * rejection — the only way to put the per-caller reset time in the body. The
- * cast below is that type gap and nothing else; `app.test.ts` holds the JSON
- * body to the contract, so a core release that stopped forwarding it fails
- * there rather than in production.
+ * it to a typed error instead of failing to parse "Too many requests". Since
+ * `@oxy.so/core` 4.11 the limiter answers exactly that itself; GoWay supplies
+ * only the message. `app.test.ts` holds the body to the contract.
  */
-function rateLimitedBody(request: Request & { rateLimit?: { resetTime?: Date } }): ApiErrorBody {
-  const resetTime = request.rateLimit?.resetTime;
-  const retryAfterSeconds = resetTime
-    ? Math.max(1, Math.ceil((resetTime.getTime() - Date.now()) / 1000))
-    : 1;
-  return new ApiError('rate_limited', 'Too many requests. Retry after the indicated delay.', {
-    retryAfterSeconds,
-  }).toResponseBody();
-}
-
-/** `createOxyRateLimit`, answering its 429 in the contract's error envelope. */
 export function createGoWayRateLimit(
   options: Omit<OxyRateLimitOptions, 'message'> = {},
 ): RequestHandler {
   return createOxyRateLimit(oxyClient, {
     ...options,
-    message: rateLimitedBody as unknown as string,
+    message: 'Too many requests. Retry after the indicated delay.',
   });
 }
 

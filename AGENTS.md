@@ -67,7 +67,7 @@ An env variable is only what differs per deployment (secrets, origins, buckets, 
 - A business is an Oxy organization: a claim stores its `oxyAccountId` and Oxy decides who acts for it (`places/claimAuthority`, asked with the caller's bearer). Never keep a member list or brand id; fail closed with 503 when Oxy cannot answer. Design note: `docs/BUSINESS_OWNERSHIP.md`.
 - Every place write records exactly one `place_revisions` row through `recordRevision`, inside the write's transaction. The public history never names an account or person; classify a new action in `PLACE_REVISION_VISIBILITY`.
 - Claim decisions, `oxy_verified`, removal and merges are moderation acts behind `MODERATION_OPERATOR_OXY_USER_IDS` (matched on the person); no public route may produce them.
-- A place image is an Oxy file id, checked (owner, public, image) and linked via `oxy/placeFiles` on the caller's bearer; GoWay never fetches, proxies or stores image bytes. Design note: `docs/PLACE_MEDIA_REVIEWS.md`.
+- A place image is an Oxy file id: checked (owner, public, image) on the caller's bearer, referenced via `oxy/placeFiles` by GoWay's service token, not a session; no bytes kept. Design note: `docs/PLACE_MEDIA_REVIEWS.md`.
 - A review is by the person, never an org session or anyone with any role in an approved claimant; `place_review_aggregates` is recomputed in every review write, never incremented.
 - No revision holds an Oxy file id or a review's words.
 

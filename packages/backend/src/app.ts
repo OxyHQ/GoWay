@@ -148,7 +148,7 @@ export function createApp(options: CreateAppOptions = {}): Express {
   v1.use(createPlacesRouter({ optionalAuth, requireAuth, accountRoles, reportRateLimit }));
   /**
    * A place's gallery and reviews. Images are Oxy files the client uploaded;
-   * GoWay checks and links them with Oxy (`oxy/placeFiles`) and never touches
+   * GoWay checks and references them with Oxy (`oxy/placeFiles`) and never touches
    * the bytes.
    */
   v1.use(

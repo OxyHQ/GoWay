@@ -6,8 +6,8 @@
  * positions never collide, and a logo or cover pointer is cleared in the same
  * commit as the item it named leaving the gallery.
  *
- * Nothing here talks to Oxy. The route checks and links a file before
- * {@link addPlaceMedia} and unlinks it after {@link removePlaceMedia}; a
+ * Nothing here talks to Oxy. The route checks and references a file before
+ * {@link addPlaceMedia} and unreferences it after {@link removePlaceMedia}; a
  * database transaction never waits on another service.
  */
 

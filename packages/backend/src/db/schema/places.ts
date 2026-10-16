@@ -985,10 +985,10 @@ export const placeMedia = pgTable(
     /** The Oxy file. A foreign service's id: no foreign key. */
     oxyFileId: foreignServiceId().notNull(),
     /**
-     * The place id the Oxy link names — the place the item was added to. A
-     * merge moves the item and leaves the link (re-linking would rewrite the
-     * file's visibility at Oxy), so unlinking later must name THIS id, not the
-     * survivor's. No foreign key: it is Oxy's record of the link, not GoWay's.
+     * The place id GoWay's Oxy file reference names — the place the item was
+     * added to. A merge moves the item and leaves the reference, so removing
+     * it later must name THIS id, not the survivor's. No foreign key: it is
+     * Oxy's record of the reference, not GoWay's.
      */
     oxyLinkPlaceId: foreignServiceId().notNull(),
     kind: text().notNull(),
