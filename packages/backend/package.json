@@ -27,7 +27,7 @@
   },
   "dependencies": {
     "@goway/contracts": "workspace:*",
-    "@oxy.so/core": "4.12.0",
+    "@oxy.so/core": "4.18.0",
     "@oxy.so/db": "^1.0.0",
     "@photostructure/tz-lookup": "11.7.0",
     "cors": "^2.8.6",
