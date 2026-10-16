@@ -14,6 +14,15 @@
  * deliver one change at once, and a task that dies mid-attempt only delays it
  * by the lease.
  *
+ * A change no attempt has claimed yet (`attempts = 0`: fresh, or requeued by
+ * an operator) is due at once, whatever its `nextAttemptAt` says. That column
+ * defaults to the DATABASE clock, in microseconds, and is compared with the
+ * worker's clock, in milliseconds: an immediate delivery in the same
+ * millisecond as the insert — or on a task whose clock is a little behind the
+ * database's — would otherwise find its own change not yet due and leave a
+ * withdrawal to the next drain. Only a failed attempt's backoff and a claim's
+ * lease, both written from the worker's clock, are read against it.
+ *
  * ## One file's changes go in order
  *
  * A change is claimable only while no OLDER pending change names the same
@@ -23,7 +32,7 @@
  * already the newer truth.
  */
 
-import { and, asc, eq, inArray, lt, lte, notExists, sql } from 'drizzle-orm';
+import { and, asc, eq, inArray, lt, lte, notExists, or, sql } from 'drizzle-orm';
 import { alias } from 'drizzle-orm/pg-core';
 import { qualified, type SelectedRow } from '@oxy.so/db';
 import type { OxyFileReferencesPolicy } from '../../config/oxyFileReferences';
@@ -89,7 +98,8 @@ export async function enqueueFileReferenceChanges(
 
 /**
  * Claim up to `limit` due pending changes — or, with `ids`, those of them that
- * are due — for one attempt each. Oldest first.
+ * are due — for one attempt each. Oldest first. Due: never attempted, or past
+ * its backoff or lease by `now`.
  */
 export async function claimFileReferenceChanges(
   db: Database,
@@ -117,7 +127,10 @@ export async function claimFileReferenceChanges(
       .where(
         and(
           eq(oxyFileReferenceChanges.state, 'pending'),
-          lte(oxyFileReferenceChanges.nextAttemptAt, now),
+          or(
+            eq(oxyFileReferenceChanges.attempts, 0),
+            lte(oxyFileReferenceChanges.nextAttemptAt, now),
+          ),
           notExists(olderPending),
           options.ids ? inArray(oxyFileReferenceChanges.id, [...options.ids]) : undefined,
         ),

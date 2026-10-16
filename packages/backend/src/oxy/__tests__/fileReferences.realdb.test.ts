@@ -231,6 +231,41 @@ describe('a merge moves the references of the gallery it moves', () => {
   });
 });
 
+describe('a change no attempt has claimed', () => {
+  // `next_attempt_at` defaults to the database's clock, in microseconds; the
+  // worker's clock is JavaScript's, in milliseconds, and may run behind it.
+  // A minute behind stands for both, deterministically.
+  it('is due at once, even on a worker whose clock is behind the database’s', async () => {
+    const shop = await place('Queviures Murria');
+    referenceAt('file-fresh-1', shop.id);
+    const [id] = await enqueueFileReferenceChanges(db(), [
+      { action: 'remove', fileId: 'file-fresh-1', entityType: 'place', entityId: shop.id },
+    ]);
+
+    skewMs = -60_000;
+    expect(await worker.deliver([defined(id)])).toEqual({ delivered: 1, retrying: 0, dead: 0 });
+    expect(linksOf('file-fresh-1')).toEqual([]);
+    expect(await queuedFor('file-fresh-1')).toEqual([]);
+  });
+
+  it('waits out its backoff once an attempt has failed', async () => {
+    const shop = await place('Granja Viader');
+    referenceAt('file-fresh-2', shop.id);
+    const [id] = await enqueueFileReferenceChanges(db(), [
+      { action: 'remove', fileId: 'file-fresh-2', entityType: 'place', entityId: shop.id },
+    ]);
+
+    oxy.referencesMode = 'down';
+    expect(await worker.deliver([defined(id)])).toEqual({ delivered: 0, retrying: 1, dead: 0 });
+    oxy.referencesMode = 'ok';
+    expect(await worker.deliver([defined(id)])).toEqual({ delivered: 0, retrying: 0, dead: 0 });
+    expect(linksOf('file-fresh-2')).toEqual([`${APP}/place/${shop.id}`]);
+
+    await drainEverythingDue();
+    expect(linksOf('file-fresh-2')).toEqual([]);
+  });
+});
+
 describe('a change that keeps failing', () => {
   it('is dead-lettered and logged, and an operator puts it back', async () => {
     const shop = await place('Colmado Quílez');
