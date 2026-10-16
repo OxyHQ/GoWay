@@ -131,6 +131,12 @@ for (const name of ENTRIES) {
 
   const bundle = await rollup({
     input: entry,
+    // One file at a time: rollup-plugin-dts type-checks each module as rollup
+    // loads it, and TypeScript prints a union's members in the order the
+    // checker created their types. Loaded in parallel, that order — and so the
+    // declaration bytes — changed from build to build, which the release's
+    // rebuild-and-compare refuses.
+    maxParallelFileOps: 1,
     // `respectExternal` makes the plugin inline declarations from node_modules
     // too, so zod must be named external here as well or its types are copied in.
     external: isExternal,
