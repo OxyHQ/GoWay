@@ -1,10 +1,14 @@
 /**
  * A place's gallery, end to end: the real media, places and moderation
- * routers, the real `@oxy.so/core` client asking a fake Oxy at the HTTP
+ * routers, the real `@oxy.so/core` clients — the caller's, and GoWay's own
+ * `OxyServer` minting its service token — asking a fake Oxy at the HTTP
  * boundary (`fakeOxy`) about files and organizations, and a real PostGIS.
  *
  *  - adding a file: signed in, the caller's own, public, an image, active —
- *    or refused with nothing recorded and nothing linked; Oxy down is `503`;
+ *    or refused with nothing recorded and nothing referenced; Oxy down, or
+ *    GoWay's token refused, is `503`;
+ *  - every reference made and removed with GoWay's token, never a session —
+ *    so the business can withdraw a customer's photo (Oxy ADR 0043 D4);
  *  - who may add a logo, withdraw an item, order the gallery;
  *  - the logo and cover pointers, and their release when an item leaves;
  *  - moderation's hide and restore, and reports about one item;
@@ -35,8 +39,15 @@ import {
 } from '../../db/__tests__/testDatabase';
 import { createRequireOperator } from '../../middleware/operator';
 import { createAccountRoleResolver } from '../../oxy/accountRoles';
+import {
+  createFileReferenceWorker,
+  createOxyFileReferences,
+  type FileReferenceWorker,
+} from '../../oxy/fileReferences';
 import { createOxyPlaceFileStore } from '../../oxy/placeFiles';
 import {
+  FAKE_SERVICE_APPLICATION_ID,
+  FAKE_SERVICE_AUTH,
   membershipKey,
   startFakeOxy,
   type FakeOxy,
@@ -62,10 +73,33 @@ const CONTRIBUTOR: PlaceActor = {
 };
 const GRACIA = { latitude: 41.3979, longitude: 2.1598 };
 const OPERATOR = session('person-mod');
+/** Who GoWay's own service token says it is, at the fake Oxy. */
+const GOWAY_SERVICE = `service:${FAKE_SERVICE_APPLICATION_ID}`;
 
 let suite: SuiteDatabase | null = null;
 let oxy: FakeOxy;
 let api: TestApi;
+let worker: FileReferenceWorker;
+/** How far the worker's clock runs ahead of real time — past a retry's backoff. */
+let skewMs = 0;
+
+/** The changes still queued for a file: what Oxy is still owed. */
+async function queuedFor(fileId: string) {
+  return [
+    ...(await requireSuite(suite).client<
+      {
+        action: string;
+        entity_id: string;
+        state: string;
+        attempts: number;
+        last_failure: string | null;
+      }[]
+    >`
+      SELECT action, entity_id, state, attempts, last_failure FROM oxy_file_reference_changes
+      WHERE oxy_file_id = ${fileId} ORDER BY id
+    `),
+  ];
+}
 
 /** Claimed, approved, by the organization `org-cafe`. */
 let cafe: Place;
@@ -85,6 +119,7 @@ function upload(fileId: string, owner: string, file: Partial<FakeOxyFile> = {}):
   return fileId;
 }
 
+/** The file's references, as `application/entityType/entityId`. */
 function linksOf(fileId: string): string[] {
   return (oxy.links.get(fileId) ?? []).map(
     (link) => `${link.app}/${link.entityType}/${link.entityId}`,
@@ -142,7 +177,18 @@ beforeAll(async () => {
   oxy.memberships.set(membershipKey('person-viewer', 'org-cafe'), 'viewer');
 
   const accountRoles = createAccountRoleResolver({ oxyApiUrl: oxy.url, ttlMs: 0 });
-  const placeFiles = createOxyPlaceFileStore({ oxyApiUrl: oxy.url });
+  // GoWay's own references client and worker, exactly as `middleware/auth` builds them.
+  const references = createOxyFileReferences({
+    baseURL: oxy.url,
+    serviceAuth: { ...FAKE_SERVICE_AUTH },
+  });
+  const placeFiles = createOxyPlaceFileStore({ oxyApiUrl: oxy.url, references });
+  const db = suite.db;
+  worker = createFileReferenceWorker({
+    getDb: () => db,
+    references,
+    now: () => new Date(Date.now() + skewMs),
+  });
   api = await serve(
     createPlacesRouter({
       optionalAuth: fakeOptionalAuth,
@@ -155,6 +201,7 @@ beforeAll(async () => {
       requireAuth: fakeRequireAuth,
       accountRoles,
       placeFiles,
+      fileReferences: worker,
       reportRateLimit: NO_RATE_LIMIT,
       contributionRateLimit: NO_RATE_LIMIT,
     }),
@@ -183,7 +230,10 @@ afterAll(async () => {
 
 beforeEach(() => {
   oxy.mode = 'ok';
+  oxy.referencesGranted = true;
+  oxy.referencesMode = 'ok';
   oxy.fileRequests.length = 0;
+  skewMs = 0;
 });
 
 describe('adding an Oxy file to a gallery', () => {
@@ -206,9 +256,14 @@ describe('adding an Oxy file to a gallery', () => {
       width: 1600,
       height: 1200,
     });
-    // Asked on the caller's own session, and linked so Oxy keeps the file.
-    expect(oxy.fileRequests.every((request) => request.person === 'person-ana')).toBe(true);
-    expect(linksOf(fileId)).toEqual([`goway/place/${open.id}`]);
+    // Checked on the caller's own session, then referenced by GoWay itself so
+    // Oxy keeps the file — and the reference left its visibility alone.
+    expect(oxy.fileRequests).toEqual([
+      { request: `GET /assets/${fileId}`, person: 'person-ana' },
+      { request: 'POST /assets/batch-access', person: 'person-ana' },
+      { request: 'POST /assets/service/references', person: GOWAY_SERVICE },
+    ]);
+    expect(linksOf(fileId)).toEqual([`${FAKE_SERVICE_APPLICATION_ID}/place/${open.id}`]);
     expect(oxy.files.get(fileId)?.visibility).toBe('public');
     expect((await gallery(open.id)).map((item) => item.fileId)).toEqual([fileId]);
   });
@@ -269,6 +324,23 @@ describe('adding an Oxy file to a gallery', () => {
     expect(await mediaCount(open.id)).toBe(before);
   });
 
+  it("fails closed with 503 when Oxy refuses GoWay's own token, and records nothing", async () => {
+    // GoWay's grant of `files:references:write` missing or revoked: the
+    // caller's file is fine, GoWay cannot record its use, so nothing is kept.
+    const fileId = upload('file-ana-ungranted', 'person-ana');
+    const before = await mediaCount(open.id);
+    for (const refusal of ['ungranted', 'down'] as const) {
+      oxy.referencesGranted = refusal !== 'ungranted';
+      oxy.referencesMode = refusal === 'down' ? 'down' : 'ok';
+      const { status, body } = await add(open.id, session('person-ana'), { fileId, kind: 'photo' });
+      expect(`${refusal}: ${String(status)} ${body.error.code}`).toBe(
+        `${refusal}: 503 service_unavailable`,
+      );
+    }
+    expect(await mediaCount(open.id)).toBe(before);
+    expect(linksOf(fileId)).toEqual([]);
+  });
+
   it('answers a file already in the gallery with 409 naming the item, and keeps its link', async () => {
     const existing = defined((await gallery(open.id))[0]);
     const { status, body } = await add(open.id, session('person-ana'), {
@@ -277,7 +349,7 @@ describe('adding an Oxy file to a gallery', () => {
     });
     expect(status).toBe(409);
     expect(body.error.details).toEqual({ mediaId: existing.id });
-    expect(linksOf('file-ana-1')).toEqual([`goway/place/${open.id}`]);
+    expect(linksOf('file-ana-1')).toEqual([`${FAKE_SERVICE_APPLICATION_ID}/place/${open.id}`]);
   });
 
   it('accepts a file uploaded by the organization a session switched into', async () => {
@@ -453,7 +525,7 @@ describe('withdrawing an item', () => {
     const item = defined(
       (await gallery(cafe.id)).find((entry) => entry.fileId === 'file-stranger-1'),
     );
-    expect(linksOf('file-stranger-1')).toEqual([`goway/place/${cafe.id}`]);
+    expect(linksOf('file-stranger-1')).toEqual([`${FAKE_SERVICE_APPLICATION_ID}/place/${cafe.id}`]);
     const { status } = await api.call(
       'DELETE',
       `/places/${cafe.id}/media/${item.id}`,
@@ -463,6 +535,76 @@ describe('withdrawing an item', () => {
     expect(linksOf('file-stranger-1')).toEqual([]);
     expect((await gallery(cafe.id)).some((entry) => entry.id === item.id)).toBe(false);
     expect((await storedRevisions(cafe.id)).slice(-1)[0]?.action).toBe('media_removed');
+  });
+
+  it("lets the business withdraw a customer's photo, dropping the customer's reference as GoWay", async () => {
+    // Oxy lets a session remove only a reference to its own file or one it
+    // made; the business's session could do neither. GoWay's token removes it.
+    const fileId = upload('file-stranger-claimed', 'person-stranger');
+    const { body: item } = await add(cafe.id, session('person-stranger'), {
+      fileId,
+      kind: 'photo',
+    });
+    expect(linksOf(fileId)).toEqual([`${FAKE_SERVICE_APPLICATION_ID}/place/${cafe.id}`]);
+    oxy.fileRequests.length = 0;
+
+    const { status } = await api.call(
+      'DELETE',
+      `/places/${cafe.id}/media/${item.id}`,
+      session('org-cafe', 'person-editor'),
+    );
+    expect(status).toBe(204);
+    expect(linksOf(fileId)).toEqual([]);
+    expect(oxy.fileRequests).toEqual([
+      { request: 'DELETE /assets/service/references', person: GOWAY_SERVICE },
+    ]);
+    // Withdrawing a reference leaves the contributor's file exactly as it was.
+    expect(oxy.files.get(fileId)).toMatchObject({ status: 'active', visibility: 'public' });
+  });
+
+  it('still withdraws the item when Oxy cannot drop the reference, and delivers it once Oxy answers', async () => {
+    for (const refusal of ['down', 'ungranted'] as const) {
+      oxy.referencesMode = 'ok';
+      oxy.referencesGranted = true;
+      const fileId = upload(`file-stranger-lingering-${refusal}`, 'person-stranger');
+      const { body: item } = await add(cafe.id, session('person-stranger'), {
+        fileId,
+        kind: 'photo',
+      });
+
+      oxy.referencesMode = refusal === 'down' ? 'down' : 'ok';
+      oxy.referencesGranted = refusal !== 'ungranted';
+      const { status } = await api.call(
+        'DELETE',
+        `/places/${cafe.id}/media/${item.id}`,
+        session('person-editor'),
+      );
+      expect(`${refusal}: ${String(status)}`).toBe(`${refusal}: 204`);
+      expect((await gallery(cafe.id)).some((entry) => entry.id === item.id)).toBe(false);
+      // Not lost: queued with the withdrawal, one attempt made, waiting out its backoff.
+      expect(linksOf(fileId)).toEqual([`${FAKE_SERVICE_APPLICATION_ID}/place/${cafe.id}`]);
+      expect(await queuedFor(fileId)).toEqual([
+        {
+          action: 'remove',
+          entity_id: cafe.id,
+          state: 'pending',
+          attempts: 1,
+          last_failure: refusal === 'down' ? 'http_503' : 'http_403',
+        },
+      ]);
+
+      // Not retried before its backoff, even with Oxy back...
+      oxy.referencesMode = 'ok';
+      oxy.referencesGranted = true;
+      await worker.drain();
+      expect(linksOf(fileId)).toHaveLength(1);
+      // ...and delivered once it is due.
+      skewMs = 60_000;
+      await worker.drain();
+      skewMs = 0;
+      expect(linksOf(fileId)).toEqual([]);
+      expect(await queuedFor(fileId)).toEqual([]);
+    }
   });
 
   it("is open to the business for anybody's item, and to nobody else", async () => {

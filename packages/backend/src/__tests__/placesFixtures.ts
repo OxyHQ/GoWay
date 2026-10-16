@@ -6,6 +6,7 @@
 import type { RequestHandler } from 'express';
 import type { RevisionAuthor } from '../db/places/revisions';
 import type { AccountRoleResolver } from '../oxy/accountRoles';
+import type { FileReferenceWorker } from '../oxy/fileReferences';
 import type { PlaceFileStore } from '../oxy/placeFiles';
 
 /** A write made through the public API by `oxyAccountId`, acting as itself. */
@@ -37,7 +38,11 @@ export const NO_FILES: PlaceFileStore = {
   async attach() {
     throw new Error('This suite does not attach Oxy files.');
   },
-  async detach() {
-    return undefined;
+};
+
+/** Reference delivery, as a suite that never withdraws a gallery item sees it: nothing to send. */
+export const NO_REFERENCE_DELIVERY: Pick<FileReferenceWorker, 'deliver'> = {
+  async deliver() {
+    return { delivered: 0, retrying: 0, dead: 0 };
   },
 };

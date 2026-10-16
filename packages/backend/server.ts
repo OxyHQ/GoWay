@@ -35,6 +35,8 @@ import { startPlatformActivity } from './src/platformActivity';
 import { street3dConfig } from './src/config/street3d';
 import { getDb } from './src/db/postgres';
 import { startScheduler } from './src/street3d/scheduler';
+import { fileReferences } from './src/middleware/auth';
+import { startFileReferenceWorker } from './src/oxy/fileReferences';
 import { createConfiguredStreet3dServices } from './src/street3d/services';
 import { createLogger, logger } from './src/utils/logger';
 
@@ -63,6 +65,7 @@ const io = attachRealtime(server, {
 });
 
 let stopStreet3d: (() => void) | null = null;
+let stopFileReferences: (() => void) | null = null;
 
 /**
  * Start the Street 3D scheduler, AFTER the server is listening, whenever the
@@ -88,6 +91,7 @@ function shutdown(signal: string): void {
   serving = false;
   logger.info({ signal }, 'Shutting down');
   stopStreet3d?.();
+  stopFileReferences?.();
   live?.stop();
 
   // A drain that never finishes is worse than an abrupt exit: the orchestrator
@@ -126,6 +130,11 @@ async function boot(): Promise<void> {
       'GoWay backend listening',
     );
     startStreet3d();
+    // GoWay's queued Oxy file reference changes and the nightly reconciliation
+    // (`oxy/fileReferences`). Always on: nothing to configure, never a readiness dependency.
+    stopFileReferences = startFileReferenceWorker(fileReferences, {
+      logger: createLogger('oxy-references'),
+    });
     live?.start();
   });
 
