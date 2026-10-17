@@ -39,11 +39,13 @@ import {
   scrubbedInstant,
   sunPhase,
 } from '@/lib/map/timeOfDay';
-import { creditRise, MAP_CREDIT_CLEARANCE } from '@/lib/map/creditRise';
+import {
+  creditRise,
+  MAP_CREDIT_CLEARANCE,
+  useMapChromeLift,
+  useMapCreditHeight,
+} from '@goway.to/maps';
 import { CITY_SKY_LABELS, type CitySkyLabelKey } from '@/lib/messages/citySky';
-
-import { useMapChromeLift } from './chromeLift';
-import { useMapCreditHeight } from './creditHeight';
 
 /** The scrubber's DOM id: Escape is honoured only while focus is inside it. */
 const SCRUBBER_ID = 'goway-time-of-day';

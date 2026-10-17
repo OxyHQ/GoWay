@@ -15,7 +15,7 @@
  *    `features/live`;
  *  - nothing outside `features/live` imports it, except the ONE dynamic
  *    `import()` in `ExploreScreen.tsx`;
- *  - `liveLayer.web.ts` is reached only by `import()` from `MapCanvas.web.tsx`,
+ *  - `liveLayer.web.ts` is reached only by `import()` from `gowayEngine.web.ts`,
  *    and shares no runtime module with `features/live` beyond what the entry
  *    already has (it receives the palette as data).
  *
@@ -113,7 +113,7 @@ describe('the live chunk', () => {
     expect(dynamics).toEqual(['features/explore/ExploreScreen.tsx']);
   });
 
-  test('the adapter is reached only by import() from MapCanvas.web.tsx, and imports nothing of the feature', () => {
+  test('the adapter is reached only by import() from the engine plugin, and imports nothing of the feature', () => {
     const statics = files.filter((f) =>
       staticImports(f.text).some((spec) => /liveLayer\.web$/.test(spec)),
     );
@@ -122,7 +122,7 @@ describe('the live chunk', () => {
     const dynamics = files
       .filter((f) => f.path !== 'components/map/liveLayer.web.ts')
       .filter((f) => dynamicImports(f.text).some((spec) => /liveLayer\.web$/.test(spec)));
-    expect(dynamics.map((f) => f.path)).toEqual(['components/map/MapCanvas.web.tsx']);
+    expect(dynamics.map((f) => f.path)).toEqual(['components/map/gowayEngine.web.ts']);
     const adapter = files.find((f) => f.path === 'components/map/liveLayer.web.ts');
     expect(staticImports(adapter?.text ?? '').filter((spec) => spec.includes('features/'))).toEqual(
       [],

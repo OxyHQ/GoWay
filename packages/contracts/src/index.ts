@@ -20,6 +20,7 @@
 export * from './organization-lists';
 export * from './geo';
 export * from './geo-math';
+export * from './map-tiles';
 export * from './language';
 export * from './time';
 export * from './pagination';

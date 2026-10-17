@@ -22,7 +22,7 @@
 import type { Map as MapLibreMap } from 'maplibre-gl';
 
 import { GOWAY_LAYER_PREFIX } from '@/lib/map/provider';
-import { OPENMAPTILES_SOURCE_LAYERS } from '@/lib/map/style/schema';
+import { OPENMAPTILES_SOURCE_LAYERS } from '@goway.to/sdk';
 
 export const STREET_NAME_BLOCKER_SOURCE = `${GOWAY_LAYER_PREFIX}street-name-blockers`;
 export const STREET_NAME_BLOCKER_LAYER = `${GOWAY_LAYER_PREFIX}street-name-blockers`;

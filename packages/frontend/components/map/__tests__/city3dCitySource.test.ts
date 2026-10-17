@@ -19,7 +19,7 @@ import {
   CITY_TILE_ZOOM,
   CITY_TREE_LAYER,
 } from '@/lib/map/cityTiles';
-import { OPENMAPTILES_SOURCE_LAYERS } from '@/lib/map/style/schema';
+import { OPENMAPTILES_SOURCE_LAYERS } from '@goway.to/sdk';
 
 const basemap = { template: 'https://tiles.example/{z}/{x}/{y}.pbf', maxzoom: 14 };
 const BARCELONA: [number, number, number, number] = [2.052, 41.317, 2.228, 41.468];

@@ -78,7 +78,7 @@ import type {
 import type { MapAppearance } from '../provider';
 import type { SunPosition } from '../sun';
 import type { CartographyPalette } from './palette';
-import { OPENMAPTILES_SOURCE_LAYERS } from './schema';
+import { OPENMAPTILES_SOURCE_LAYERS } from '@goway.to/sdk';
 
 /**
  * The extruded layer's id — part of the published contract in

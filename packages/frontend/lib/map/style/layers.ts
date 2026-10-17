@@ -43,7 +43,7 @@ import { GOWAY_LABEL_ANCHOR_LAYER_ID } from '../provider';
 import { BUILDING_3D_LAYER_ID, buildBuildings3dLayer } from './buildings3d';
 import type { CartographyPalette, RoadTier, RoadTone } from './palette';
 import { STANDARD_OPTIONS, type StyleOptions } from './options';
-import { FONT_STACKS, OPENMAPTILES_SOURCE_LAYERS as SL } from './schema';
+import { FONT_STACKS, OPENMAPTILES_SOURCE_LAYERS as SL } from '@goway.to/sdk';
 import { LOCAL_ROAD_FILL, SHOW_BASEMAP_POIS, SHOW_ROAD_AND_POI_LABELS } from './tuning';
 
 /**

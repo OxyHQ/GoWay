@@ -58,29 +58,29 @@ import { useBottomEdgeInset, useTopEdgeInset, windowEdgeGap } from '@oxy.so/bloo
 import { RiCompass3Line } from '@oxy.so/bloom/icons/RiCompass3Line';
 import { RiFocus3Line } from '@oxy.so/bloom/icons/RiFocus3Line';
 
-import { BrandedChromeProvider } from '@/components/brand';
-import { type MapChromeLift, MapChromeLiftContext } from '@/components/map/chromeLift';
-import { MapCreditHeightContext } from '@/components/map/creditHeight';
+import { BrandedChromeProvider } from '@goway.to/maps';
+import { type MapChromeLift, MapChromeLiftContext } from '@goway.to/maps';
+import { MapCreditHeightContext } from '@goway.to/maps';
 import {
   MAP_CREDIT_CLEARANCE,
   MapCanvas,
-  type GeoBounds,
+  type GeoBoundingBox,
   type MapApi,
-  type MapCanvasError,
+  type MapError,
   type MapFitOptions,
   type MapLiveLayer,
   type MapMarker,
   type MapModel,
   type MapPressEvent,
   type MapViewport,
-  type MapViewportChange,
+  type MapCameraChange,
 } from '@/components/map';
 import { MAP_SHEET_HALF_RATIO, MapSheet, type MapSheetSnap } from '@/components/sheet/MapSheet';
 import { SidePanel } from '@/components/sheet/SidePanel';
 import { PANEL_WIDTH, useLayoutMode } from '@/lib/useLayoutMode';
 import { useAuthGate } from '@/lib/authGate';
 import { chromeLift } from '@/lib/map/chromeLift';
-import { creditRise } from '@/lib/map/creditRise';
+import { creditRise } from '@goway.to/maps';
 import {
   INITIAL_TIME_OF_DAY,
   timeOfDayButtonShown,
@@ -88,7 +88,7 @@ import {
 } from '@/lib/map/timeOfDayControl';
 import { useMapFeature } from '@/lib/map/useMapFeatures';
 import { useTranslation } from '@/lib/i18n';
-import type { LocationErrorReason } from '@/lib/map/useUserLocation';
+import type { LocationErrorReason } from '@goway.to/maps';
 
 import { slotName } from '@/features/directions/stops';
 import { takeReturnBounds } from '@/features/street3d/handoff';
@@ -301,7 +301,7 @@ export default function ExploreScreen({
     longitude: number;
   } | null>(null);
 
-  const pendingFit = useRef<GeoBounds | null>(null);
+  const pendingFit = useRef<GeoBoundingBox | null>(null);
   const mapReady = useRef(false);
   const applyPendingFit = useCallback(() => {
     const bounds = pendingFit.current;
@@ -356,7 +356,7 @@ export default function ExploreScreen({
   const flyover = useMapFeature('flyover');
   const landmarks = useMapFeature('landmarks');
   const live = useMapFeature('live');
-  const [mapError, setMapError] = useState<MapCanvasError | null>(null);
+  const [mapError, setMapError] = useState<MapError | null>(null);
   // While the flyover flies, the sheet, the panel and the floating controls
   // step aside; the vehicle is a model on the canvas.
   const [flying, setFlying] = useState(false);
@@ -420,7 +420,7 @@ export default function ExploreScreen({
   const areaTop = topEdge > 0 ? topEdge + windowEdgeGap(0) : windowEdgeGap(insets.top);
 
   const handleViewportChange = useCallback(
-    (change: MapViewportChange) => {
+    (change: MapCameraChange) => {
       setRotated(Math.abs(change.viewport.bearing) > BEARING_EPSILON);
       setTilted(change.viewport.pitch >= TILTED_EPSILON);
       if (change.source === 'user') for (const listener of userMoveListeners.current) listener();

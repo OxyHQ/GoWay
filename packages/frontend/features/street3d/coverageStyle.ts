@@ -18,7 +18,7 @@ import {
   type StreetSceneSummary,
 } from '@goway.to/sdk';
 
-import type { GeoBounds, MapMarker, MapOverlay } from '@/components/map/types';
+import type { GeoBoundingBox, MapMarker, MapOverlay } from '@/components/map/types';
 
 /** Coverage is street-scale; below this zoom it is noise and is not fetched. */
 export const STREET3D_MIN_ZOOM = 14;
@@ -182,7 +182,7 @@ export function areaContaining(
 }
 
 function within(
-  bounds: GeoBounds,
+  bounds: GeoBoundingBox,
   { latitude, longitude }: { latitude: number; longitude: number },
 ): boolean {
   const inLongitude =
@@ -201,7 +201,7 @@ function within(
 export function boxAround(
   coordinate: { latitude: number; longitude: number },
   radiusMeters: number,
-): GeoBounds {
+): GeoBoundingBox {
   const dLat = radiusMeters / 111_320;
   const cos = Math.max(0.01, Math.cos((coordinate.latitude * Math.PI) / 180));
   const dLon = radiusMeters / (111_320 * cos);

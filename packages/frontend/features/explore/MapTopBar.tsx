@@ -28,7 +28,7 @@ import { AliaChatSheet, type AliaChatSheetRef } from '@alia.onl/sdk';
 import { AliaAvatarIcon } from '@alia.onl/sdk/avatar';
 import { VoiceSession } from '@alia.onl/sdk/voice';
 
-import { GowayLogo } from '@/components/brand';
+import { GowayLogo } from '@goway.to/maps';
 import { useAuthGate } from '@/lib/authGate';
 import { useTranslation } from '@/lib/i18n';
 

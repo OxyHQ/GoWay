@@ -14,6 +14,7 @@
  */
 
 import { describe, expect, test } from 'bun:test';
+import { POI_CLASSES } from '@goway/contracts';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { SEEDED_CATALOG, SEEDED_CATEGORIES } from '../../../__tests__/categoryFixtures';
@@ -80,9 +81,8 @@ describe('the imported set against the basemap', () => {
     expect(missing).toEqual([]);
   });
 
-  test('the poi class vocabulary the style records still contains what we produce', () => {
-    const schema = readFileSync(join(STYLE_DIRECTORY, 'schema.ts'), 'utf8');
-    const known = new Set(stringArray(schema, 'POI_CLASSES'));
+  test('the poi class vocabulary of the tile schema still contains what we produce', () => {
+    const known = new Set<string>(POI_CLASSES);
     expect(known.size).toBeGreaterThan(80);
     for (const [element, expected] of REPRESENTATIVE_TAGS) {
       expect({ element, known: known.has(expected) }).toEqual({ element, known: true });

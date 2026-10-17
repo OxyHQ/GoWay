@@ -1,7 +1,7 @@
 /**
  * The performance runtime stays off the first paint (`docs/MAP_PERFORMANCE.md`).
  *
- * `MapCanvas.web.tsx` keeps only what must exist before the first frame in the
+ * The web map (`MapCanvas.web.tsx` and its engine plugin) keeps only what must exist before the first frame in the
  * entry bundle — the quality profile (its pixel-ratio clamp and MSAA are
  * construction options) and the animation clock (every animating layer joins
  * it). Everything else — dynamic resolution, the GPU benchmark, the HUD and
@@ -33,7 +33,7 @@ describe('the perf runtime chunk', () => {
       'components/map/perf/mapRuntime.web.ts',
       'components/map/perf/animationClock.ts',
       'components/map/perf/glCounters.ts',
-      'components/map/MapCanvas.web.tsx',
+      'components/map/gowayEngine.web.ts',
     ]) {
       expect(
         files.some((f) => f.path === path),
@@ -42,11 +42,11 @@ describe('the perf runtime chunk', () => {
     }
   });
 
-  test('the runtime is only ever imported dynamically, by MapCanvas.web.tsx', () => {
+  test('the runtime is only ever imported dynamically, by the GoWay engine plugin', () => {
     const statics = files.filter((f) => specifiers(f.text).statics.some((s) => RUNTIME.test(s)));
     expect(statics.map((f) => f.path)).toEqual([]);
     const dynamics = files.filter((f) => specifiers(f.text).dynamics.some((s) => RUNTIME.test(s)));
-    expect(dynamics.map((f) => f.path)).toEqual(['components/map/MapCanvas.web.tsx']);
+    expect(dynamics.map((f) => f.path)).toEqual(['components/map/gowayEngine.web.ts']);
   });
 
   test('its parts are reached at runtime only from the runtime', () => {
@@ -60,10 +60,10 @@ describe('the perf runtime chunk', () => {
     expect(reachers).toEqual([]);
   });
 
-  test('the clock is loaded at runtime by MapCanvas alone; the layers take it as a type', () => {
+  test('the clock is loaded at runtime by the engine plugin alone; the layers take it as a type', () => {
     const reachers = files
       .filter((f) => specifiers(f.text).statics.some((s) => CLOCK.test(s)))
       .map((f) => f.path);
-    expect(reachers).toEqual(['components/map/MapCanvas.web.tsx']);
+    expect(reachers).toEqual(['components/map/gowayEngine.web.ts']);
   });
 });

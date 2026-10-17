@@ -6,7 +6,7 @@ const APP_ID = IS_DEV ? 'to.goway.app.dev' : 'to.goway.app';
 const APP_NAME = IS_DEV ? 'GoWay (Dev)' : 'GoWay';
 
 // GoWay's icons, rendered from the ONE piece of artwork in
-// `components/brand/artwork.ts` — the same geometry the map badge draws, so an
+// `packages/maps/src/brand/artwork.ts` — the same geometry the map badge draws, so an
 // icon can never be a different logo from the one in the product.
 //
 // These four are PNG because Expo's image pipeline is PNG: `icon` becomes the
@@ -105,8 +105,8 @@ module.exports = {
           dark: { image: SPLASH_ICON, backgroundColor: '#100d10' },
         },
       ],
-      // MapLibre Native — the iOS/Android map renderer behind
-      // `components/map/MapCanvas.native.tsx`.
+      // MapLibre Native — the iOS/Android map renderer behind `@goway.to/maps`,
+      // added by its config plugin.
       //
       // THIS IS WHAT MAKES GOWAY REQUIRE A DEVELOPMENT BUILD. The plugin adds
       // the `org.maplibre.gl` Android artifacts and the MapLibre Swift package
@@ -119,8 +119,8 @@ module.exports = {
       // `locationEngine` stays on MapLibre's default rather than Google Play
       // Services: the default keeps the Android build F-Droid-compatible and
       // GoWay does not need sub-metre fusion to centre a map.
-      ['@maplibre/maplibre-react-native', {}],
-      // Location is requested CONTEXTUALLY (see `lib/map/useUserLocation.ts`),
+      '@goway.to/maps',
+      // Location is requested CONTEXTUALLY (`useUserLocation` from `@goway.to/maps`),
       // never at launch. These strings are what iOS shows in that prompt, so
       // they say why at the moment the user asked — matching the in-app hint.
       [

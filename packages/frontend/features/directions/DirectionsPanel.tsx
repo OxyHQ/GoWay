@@ -33,7 +33,7 @@ import { RiDeleteBinLine } from '@oxy.so/bloom/icons/RiDeleteBinLine';
 import { RiMap2Line } from '@oxy.so/bloom/icons/RiMap2Line';
 import { RiWalkLine } from '@oxy.so/bloom/icons/RiWalkLine';
 
-import type { GeoBounds } from '@/components/map';
+import type { GeoBoundingBox } from '@/components/map';
 import type { GeoCoordinate, Place } from '@goway.to/sdk';
 import { formatDistance, formatDuration } from '@/lib/goway/format';
 
@@ -224,7 +224,7 @@ export interface DirectionsBodyProps {
   /** The browse query's places and its centre, reused by the stop picker. */
   places: readonly Place[];
   center: GeoCoordinate | null;
-  viewport: GeoBounds | null;
+  viewport: GeoBoundingBox | null;
   /** The user's own position, when already known. Biases the picker's search. */
   near: GeoCoordinate | null;
   testID?: string;

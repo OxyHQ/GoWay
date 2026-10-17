@@ -36,7 +36,7 @@
  *
  * ## Why Planetiler, and why the schema does not change
  *
- * `lib/map/style/schema.ts` records the OpenMapTiles v3 vocabulary the style
+ * `@goway.to/sdk`'s tile schema (`packages/contracts/src/map-tiles.ts`) records the OpenMapTiles v3 vocabulary the style
  * speaks, and `build-map-style.ts` fails on a `source-layer` or a `class` that
  * no tile carries. Changing the schema would mean changing the cartography in
  * the same breath, so the question is whether a self-hosted build can keep it.
@@ -93,10 +93,7 @@ import {
   OSM_ID_MULTIPLIER,
   type VectorTileLayer,
 } from './mapgen/mvt';
-import {
-  OPENMAPTILES_SOURCE_LAYER_NAMES,
-  OPENMAPTILES_SOURCE_LAYERS,
-} from '../lib/map/style/schema';
+import { OPENMAPTILES_SOURCE_LAYER_NAMES, OPENMAPTILES_SOURCE_LAYERS } from '@goway.to/sdk';
 
 const FRONTEND_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -531,7 +528,7 @@ export async function verify(archivePath: string, area: string): Promise<Verific
   const worldCovering = header.bounds[0] <= -179 && header.bounds[2] >= 179;
   const missing = OPENMAPTILES_SOURCE_LAYER_NAMES.filter((name) => !vectorLayers.includes(name));
   for (const name of missing) {
-    const message = `the archive has no "${name}" layer, which lib/map/style/schema.ts promises`;
+    const message = `the archive has no "${name}" layer, which the tile schema (packages/contracts/src/map-tiles.ts) promises`;
     if (worldCovering) problems.push(message);
     else console.log(`  note            ${message} (extract, not the planet)`);
   }
