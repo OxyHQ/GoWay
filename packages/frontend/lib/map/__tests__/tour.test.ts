@@ -7,7 +7,7 @@ import { describe, expect, test } from 'bun:test';
 
 import { bearingDelta, bearingOf, createPlane, metresPerPixel } from '@/lib/map/camera/plane';
 import { compileTour, type Tour, type TourKeyframe } from '@/lib/map/camera/tour';
-import { distanceMeters } from '@/lib/map/geo';
+import { distanceMeters } from '@goway.to/sdk/geo';
 
 const ORIGIN = { latitude: 41.4036, longitude: 2.1744 };
 const plane = createPlane(ORIGIN);

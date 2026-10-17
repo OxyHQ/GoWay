@@ -19,7 +19,7 @@
 import { type ModelPlacement, parseModelPlacement } from '@goway.to/sdk';
 
 import type { MapAttributionLink } from '../provider';
-import { distanceMeters } from '../geo';
+import { distanceMeters } from '@goway.to/sdk/geo';
 import {
   cityFeatureId,
   type LandmarkEntry,

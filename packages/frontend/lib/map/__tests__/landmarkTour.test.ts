@@ -1,7 +1,7 @@
 /** The landmark tour's camera arithmetic (`lib/map/landmarks/tour.ts`). */
 import { describe, expect, test } from 'bun:test';
 
-import { distanceMeters } from '@/lib/map/geo';
+import { distanceMeters } from '@goway.to/sdk/geo';
 import {
   MAX_TOUR_PITCH,
   offsetBy,

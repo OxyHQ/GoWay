@@ -39,7 +39,7 @@
 
 // The Earth's circumference as MAPLIBRE measures it — `2π × 6,371,008.8 m`,
 // the mean radius, not WGS 84's equatorial 6,378,137 m — and the projection's
-// arithmetic are `lib/map/geo.ts`'s, the one copy (re-exported here under the
+// arithmetic are `@goway.to/sdk/geo`'s, the one copy (re-exported here under the
 // engine's names). Only heights depend on the radius: a mesh is built in
 // metres from tile units and turned back into mercator with the same factor,
 // so the horizontal scale cancels whatever the radius. Height does not
@@ -53,7 +53,7 @@ import {
   latitudeFromMercatorY as latFromMercatorY,
   mercatorX as mercatorXFromLng,
   mercatorY as mercatorYFromLat,
-} from '@/lib/map/geo';
+} from '@goway.to/sdk/geo';
 
 export { EARTH_CIRCUMFERENCE_M, latFromMercatorY, mercatorXFromLng, mercatorYFromLat };
 

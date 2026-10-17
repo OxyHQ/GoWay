@@ -268,6 +268,9 @@ export {
   mapStyleDefinition,
   mapStylePath,
   resolveMapStyle,
+  GOWAY_STYLE_URL_PREFIX,
+  gowayStyleUrl,
+  parseGoWayStyleUrl,
 } from './contract';
 
 export type {

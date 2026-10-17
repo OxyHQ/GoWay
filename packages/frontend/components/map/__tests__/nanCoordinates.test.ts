@@ -50,7 +50,7 @@ import {
   toLngLat,
 } from '@/components/map/shared';
 import type { MapMarker, MapOverlay } from '@/components/map/types';
-import { boundsOf, isDegenerateBounds } from '@/lib/map/geo';
+import { boundsOf, isDegenerateBounds } from '@goway.to/sdk/geo';
 import {
   MAX_PADDING_SHARE,
   clampFitPadding,
@@ -323,7 +323,7 @@ describe('seam — components/map/shared.ts', () => {
   });
 });
 
-describe('facts the seam depends on (lib/map/geo.ts)', () => {
+describe('facts the seam depends on (@goway.to/sdk/geo)', () => {
   test('isDegenerateBounds cannot be the NaN check — every NaN comparison is false', () => {
     // This is why `isDrawableBounds` runs FIRST in both forks: a NaN box is not
     // "degenerate", so it would sail past this and into `map.fitBounds`.

@@ -70,7 +70,7 @@ import {
   resolveMapAnchors,
   resolveMapStyleUrl,
 } from '@/lib/map/provider';
-import { boundsOf, isDegenerateBounds } from '@/lib/map/geo';
+import { boundsOf, isDegenerateBounds } from '@goway.to/sdk/geo';
 import { mapStyleDefinition, presetAppearance } from '@/lib/map/style/catalogue';
 
 import type { City3dHandle } from './city3dLayer.web';

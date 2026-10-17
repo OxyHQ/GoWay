@@ -40,7 +40,7 @@
  * Platform-neutral: no DOM, no WebGL, no map engine. The web host is
  * `components/map/cameraClearance.web.ts`; what native lacks is in the note.
  */
-import { EARTH_CIRCUMFERENCE_M, metersPerPixel } from '@/lib/map/geo';
+import { EARTH_CIRCUMFERENCE_M, metersPerPixel } from '@goway.to/sdk/geo';
 
 import type { Clearance } from './volumes';
 

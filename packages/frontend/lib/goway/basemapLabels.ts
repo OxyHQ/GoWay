@@ -71,7 +71,7 @@
 import type { Place, SearchResult } from '@goway.to/sdk';
 
 import type { MapLabelFeature, MapMarker } from '@/components/map';
-import { distanceMeters, projectToPixels } from '@/lib/map/geo';
+import { distanceMeters, projectToPixels } from '@goway.to/sdk/geo';
 
 /**
  * How far a reconciled search result may be from the tapped label and still be

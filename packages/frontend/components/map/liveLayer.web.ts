@@ -39,7 +39,7 @@
 import type { AnimationClock } from './perf/animationClock';
 import type { GeoJSONSource, Map as MapLibreMap } from 'maplibre-gl';
 
-import { metersPerPixel } from '@/lib/map/geo';
+import { metersPerPixel } from '@goway.to/sdk/geo';
 import { GOWAY_BASEMAP_SOURCE_ID, GOWAY_LAYER_PREFIX } from '@/lib/map/provider';
 import { FONT_STACKS, OPENMAPTILES_SOURCE_LAYERS } from '@/lib/map/style/schema';
 

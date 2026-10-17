@@ -216,7 +216,7 @@ export function resolvePadding(
  *
  * ## Why this is not `isValidCoordinate`
  *
- * `lib/map/geo.ts`'s `isValidCoordinate` is the PRODUCT's rule — a real point
+ * `@goway.to/sdk/geo`'s `isValidCoordinate` is the PRODUCT's rule — a real point
  * on the earth, longitude within ±180. This is the ENGINE's rule, which is
  * looser on longitude on purpose: MapLibre reports unwrapped longitudes across
  * the antimeridian (a click at 181°E comes back as 181, not −179), and feeding

@@ -56,7 +56,7 @@ import {
   RELIEF_DEM,
   RELIEF_SOURCE_IDS,
 } from '@/lib/map/style/relief';
-import { boundsOf, isDegenerateBounds } from '@/lib/map/geo';
+import { boundsOf, isDegenerateBounds } from '@goway.to/sdk/geo';
 import { mapStyleDefinition, presetAppearance } from '@/lib/map/style/catalogue';
 import { LABEL_LAYER_IDS, TAP_LAYER_IDS } from '@/lib/map/tapLayers';
 
