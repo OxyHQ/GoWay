@@ -4,6 +4,8 @@ GoWay is Oxy's open map and geographic platform, built for web, iOS and Android 
 
 It provides both the consumer map experience at **https://goway.to** and the reusable **`@goway.to/sdk`** used by FairCoin, Moovo, Mercaria, Homiio, Mention, Clarity and other Oxy or third-party apps.
 
+**Building on GoWay?** The developer documentation — the Maps SDK (`@goway.to/maps`), the GoWay SDK (`@goway.to/sdk`), map styles and tiles, and the HTTP API — is in [`docs/developers/`](docs/developers/README.md).
+
 ## Getting started
 
 Bun only — never npm, yarn or pnpm, and `bun.lock` is committed with the
