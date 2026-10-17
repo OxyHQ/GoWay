@@ -46,6 +46,10 @@ env:
   # 5440 locally. The URL is stated here once so the test jobs cannot drift.
   DATABASE_URL: postgres://goway:goway@127.0.0.1:5432/goway_test
 
+# `runs-on` sends a job to the OxyHQ home runners (oxy-infra `home-runners/`)
+# only while the org variable OXY_CI_RUNNER is `home`, and never for a fork's
+# pull request or Dependabot; anything else, including the variable unset,
+# runs on `ubuntu-latest`. Flipping the variable is the whole rollback.
 jobs:
   # Which areas a pull request touches, so the browser gates (`webexport`,
   # `city3d`) run only when their inputs changed. The org shares one 20-job
@@ -67,7 +71,7 @@ jobs:
   # request where this job SUCCEEDED and said `web=false`.
   changes:
     name: Detect affected areas
-    runs-on: ubuntu-latest
+    runs-on: ${{ vars.OXY_CI_RUNNER == 'home' && github.actor != 'dependabot[bot]' && (!startsWith(github.event_name, 'pull_request') || github.event.pull_request.head.repo.full_name == github.repository) && fromJSON('["self-hosted","oxy-home"]') || 'ubuntu-latest' }}
     timeout-minutes: 5
     permissions:
       contents: read
@@ -93,7 +97,7 @@ jobs:
 
   quality:
     name: Build, typecheck and lint
-    runs-on: ubuntu-latest
+    runs-on: ${{ vars.OXY_CI_RUNNER == 'home' && github.actor != 'dependabot[bot]' && (!startsWith(github.event_name, 'pull_request') || github.event.pull_request.head.repo.full_name == github.repository) && fromJSON('["self-hosted","oxy-home"]') || 'ubuntu-latest' }}
     # Generous on purpose. A suite consuming most of its budget on a GOOD run
     # has no headroom, so ordinary runner contention flips it to a timeout —
     # which GitHub reports as `cancelled`, indistinguishable from a supersession
@@ -261,7 +265,7 @@ jobs:
 
   gates:
     name: Repository gates
-    runs-on: ubuntu-latest
+    runs-on: ${{ vars.OXY_CI_RUNNER == 'home' && github.actor != 'dependabot[bot]' && (!startsWith(github.event_name, 'pull_request') || github.event.pull_request.head.repo.full_name == github.repository) && fromJSON('["self-hosted","oxy-home"]') || 'ubuntu-latest' }}
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
@@ -334,7 +338,7 @@ jobs:
     name: Export the web app (development build)
     needs: changes
     if: ${{ !cancelled() && !failure() && needs.changes.outputs.web == 'true' }}
-    runs-on: ubuntu-latest
+    runs-on: ${{ vars.OXY_CI_RUNNER == 'home' && github.actor != 'dependabot[bot]' && (!startsWith(github.event_name, 'pull_request') || github.event.pull_request.head.repo.full_name == github.repository) && fromJSON('["self-hosted","oxy-home"]') || 'ubuntu-latest' }}
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
@@ -387,7 +391,7 @@ jobs:
     name: 3D city visibility (${{ matrix.sky }})
     needs: [changes, webexport]
     if: ${{ !cancelled() && !failure() && needs.changes.outputs.web == 'true' }}
-    runs-on: ubuntu-latest
+    runs-on: ${{ vars.OXY_CI_RUNNER == 'home' && github.actor != 'dependabot[bot]' && (!startsWith(github.event_name, 'pull_request') || github.event.pull_request.head.repo.full_name == github.repository) && fromJSON('["self-hosted","oxy-home"]') || 'ubuntu-latest' }}
     # One leg per sky, and one for what is not per sky (city life, models),
     # side by side: each runs its own views (`--skies`), so the wall time
     # stays one leg's however many views the gate grows. `CI complete` needs
@@ -451,7 +455,7 @@ jobs:
 
   worker:
     name: Reconstruction worker
-    runs-on: ubuntu-latest
+    runs-on: ${{ vars.OXY_CI_RUNNER == 'home' && github.actor != 'dependabot[bot]' && (!startsWith(github.event_name, 'pull_request') || github.event.pull_request.head.repo.full_name == github.repository) && fromJSON('["self-hosted","oxy-home"]') || 'ubuntu-latest' }}
     # The worker's environment is the uv.lock, CUDA toolkit wheels included, so
     # installing it here is the reproducibility check: a lock that drifted from
     # pyproject.toml fails `--locked`. The tests need no GPU: they cover the job
@@ -476,7 +480,7 @@ jobs:
 
   lockfile:
     name: Lockfile sync
-    runs-on: ubuntu-latest
+    runs-on: ${{ vars.OXY_CI_RUNNER == 'home' && github.actor != 'dependabot[bot]' && (!startsWith(github.event_name, 'pull_request') || github.event.pull_request.head.repo.full_name == github.repository) && fromJSON('["self-hosted","oxy-home"]') || 'ubuntu-latest' }}
     # Its own job, and it CANNOT be folded into `quality`. The gate needs a plain
     # `bun install` to see what the lockfile would become, and `quality` installs
     # with `--frozen-lockfile`; the two cannot share a checkout. (Nor can
@@ -496,7 +500,7 @@ jobs:
 
   test:
     name: Backend tests
-    runs-on: ubuntu-latest
+    runs-on: ${{ vars.OXY_CI_RUNNER == 'home' && github.actor != 'dependabot[bot]' && (!startsWith(github.event_name, 'pull_request') || github.event.pull_request.head.repo.full_name == github.repository) && fromJSON('["self-hosted","oxy-home"]') || 'ubuntu-latest' }}
     # x86 REQUIRED, and not a preference. ARM runners (`ubuntu-*-arm`) have no
     # service containers at all, and `postgis/postgis` publishes no arm64 image —
     # either one alone makes the `services:` block below impossible.
@@ -614,7 +618,7 @@ jobs:
     name: CI complete
     needs: [changes, quality, gates, webexport, city3d, lockfile, test]
     if: always()
-    runs-on: ubuntu-latest
+    runs-on: ${{ vars.OXY_CI_RUNNER == 'home' && github.actor != 'dependabot[bot]' && (!startsWith(github.event_name, 'pull_request') || github.event.pull_request.head.repo.full_name == github.repository) && fromJSON('["self-hosted","oxy-home"]') || 'ubuntu-latest' }}
     timeout-minutes: 5
     steps:
       - name: Require every CI job to have passed
