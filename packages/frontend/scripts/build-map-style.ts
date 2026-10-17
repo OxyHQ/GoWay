@@ -223,7 +223,7 @@ const ENDPOINTS = {
  * `minzoom`/`maxzoom` are the planet build's, not ours to invent: OpenMapTiles
  * stops at z14 and MapLibre overzooms above it. Declaring 14 is what makes the
  * renderer overzoom instead of requesting z15 tiles that cannot exist, which
- * is also what `worker/index.js` refuses rather than forwards.
+ * is also what `map-service/src/index.js` refuses rather than forwards.
  */
 function buildTileJson(): Record<string, unknown> {
   const endpoints = gowayMapEndpoints(GOWAY_MAP_ORIGIN);
@@ -336,7 +336,7 @@ function checkOne(name: string, style: StyleSpecification, problems: string[]): 
 
     // 2. Schema reality. This is the check that catches the failure mode with
     //    no symptom: a source-layer that does not exist renders nothing at all.
-    //    The contour source has one source-layer of its own (`worker/contours.js`).
+    //    The contour source has one source-layer of its own (`map-service/src/contours.js`).
     const sourceLayer = sourceLayerOf(layer);
     const contourLayer =
       'source' in layer && layer.source === CONTOUR_SOURCE_ID

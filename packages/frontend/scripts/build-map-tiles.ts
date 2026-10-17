@@ -20,7 +20,7 @@
  *
  * ## Why GoWay builds its own tiles
  *
- * Until this script, `worker/index.js` PROXIED `tiles.openfreemap.org`. That
+ * Until this script, `map-service/src/index.js` PROXIED `tiles.openfreemap.org`. That
  * removed the third-party origin from the browser and bought a seam, and its
  * own header said plainly what it did not buy: "If OpenFreeMap is down,
  * GoWay's map is down, exactly as it was before." A map platform whose map has
@@ -73,10 +73,10 @@
  * decode to nothing exits 0 and prints nothing alarming. So nothing may
  * replace the live archive until this has opened it, walked its directories,
  * gunzipped real tiles and asserted on what is inside — using
- * `worker/pmtiles.js`, the same reader the edge serves with, so that "the
+ * `map-service/src/pmtiles.js`, the same reader the edge serves with, so that "the
  * archive is readable" and "GoWay can read the archive" are the same claim.
  *
- * @see `worker/pmtiles.js` — the reader, shared with the Worker.
+ * @see `map-service/src/pmtiles.js` — the reader, shared with the Worker.
  * @see `packages/frontend/README.md` — R2, the one-time human setup, the cost.
  */
 import { spawn } from 'node:child_process';
@@ -85,7 +85,7 @@ import { mkdir, open, stat, writeFile } from 'node:fs/promises';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { PMTiles, COMPRESSION, TILE_TYPE } from '../worker/pmtiles.js';
+import { PMTiles, COMPRESSION, TILE_TYPE } from '@goway/map-service/pmtiles.js';
 import {
   decodeVectorTile,
   osmElementFor,
@@ -117,7 +117,7 @@ const PLANETILER_URL = `https://github.com/onthegomap/planetiler/releases/downlo
  * already assumes.
  *
  * `buildTileJson()` in `build-map-style.ts` declares 14 so MapLibre overzooms
- * rather than requesting z15, and `worker/index.js` refuses a higher zoom
+ * rather than requesting z15, and `map-service/src/index.js` refuses a higher zoom
  * without touching storage. Raising it is a three-file change and roughly a
  * four-fold increase in both the archive and the build, so it is stated here
  * once and asserted against the finished archive.

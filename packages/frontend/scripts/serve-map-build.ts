@@ -63,7 +63,7 @@ const UPSTREAM_PATH = /^\/(map|landmarks)\//;
 
 /**
  * `--satellite=<dir>`: answer `/map/satellite/*` with the WORKER's own module
- * (`worker/satellite.js`) over `<dir>`, a directory laid out like the bucket
+ * (`map-service/src/satellite.js`) over `<dir>`, a directory laid out like the bucket
  * (`satellite/manifest.json`, `satellite/<set>/<stamp>/…` — what
  * `map:satellite-set` and `map:satellite-manifest` write). The imagery style
  * documents name `https://goway.to/map/satellite/…`; served from here they
@@ -73,7 +73,7 @@ const UPSTREAM_PATH = /^\/(map|landmarks)\//;
 const satelliteDir = arg('satellite', '');
 const SATELLITE_STYLES = /^\/map\/styles\/(satellite|hybrid)\/[a-z]+\.json$/;
 
-/** An R2 bucket over a directory: what `worker/satellite.js` reads (get with a range, head). */
+/** An R2 bucket over a directory: what `map-service/src/satellite.js` reads (get with a range, head). */
 function directoryBucket(dir: string) {
   const objectOf = (bytes: Uint8Array, size: number) => ({
     size,
@@ -108,7 +108,7 @@ async function serveSatelliteLocally(
   (globalThis as { caches?: unknown }).caches ??= {
     default: { match: async () => undefined, put: async () => {} },
   };
-  const { serveSatellite } = await import('../worker/satellite.js');
+  const { serveSatellite } = await import('@goway/map-service/satellite.js');
   const url = new URL(request.url ?? '/', `http://localhost:${port}`);
   const answer: Response = await serveSatellite(
     url,
@@ -142,14 +142,14 @@ async function proxy(path: string, search: string, response: ServerResponse): Pr
 
 /**
  * `/map/contours/…`, made HERE by the production Worker's own module
- * (`worker/contours.js`) from the elevation tiles `--upstream` serves, decoded
+ * (`map-service/src/contours.js`) from the elevation tiles `--upstream` serves, decoded
  * by the same WebAssembly libwebp — so a local export draws the contours
  * goway.to will, before the route is deployed.
  */
 let contourService: { tile(z: number, x: number, y: number): Promise<Uint8Array> } | null = null;
 async function contours(path: string, response: ServerResponse): Promise<void> {
   try {
-    const { contourTileOf, createContourService } = await import('../worker/contours.js');
+    const { contourTileOf, createContourService } = await import('@goway/map-service/contours.js');
     const tile = contourTileOf(path);
     if (!tile) {
       response.writeHead(404, { 'content-type': 'text/plain' });

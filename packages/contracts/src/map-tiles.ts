@@ -337,7 +337,7 @@ export const POI_CLASSES = [
  * Coverage is the other constant worth stating out loud: Inter is Latin, Greek
  * and Cyrillic. A feature with a `name` but no `name:latin` — most of the CJK,
  * Arabic, Devanagari and Thai world — lands in a range Inter does not have,
- * and `worker/index.js` answers those by proxying the upstream Noto ranges
+ * and `map-service/src/index.js` answers those by proxying the upstream Noto ranges
  * through `goway.to`. The label still renders and the browser still talks to
  * nobody but us; it is simply not set in Inter.
  */

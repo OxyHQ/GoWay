@@ -184,9 +184,9 @@ export const OPTICAL_SIZE = 14;
 /**
  * Which upstream fontstack answers for one of ours when a range is not emitted.
  *
- * This MUST equal `UPSTREAM_FONTSTACK` in `worker/index.js`, and it is
+ * This MUST equal `UPSTREAM_FONTSTACK` in `map-service/src/index.js`, and it is
  * duplicated rather than imported for the reason that file already gives: a
- * Worker bundle and this build share no module graph, and `worker/index.js` is
+ * Worker bundle and this build share no module graph, and `map-service/src/index.js` is
  * untyped JavaScript. `worker/__tests__/mapProxy.test.js` asserts the two are
  * the same object, so the duplication cannot drift silently.
  *

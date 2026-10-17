@@ -37,7 +37,7 @@ import {
   ROAD_PROPS,
 } from '../lib/map/cityRoads';
 import { CITY_TILE_EXTENT, CITY_TILE_ZOOM } from '../lib/map/cityTiles';
-import { COMPRESSION, PMTiles, TILE_TYPE } from '../worker/pmtiles.js';
+import { COMPRESSION, PMTiles, TILE_TYPE } from '@goway/map-service/pmtiles.js';
 import { AREAS } from './build-city-tiles';
 import { peakRssMb } from './citygen/memory';
 import { encodeTileLayers } from './citygen/mvtEncode';

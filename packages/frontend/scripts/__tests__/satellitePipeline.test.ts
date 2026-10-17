@@ -9,8 +9,8 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 import { IMAGERY_TIERS } from '../../lib/map/imagery';
-import { countCoverageTiles } from '../../worker/coverageTree.js';
-import { PMTiles, TILE_TYPE } from '../../worker/pmtiles.js';
+import { countCoverageTiles } from '@goway/map-service/coverageTree.js';
+import { PMTiles, TILE_TYPE } from '@goway/map-service/pmtiles.js';
 import { mergeEntries, mergeManifest } from '../build-satellite-manifest';
 import { withWaterMask } from '../build-satellite-set';
 import { checkSet, IMAGERY_SETS, type ImagerySetDefinition } from '../imagery/catalogue';

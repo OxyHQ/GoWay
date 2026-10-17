@@ -1,5 +1,5 @@
 /**
- * Tiles out of archives (`worker/tiles.js`): compressed on the wire as the
+ * Tiles out of archives (`map-service/src/tiles.js`): compressed on the wire as the
  * archive stores them, and one storage read per tile.
  *
  * Archives are written by the compiler's own PMTiles writer, gzipping tiles
@@ -8,12 +8,12 @@
  */
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 
-import { rectOwnership } from '../../scripts/citygen/ownership';
-import { encodeDirectory, writePmtiles } from '../../scripts/citygen/pmtilesWriter';
-import { MEMORY_BUDGET } from '../budget.js';
-import { manifestBytes } from '../city.js';
-import { compactCoverageTree, encodeCoverageTree } from '../coverageTree.js';
-import { serveTerrain, serveTile } from '../index.js';
+import { rectOwnership } from '../citygen/ownership';
+import { encodeDirectory, writePmtiles } from '../citygen/pmtilesWriter';
+import { MEMORY_BUDGET } from '@goway/map-service/budget.js';
+import { manifestBytes } from '@goway/map-service/city.js';
+import { compactCoverageTree, encodeCoverageTree } from '@goway/map-service/coverageTree.js';
+import { serveTerrain, serveTile } from '@goway/map-service/index.js';
 import {
   COMPRESSION,
   DirectoryMemo,
@@ -22,8 +22,13 @@ import {
   findEntry,
   findEntryCompact,
   TILE_TYPE,
-} from '../pmtiles.js';
-import { acceptsGzip, forgetDirectories, fromTileCacheEntry, tileCacheEntry } from '../tiles.js';
+} from '@goway/map-service/pmtiles.js';
+import {
+  acceptsGzip,
+  forgetDirectories,
+  fromTileCacheEntry,
+  tileCacheEntry,
+} from '@goway/map-service/tiles.js';
 
 const encoder = new TextEncoder();
 

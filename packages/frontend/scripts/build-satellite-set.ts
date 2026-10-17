@@ -37,8 +37,8 @@ import { existsSync } from 'node:fs';
 import { mkdir, open, readFile, rm, stat, writeFile } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
 
-import { encodeCoverageTree } from '../worker/coverageTree.js';
-import { PMTiles, TILE_TYPE } from '../worker/pmtiles.js';
+import { encodeCoverageTree } from '@goway/map-service/coverageTree.js';
+import { PMTiles, TILE_TYPE } from '@goway/map-service/pmtiles.js';
 import { IMAGERY_SOURCES } from '../lib/map/imagerySources';
 import {
   BLUE_MARBLE_URL,

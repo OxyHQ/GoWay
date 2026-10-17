@@ -22,7 +22,7 @@ import {
   intersectCoverageTrees,
   MIXED,
   unionCoverageTrees,
-} from '../../worker/coverageTree.js';
+} from '@goway/map-service/coverageTree.js';
 import { ARCHIVE_KEY, mergeManifest } from '../build-city-manifest';
 import { archiveKey, partId, type RegionEntry, STAMP } from '../build-city-region';
 import {

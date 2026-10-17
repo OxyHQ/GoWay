@@ -1,6 +1,6 @@
 /**
  * Assemble the city-tile MANIFEST: the one document the Worker reads to know
- * which archive answers which tile (`worker/index.js` → `/map/city/*`).
+ * which archive answers which tile (`map-service/src/index.js` → `/map/city/*`).
  *
  * ```bash
  * bun run --cwd packages/frontend map:city-manifest \
@@ -38,7 +38,7 @@ import {
   EMPTY,
   encodeCoverageTree,
   unionCoverageTrees,
-} from '../worker/coverageTree.js';
+} from '@goway/map-service/coverageTree.js';
 import type { ArchiveRef, RegionEntry } from './build-city-region';
 
 /** The manifest's schema version; the Worker refuses any other. */

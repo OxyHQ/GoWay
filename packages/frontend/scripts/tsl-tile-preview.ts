@@ -13,7 +13,7 @@
 import { open } from 'node:fs/promises';
 import { resolve } from 'node:path';
 
-import { decompress, PMTiles } from '../worker/pmtiles.js';
+import { decompress, PMTiles } from '@goway/map-service/pmtiles.js';
 
 function arg(name: string, fallback: string): string {
   const hit = process.argv.find((a) => a.startsWith(`--${name}=`));

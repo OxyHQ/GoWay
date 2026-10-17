@@ -28,7 +28,7 @@ An env variable is only what differs per deployment (secrets, origins, buckets, 
 
 ## Packages
 
-- `packages/*` only, never `apps/`. Bun workspaces are `contracts`, `sdk`, `maps`, `frontend`, `backend`.
+- `packages/*` only, never `apps/`. Bun workspaces are `contracts`, `sdk`, `maps`, `map-service` (the `goway.to/map/*` Worker), `frontend`, `backend`.
 - `packages/reconstruction-worker` is Python/CUDA and deliberately **not** a Bun workspace; drive it through the root `worker:setup|doctor|run` scripts, which delegate to its `Makefile`/`uv`.
 - Street 3D capture and contribution UI live in `packages/frontend`. There is no second consumer app.
 
@@ -42,7 +42,7 @@ An env variable is only what differs per deployment (secrets, origins, buckets, 
 - MapLibre, OpenFreeMap, Photon, Nominatim, Valhalla, COLMAP and gsplat are replaceable adapters behind GoWay interfaces. Feature code imports the GoWay abstraction, never the provider.
 - Mercaria is read through `packages/frontend/lib/mercaria` over `@mercaria.co/sdk`; feature code never imports the SDK, and GoWay stores none of Mercaria's data. A place's `commerce.mercaria.store` only decides whether to ask; render only what Mercaria returns.
 - Every map carries the GoWay mark bottom-left and the data credit bottom-right, drawn by `@goway.to/maps`'s `MapView` with no prop to disable — the embed included; the credit is OSMF-compact (`packages/maps/src/compactCredit.ts`).
-- 3D city tiles (`lib/map/cityTiles.ts`) are an internal format and an ODbL Derivative Database: draw only what OSM or a licence-reviewed official model records (storeys only from `building:levels`, roofs only from `roof:shape` or the model), credit a model while drawn, and publish the archive + receipt before serving them. Served per region by manifest (`worker/city.js`); archive keys are dated, never overwritten. Notes: `docs/MAP_3D_CITY.md`, `docs/MAP_3D_SOURCES.md`, `docs/MAP_CITY_PLANET.md`.
+- 3D city tiles (`lib/map/cityTiles.ts`) are an internal format and an ODbL Derivative Database: draw only what OSM or a licence-reviewed official model records (storeys only from `building:levels`, roofs only from `roof:shape` or the model), credit a model while drawn, and publish the archive + receipt before serving them. Served per region by manifest (`map-service/src/city.js`); archive keys are dated, never overwritten. Notes: `docs/MAP_3D_CITY.md`, `docs/MAP_3D_SOURCES.md`, `docs/MAP_CITY_PLANET.md`.
 - A route is only ever a routing engine's answer: no fixture, fallback or client draws one, and no engine is an error state. `check:routing` proves every mode.
 - Imagery is only a source in `lib/map/imagerySources.ts` (licence allows hosting, re-serving, commercial display; never Google, Apple, Bing, Esri, Mapbox, Maxar, NC or scraped), served from GoWay's R2, credited while on screen. Note: `docs/MAP_SATELLITE.md`.
 - Every 3D vehicle and vessel drawn comes from the model library (`engine/vehicles/`, CC0 only); never a second model set. Note: `docs/MODEL_LIBRARY.md`.
