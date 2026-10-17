@@ -556,6 +556,11 @@ function labelAt(
 }
 
 const styles = StyleSheet.create({
-  root: { flex: 1, position: 'relative', overflow: 'hidden' },
+  // `flexGrow`, not `flex: 1`: `flex: 1` is a zero flex BASIS (react-native-web
+  // writes `flex: 1 1 0%`, and Yoga reads it the same way), which overrides a
+  // caller's `height` and collapses a map in a scroll view or any parent of
+  // auto height to nothing. Growing from its own size, the map fills a bounded
+  // parent when given no size and keeps the one it is given.
+  root: { flexGrow: 1, position: 'relative', overflow: 'hidden' },
   engine: { flex: 1 },
 });

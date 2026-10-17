@@ -5,6 +5,10 @@ while the major version is 0, a MINOR release may break the API.
 
 ## 0.1.1
 
+- A `MapView` given a `height` keeps it. The root was `flex: 1`, a zero flex
+  basis on both platforms, which overrode the caller's height: a map inside a
+  scroll view (an address picker in a form) rendered 0 tall. It now grows from
+  its own size, so it still fills a bounded parent when given no size.
 - The GoWay mark has an accessible name on the web. `react-native-svg` hands
   its props to the DOM `<svg>` unchanged, so the logo's React Native
   accessibility props landed there as unknown attributes — no name in a
