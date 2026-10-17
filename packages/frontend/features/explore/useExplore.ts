@@ -29,18 +29,18 @@ import { useReducedMotion } from 'react-native-reanimated';
 import type { GeoCoordinate, Place, PlaceCapability, SearchResult } from '@goway.to/sdk';
 
 import type {
-  GeoBounds,
+  GeoBoundingBox,
   MapApi,
   MapFitOptions,
   MapLabelFeature,
   MapMarker,
   MapOverlay,
   MapPressEvent,
-  MapViewportChange,
+  MapCameraChange,
   ResolvedMapViewport,
 } from '@/components/map';
 import { DEFAULT_VIEWPORT } from '@/components/map';
-import { sameLabelSet } from '@/components/map/labels';
+import { sameLabelSet } from '@goway.to/maps';
 import { useDirections, type DirectionsController } from '@/features/directions/useDirections';
 import { declutterMarkerLabels, describeLabel, reconcileLabel } from '@/lib/goway/basemapLabels';
 import { ecosystemCapabilities } from '@/lib/goway/capabilities';
@@ -55,7 +55,7 @@ import {
   useSearch,
 } from '@/lib/goway/queries';
 import { useDebouncedValue } from '@/lib/useDebouncedValue';
-import { useUserLocation } from '@/lib/map/useUserLocation';
+import { useUserLocation } from '@goway.to/maps';
 
 import { boxOf, type CommittedBox, createOpeningFraming, nextBoxStep } from './committedBox';
 
@@ -116,7 +116,7 @@ export interface ExploreController {
   /** Centre of the committed box, for ordering a list by distance. */
   center: GeoCoordinate | null;
   /** The committed box itself, for biasing a search toward what is on screen. */
-  bounds: GeoBounds | null;
+  bounds: GeoBoundingBox | null;
   placesBusy: boolean;
   placesFailure: GoWayFailureKind | null;
   retryPlaces: () => void;
@@ -160,7 +160,7 @@ export interface ExploreController {
    */
   ecosystem: ReadonlyMap<string, PlaceCapability>;
   onMarkerPress: (marker: MapMarker) => void;
-  onViewportChange: (change: MapViewportChange) => void;
+  onViewportChange: (change: MapCameraChange) => void;
 
   /** `true` once the camera has moved far enough to be a different question. */
   areaMoved: boolean;
@@ -342,7 +342,7 @@ export function useExplore(
 
   // ── Camera ───────────────────────────────────────────────────────────────
 
-  const commitViewport = useCallback((viewport: ResolvedMapViewport, bounds: GeoBounds) => {
+  const commitViewport = useCallback((viewport: ResolvedMapViewport, bounds: GeoBoundingBox) => {
     setCommitted(boxOf({ viewport, bounds }));
     setAreaMoved(false);
   }, []);
@@ -355,7 +355,7 @@ export function useExplore(
   const [opening] = useState(() => createOpeningFraming(Boolean(options.initialPlaceId)));
 
   const onViewportChange = useCallback(
-    (change: MapViewportChange) => {
+    (change: MapCameraChange) => {
       viewportRef.current = change.viewport;
 
       // Zoom drives marker visibility, so it has to track the live camera — but

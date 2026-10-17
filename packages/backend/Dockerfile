@@ -24,12 +24,13 @@ COPY package.json bun.lock bunfig.toml tsconfig.json ./
 COPY packages/contracts/package.json packages/contracts/
 COPY packages/backend/package.json packages/backend/
 COPY packages/frontend/package.json packages/frontend/
-# The SDK is not a backend dependency and none of its code ships in this
-# image — but `bun install --frozen-lockfile` resolves the whole workspace
-# graph, and bun.lock records that @goway/frontend depends on
-# @goway.to/sdk. A member named in the lockfile and absent from the build
-# context is a hard error: "listed in bun.lock but not on disk".
+# The SDK and the maps SDK are not backend dependencies and none of their code
+# ships in this image — but `bun install --frozen-lockfile` resolves the whole
+# workspace graph, and bun.lock records that @goway/frontend depends on both.
+# A member named in the lockfile and absent from the build context is a hard
+# error: "listed in bun.lock but not on disk".
 COPY packages/sdk/package.json packages/sdk/
+COPY packages/maps/package.json packages/maps/
 
 # --ignore-scripts skips the root postinstall (it builds the contracts before the
 # source is copied); contracts + backend are built explicitly below.
@@ -52,6 +53,7 @@ COPY --from=builder /app/packages/contracts/package.json packages/contracts/
 COPY --from=builder /app/packages/backend/package.json packages/backend/
 COPY --from=builder /app/packages/frontend/package.json packages/frontend/
 COPY --from=builder /app/packages/sdk/package.json packages/sdk/
+COPY --from=builder /app/packages/maps/package.json packages/maps/
 
 # Production dependencies, from the manifests and lockfile alone. It runs
 # BEFORE the build output is copied, so a source-only change reuses this layer

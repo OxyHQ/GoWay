@@ -1,0 +1,117 @@
+{
+  "name": "@goway.to/maps",
+  "version": "0.1.0",
+  "description": "GoWay's maps SDK for React and React Native: one declarative map for web and native — GoWay styles that follow your theme, Bloom markers with clustering, a camera framed by value, user location without a prompt on mount.",
+  "license": "SEE LICENSE IN LICENSE",
+  "author": "The Oxy Collective, Inc.",
+  "homepage": "https://github.com/OxyHQ/GoWay/tree/main/packages/maps#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/OxyHQ/GoWay.git",
+    "directory": "packages/maps"
+  },
+  "bugs": {
+    "url": "https://github.com/OxyHQ/GoWay/issues"
+  },
+  "keywords": [
+    "goway",
+    "oxy",
+    "maps",
+    "maplibre",
+    "react-native",
+    "expo",
+    "bloom"
+  ],
+  "sideEffects": [
+    "*.css",
+    "./dist/MapView.web.js"
+  ],
+  "main": "./dist/index.js",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "react-native": "./dist/index.js",
+  "browser": "./dist/index.web.js",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "browser": "./dist/index.web.js",
+      "react-native": "./dist/index.js",
+      "default": "./dist/index.js"
+    },
+    "./brand": {
+      "types": "./dist/brand/artwork.d.ts",
+      "default": "./dist/brand/artwork.js"
+    },
+    "./plugin": {
+      "types": "./dist/plugin.d.ts",
+      "default": "./dist/plugin.js"
+    },
+    "./testing": {
+      "types": "./dist/testing.d.ts",
+      "default": "./dist/testing.js"
+    },
+    "./metro": "./metro.cjs",
+    "./app.plugin.js": "./app.plugin.js",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "dist",
+    "metro.cjs",
+    "app.plugin.js",
+    "README.md",
+    "CHANGELOG.md",
+    "LICENSE",
+    "NOTICE"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "build": "node scripts/build.mjs",
+    "clean": "rm -rf dist",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "bun test",
+    "prepublishOnly": "bun run typecheck && bun run test && bun run build"
+  },
+  "dependencies": {
+    "supercluster": "^8.0.1"
+  },
+  "peerDependencies": {
+    "@goway.to/sdk": ">=0.6.0",
+    "@maplibre/maplibre-react-native": ">=11.4.0",
+    "@oxy.so/bloom": ">=10.16.0",
+    "expo-location": "*",
+    "maplibre-gl": ">=6.10.0",
+    "react": ">=19.0.0",
+    "react-dom": ">=19.0.0",
+    "react-native": ">=0.80.0",
+    "react-native-reanimated": ">=4.0.0",
+    "react-native-svg": ">=15.0.0"
+  },
+  "peerDependenciesMeta": {
+    "@maplibre/maplibre-react-native": {
+      "optional": true
+    },
+    "maplibre-gl": {
+      "optional": true
+    },
+    "react-dom": {
+      "optional": true
+    }
+  },
+  "devDependencies": {
+    "@goway.to/sdk": "workspace:*",
+    "@maplibre/maplibre-react-native": "^11.4.0",
+    "@oxy.so/bloom": "^10.16.1",
+    "@types/react": "^19.2.17",
+    "@types/supercluster": "^7.1.3",
+    "expo-location": "~57.0.19",
+    "maplibre-gl": "6.10.0",
+    "react": "19.2.3",
+    "react-dom": "19.2.3",
+    "react-native": "0.86.0",
+    "react-native-reanimated": "4.5.0",
+    "react-native-svg": "15.15.5",
+    "typescript": "^5.9.3"
+  }
+}

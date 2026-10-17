@@ -6,9 +6,9 @@ API or the contract, and a PATCH release never does.
 
 ## 0.6.0
 
-What `@goway.to/maps` is built on: GoWay's style names and its geographic
-arithmetic, in the SDK so the map package, GoWay's app and its map workers
-share one copy. Additive.
+What `@goway.to/maps` is built on: GoWay's style names, its tile schema and its
+geographic arithmetic, in the SDK so the map package, GoWay's app and its map
+workers share one copy. Additive.
 
 ### Added
 
@@ -23,6 +23,12 @@ share one copy. Additive.
   `metersPerPixel`, `metersToPixels`), boxes (`boundsOf`, `boundsCenter`,
   `isDegenerateBounds`, `unwrappedEast` — a box that crosses the antimeridian is
   the strip it describes), `distanceMeters` and `isValidCoordinate`.
+- **GoWay's tile schema** (OpenMapTiles v3, as `https://goway.to/map/tiles.json`
+  serves it): `OPENMAPTILES_SOURCE_LAYERS` and `OPENMAPTILES_SOURCE_LAYER_NAMES`
+  (what a layer or a query can name), the `class` vocabularies
+  (`TRANSPORTATION_CLASSES`, `LANDCOVER_CLASSES`, `LANDUSE_CLASSES`,
+  `PLACE_CLASSES`, `WATER_CLASSES`, `POI_CLASSES`) and the glyph font stacks GoWay
+  serves (`AVAILABLE_FONTS`, `FONT_STACKS`).
 
 ## 0.4.0 — unreleased
 

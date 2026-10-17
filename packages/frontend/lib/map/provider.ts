@@ -48,7 +48,7 @@ import {
   mapStyleThumbnailPath,
   presetAppearance,
 } from './style/catalogue';
-import { OPENMAPTILES_SOURCE_LAYERS } from './style/schema';
+import { OPENMAPTILES_SOURCE_LAYERS } from '@goway.to/sdk';
 
 /** Which of the two cartographic appearances a style document is for. */
 export type MapAppearance = 'light' | 'dark';

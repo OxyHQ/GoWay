@@ -28,7 +28,7 @@ An env variable is only what differs per deployment (secrets, origins, buckets, 
 
 ## Packages
 
-- `packages/*` only, never `apps/`. Bun workspaces are `contracts`, `sdk`, `frontend`, `backend`.
+- `packages/*` only, never `apps/`. Bun workspaces are `contracts`, `sdk`, `maps`, `frontend`, `backend`.
 - `packages/reconstruction-worker` is Python/CUDA and deliberately **not** a Bun workspace; drive it through the root `worker:setup|doctor|run` scripts, which delegate to its `Makefile`/`uv`.
 - Street 3D capture and contribution UI live in `packages/frontend`. There is no second consumer app.
 
@@ -41,7 +41,7 @@ An env variable is only what differs per deployment (secrets, origins, buckets, 
 - Never publish an internal Drizzle/PostGIS row shape as an SDK contract, and never let a Python worker implementation detail become one.
 - MapLibre, OpenFreeMap, Photon, Nominatim, Valhalla, COLMAP and gsplat are replaceable adapters behind GoWay interfaces. Feature code imports the GoWay abstraction, never the provider.
 - Mercaria is read through `packages/frontend/lib/mercaria` over `@mercaria.co/sdk`; feature code never imports the SDK, and GoWay stores none of Mercaria's data. A place's `commerce.mercaria.store` only decides whether to ask; render only what Mercaria returns.
-- Every map GoWay draws carries the mark bottom-left and the data credit bottom-right, both rendered by `MapCanvas` with no prop to disable — the embed included. The credit is OSMF-compact: spelled out at load, folded into its ⓘ only after 5 s or the reader's first pan/zoom/tap (`lib/map/compactCredit.ts`).
+- Every map carries the GoWay mark bottom-left and the data credit bottom-right, drawn by `@goway.to/maps`'s `MapView` with no prop to disable — the embed included; the credit is OSMF-compact (`packages/maps/src/compactCredit.ts`).
 - 3D city tiles (`lib/map/cityTiles.ts`) are an internal format and an ODbL Derivative Database: draw only what OSM or a licence-reviewed official model records (storeys only from `building:levels`, roofs only from `roof:shape` or the model), credit a model while drawn, and publish the archive + receipt before serving them. Served per region by manifest (`worker/city.js`); archive keys are dated, never overwritten. Notes: `docs/MAP_3D_CITY.md`, `docs/MAP_3D_SOURCES.md`, `docs/MAP_CITY_PLANET.md`.
 - A route is only ever a routing engine's answer: no fixture, fallback or client draws one, and no engine is an error state. `check:routing` proves every mode.
 - Imagery is only a source in `lib/map/imagerySources.ts` (licence allows hosting, re-serving, commercial display; never Google, Apple, Bing, Esri, Mapbox, Maxar, NC or scraped), served from GoWay's R2, credited while on screen. Note: `docs/MAP_SATELLITE.md`.
@@ -52,7 +52,7 @@ An env variable is only what differs per deployment (secrets, origins, buckets, 
 - An optional map feature is one `MAP_FEATURES` entry (`lib/map/mapFeatures.ts`), labelled in `mapFeatureLabels.ts`, read via `useMapFeature`; never a build variable or `lib/config.ts` flag (unserved yet: `offer: 'development'`). Its choice stays on the device. Note: `docs/MAP_FEATURES.md`.
 - A map layer's budgets come from the `QualityProfile` (`lib/map/quality/profile.ts`) and it animates only through the map's animation clock; a new cost is a profile knob, never a budget of its own. Note: `docs/MAP_PERFORMANCE.md`.
 - The map's eye never enters a building or the ground: every camera change goes through `engine/camera/clearance.ts` (eye raised, centre and bearing kept); never a second camera rule. Note: `docs/MAP_CAMERA_CLEARANCE.md`.
-- The logo is geometry (`packages/frontend/components/brand/artwork.ts`), drawn and never fetched; `public/brand/*` is generated from it and gated by `brand:check`. Its blue is ink (`--color-brand-goway`), never Bloom's `--primary`.
+- The logo is geometry (`packages/maps/src/brand/artwork.ts`), drawn and never fetched; `public/brand/*` is generated from it and gated by `brand:check`. Its blue is ink (`--color-brand-goway`), never Bloom's `--primary`.
 - Every GoWay-enriched place gets a stable GoWay Place ID independent of provider IDs; deep links use it (`https://goway.to/place/<placeId>`). Preserve source provenance and never destructively overwrite a source fact.
 - The OpenStreetMap import writes only `openstreetmap`-sourced rows, never deletes a place, and changes a `places` column only while it still holds what that source last said.
 - The category taxonomy is data (`place_categories`, labels, OSM tags), edited via `/moderation/categories`; never put a copy in code. `places.categories` holds active keys (trigger-enforced), never an ancestor beside its child; keys are immutable. Note: `docs/PLACE_DATA.md`.

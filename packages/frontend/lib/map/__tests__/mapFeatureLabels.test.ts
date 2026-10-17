@@ -6,7 +6,6 @@
 import { describe, expect, test } from 'bun:test';
 import { LABEL_LANGUAGES, type Labels, localizedLabel } from '@goway.to/sdk';
 
-import { CREDIT_LABELS } from '@/lib/map/creditLabels';
 import { MAP_FEATURE_LABELS, MAP_SETTINGS_COPY } from '@/lib/map/mapFeatureLabels';
 import { MAP_FEATURES } from '@/lib/map/mapFeatures';
 import { MAP_SETTINGS_TRIGGER_LABEL } from '@/lib/map/mapSettingsTriggerLabel';
@@ -41,8 +40,6 @@ describe('map feature labels', () => {
   test('the panel’s own copy, and the button’s name', () => {
     for (const [key, labels] of Object.entries(MAP_SETTINGS_COPY)) expectComplete(key, labels);
     expectComplete('trigger', MAP_SETTINGS_TRIGGER_LABEL);
-    for (const [key, labels] of Object.entries(CREDIT_LABELS))
-      expectComplete(`credit.${key}`, labels);
   });
 
   test('`requires` names the feature in every language', () => {

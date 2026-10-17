@@ -52,7 +52,7 @@ export { CARTOGRAPHY_PALETTES, DARK_PALETTE, LIGHT_PALETTE } from './palette';
 export * from './catalogue';
 export { styleTheme, type StyleTheme } from './themes';
 export type { CartographyPalette, PoiPalette, RoadTone } from './palette';
-export * from './schema';
+export * from '@goway.to/sdk';
 
 /**
  * Everything about the tile host the style needs to name, supplied by the

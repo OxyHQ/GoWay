@@ -93,6 +93,8 @@ jobs:
         # importing file. The SDK bundles `@goway/contracts`, so it must
         # build after it.
         run: bun run build:sdk
+      - name: Build the maps SDK
+        run: bun run build:maps
 
       - name: Export the web bundle
         # `expo export --platform web` with `web.output: 'single'`

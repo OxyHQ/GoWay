@@ -22,7 +22,7 @@
  *     `@maplibre/maplibre-gl-style-spec` is the same validator the renderer
  *     uses. If it complains, the map would have been broken.
  *  2. **Schema reality.** Every `source-layer` named must exist in the
- *     OpenMapTiles v3 schema recorded in `lib/map/style/schema.ts`. That file
+ *     OpenMapTiles v3 schema recorded in `@goway.to/sdk`'s tile schema (`packages/contracts/src/map-tiles.ts`). That file
  *     is now asserted the other way round too, against the artefact GoWay
  *     actually serves: `map:tiles --verify` opens the built PMTiles archive
  *     and fails if its `vector_layers` and the record disagree. `--online`
@@ -100,7 +100,7 @@ import {
   POI_CLASSES,
   TRANSPORTATION_CLASSES,
   WATER_CLASSES,
-} from '../lib/map/style/schema';
+} from '@goway.to/sdk';
 
 const FRONTEND_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 

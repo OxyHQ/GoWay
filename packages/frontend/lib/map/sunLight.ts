@@ -48,7 +48,7 @@
  */
 import type { LightSpecification } from '@maplibre/maplibre-gl-style-spec';
 
-import { isDrawableCoordinate } from '@/components/map/shared';
+import { isDrawableCoordinate } from '@goway.to/maps/plugin';
 import type { GeoCoordinate } from '@/components/map/types';
 
 import type { MapAppearance } from './provider';

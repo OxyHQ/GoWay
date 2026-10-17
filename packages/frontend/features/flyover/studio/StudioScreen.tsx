@@ -55,7 +55,7 @@ import {
   type MapOverlay,
   type MapPressEvent,
   type MapViewport,
-  type MapViewportChange,
+  type MapCameraChange,
   type ResolvedMapViewport,
 } from '@/components/map';
 import { unprojectTopDown } from '@/lib/map/camera/plane';
@@ -402,7 +402,7 @@ export function StudioScreen() {
     return out;
   }, [previewing, selectedId, tour.keyframes]);
 
-  const handleViewportChange = useCallback((change: MapViewportChange) => {
+  const handleViewportChange = useCallback((change: MapCameraChange) => {
     viewport.current = change.viewport;
   }, []);
 

@@ -8,7 +8,7 @@
  *
  * ## Why files exist at all when the app inlines the logo
  *
- * `components/brand/` draws the logo from geometry, so nothing in the app
+ * `@goway.to/maps` draws the logo from geometry (`packages/maps/src/brand/artwork.ts`), so nothing in the app
  * fetches it (see the note there for why). But three consumers can only ever
  * take a URL, and none of them is optional:
  *
@@ -36,12 +36,7 @@ import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import {
-  GOWAY_INK,
-  GOWAY_MARK,
-  GOWAY_WORDMARK,
-  type GowayArtwork,
-} from '../components/brand/artwork';
+import { GOWAY_INK, GOWAY_MARK, GOWAY_WORDMARK, type GowayArtwork } from '@goway.to/maps/brand';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const OUTPUT_DIR = resolve(HERE, '..', 'public', 'brand');

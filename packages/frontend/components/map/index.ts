@@ -1,34 +1,39 @@
 /**
- * The GoWay map seam.
+ * GoWay's map seam.
  *
- * Feature code imports from HERE and nowhere else. `MapCanvas` resolves to the
- * `maplibre-gl` fork on web and the `@maplibre/maplibre-react-native` fork on
- * native; neither engine's name appears outside `components/map/`, so replacing
- * the renderer — or the tile source behind it (`lib/map/provider.ts`) — changes
- * no screen and no public `@goway.to/sdk` contract.
+ * Feature code imports from HERE and nowhere else. `MapCanvas` is GoWay's map
+ * composed on `@goway.to/maps` (MapLibre GL JS on the web, MapLibre Native on
+ * iOS and Android); neither engine's name appears in feature code, so
+ * replacing the renderer — or the tile source behind it (`lib/map/provider.ts`)
+ * — changes no screen.
  */
 export { MapCanvas } from './MapCanvas';
-export { MapErrorState } from './MapErrorState';
-export { MapAttribution, MAP_CREDIT_CLEARANCE } from './MapAttribution';
-export { MapBrand, MAP_BRAND_WIDTH, MAP_BRAND_HEIGHT, MAP_BRAND_CLEARANCE } from './MapBrand';
-export { DefaultMapMarker } from './DefaultMapMarker';
 export { DEFAULT_VIEWPORT } from './types';
+export { markerItem } from './markerItems';
+export {
+  DefaultMapMarker,
+  MAP_BRAND_CLEARANCE,
+  MAP_BRAND_HEIGHT,
+  MAP_BRAND_WIDTH,
+  MAP_CREDIT_CLEARANCE,
+} from '@goway.to/maps';
 
 export type {
-  GeoBounds,
+  GeoBoundingBox,
   GeoCoordinate,
   MapApi,
   MapAppearance,
+  MapCameraChange,
   MapCameraOptions,
-  MapCanvasError,
   MapCanvasProps,
+  MapCreditLink,
+  MapError,
   MapErrorReason,
   MapFitOptions,
   MapFrame,
   MapInteractionOptions,
   MapLabelFeature,
   MapLabelKind,
-  MapCreditLink,
   MapLiveGlyph,
   MapLiveLayer,
   MapLiveModel,
@@ -41,6 +46,5 @@ export type {
   MapOverlayPaint,
   MapPressEvent,
   MapViewport,
-  MapViewportChange,
   ResolvedMapViewport,
 } from './types';

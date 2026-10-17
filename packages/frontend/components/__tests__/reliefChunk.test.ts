@@ -2,7 +2,7 @@
  * With globe and terrain off, the web map's first paint is what it was.
  *
  * The relief prototype is one lazy chunk (`components/map/reliefLayer.web.ts`)
- * that `MapCanvas.web.tsx` requests only when a flag asks for it. Two ways to
+ * that the engine plugin (`gowayEngine.web.ts`) requests only when a flag asks for it. Two ways to
  * break that without any test, type or build failing, both learned on the city
  * layer (`engine3dChunk.test.ts`): a STATIC import of the chunk (it joins the
  * entry bundle), or a module the chunk shares with another lazy chunk (Expo
@@ -40,7 +40,7 @@ describe('the relief chunk', () => {
     for (const path of [
       'components/map/reliefLayer.web.ts',
       'lib/map/style/relief.ts',
-      'components/map/MapCanvas.web.tsx',
+      'components/map/gowayEngine.web.ts',
       'components/map/city3dGround.web.ts',
     ]) {
       expect(files.some((file) => file.path === path)).toBe(true);
@@ -54,7 +54,7 @@ describe('the relief chunk', () => {
     const dynamics = files
       .filter((file) => file.path !== 'components/map/reliefLayer.web.ts')
       .filter((file) => imports(file.text, ADAPTER).dynamics.length > 0);
-    expect(dynamics.map((file) => file.path)).toEqual(['components/map/MapCanvas.web.tsx']);
+    expect(dynamics.map((file) => file.path)).toEqual(['components/map/gowayEngine.web.ts']);
   });
 
   test('the style fragments load with the adapter (or on native), never at first paint', () => {
@@ -65,10 +65,7 @@ describe('the relief chunk', () => {
       })
       .map((file) => file.path)
       .sort();
-    expect(users).toEqual([
-      'components/map/MapCanvas.native.tsx',
-      'components/map/reliefLayer.web.ts',
-    ]);
+    expect(users).toEqual(['components/map/MapCanvas.tsx', 'components/map/reliefLayer.web.ts']);
   });
 
   test('the city layer follows terrain without reaching into the relief chunk', () => {

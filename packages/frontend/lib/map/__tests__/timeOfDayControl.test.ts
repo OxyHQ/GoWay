@@ -75,7 +75,7 @@ describe('wired', () => {
 
   test('the web map draws the scrubber only when opened, and lights the map through litInstant', () => {
     const web = read('components/map/MapCanvas.web.tsx');
-    expect(web).toContain('const timeOfDayShown = timeOfDayOpen && citySky && skyActive;');
+    expect(web).toContain('const timeOfDayShown = timeOfDayOpen && city.sky && skyActive;');
     expect(web).toContain('const skyAt = litInstant(timeOfDayShown, chosenSkyAt);');
     expect(web).toMatch(/\{timeOfDayShown \? \(\s*<Suspense/);
   });

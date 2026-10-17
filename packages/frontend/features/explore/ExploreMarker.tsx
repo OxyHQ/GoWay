@@ -24,7 +24,7 @@ import { memo } from 'react';
 import type { PlaceCapability } from '@goway.to/sdk';
 import { Badge } from '@oxy.so/bloom/badge';
 
-import { DefaultMapMarker, type MapMarker } from '@/components/map';
+import { DefaultMapMarker, type MapMarker, markerItem } from '@/components/map';
 import { presentCapability } from '@/lib/goway/capabilities';
 
 export interface ExploreMarkerProps {
@@ -35,7 +35,7 @@ export interface ExploreMarkerProps {
 }
 
 function ExploreMarkerComponent({ marker, capability, onPress }: ExploreMarkerProps) {
-  const base = <DefaultMapMarker marker={marker} onPress={onPress} />;
+  const base = <DefaultMapMarker item={markerItem(marker)} onPress={onPress} />;
 
   if (!capability || marker.count != null) return base;
 

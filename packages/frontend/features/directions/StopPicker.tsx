@@ -28,10 +28,10 @@ import { Text } from '@oxy.so/bloom/typography';
 import { RiFocus3Line } from '@oxy.so/bloom/icons/RiFocus3Line';
 import { RiMap2Line } from '@oxy.so/bloom/icons/RiMap2Line';
 
-import type { GeoBounds } from '@/components/map';
+import type { GeoBoundingBox } from '@/components/map';
 import { classifyGoWayError, type GoWayFailureKind } from '@/lib/goway/errors';
 import { MIN_SEARCH_LENGTH, useSearch } from '@/lib/goway/queries';
-import type { LocationErrorReason } from '@/lib/map/useUserLocation';
+import type { LocationErrorReason } from '@goway.to/maps';
 import { distanceMeters } from '@goway.to/sdk/geo';
 import { useDebouncedValue } from '@/lib/useDebouncedValue';
 
@@ -51,7 +51,7 @@ export interface StopPickerProps {
   /** The user's own position, when it is already known. Biases the search. */
   near: GeoCoordinate | null;
   /** The box the user committed to browsing. Biases the search, and orders the list. */
-  viewport: GeoBounds | null;
+  viewport: GeoBoundingBox | null;
   center: GeoCoordinate | null;
   places: readonly Place[];
   onPickPlace: (place: Place) => void;

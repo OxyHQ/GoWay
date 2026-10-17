@@ -83,7 +83,7 @@ import {
 } from '@/lib/map/style/catalogue';
 import { styleTheme } from '@/lib/map/style/themes';
 import { streetPaletteInput } from '@/lib/map/style/streetPalette';
-import { OPENMAPTILES_SOURCE_LAYERS } from '@/lib/map/style/schema';
+import { OPENMAPTILES_SOURCE_LAYERS } from '@goway.to/sdk';
 import type { QualityProfile } from '@/lib/map/quality/profile';
 import { sunPosition } from '@/lib/map/sun';
 import { mercatorX, mercatorY } from '@goway.to/sdk/geo';
@@ -113,7 +113,7 @@ import type { CityStreetsStats } from './engine/cityStreets/streetRenderer';
 import { type CityLifeLabel, cityLifeReporter } from './cityLifeLabel';
 import { type StreetNameBlockers, mountStreetNameBlockers } from './streetNameBlockers.web';
 import type { AnimationClock } from './perf/animationClock';
-import { reportMapDefect } from './shared';
+import { reportMapDefect } from '@goway.to/maps/plugin';
 
 /**
  * Which tiles to mesh: always the basemap's own `building` layer, and — when

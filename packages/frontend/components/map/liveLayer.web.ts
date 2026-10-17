@@ -41,14 +41,14 @@ import type { GeoJSONSource, Map as MapLibreMap } from 'maplibre-gl';
 
 import { metersPerPixel } from '@goway.to/sdk/geo';
 import { GOWAY_BASEMAP_SOURCE_ID, GOWAY_LAYER_PREFIX } from '@/lib/map/provider';
-import { FONT_STACKS, OPENMAPTILES_SOURCE_LAYERS } from '@/lib/map/style/schema';
+import { FONT_STACKS, OPENMAPTILES_SOURCE_LAYERS } from '@goway.to/sdk';
 
 import type { City3dHandle } from './city3dLayer.web';
 // Type-only, as in `city3dLayer.web.ts`: the engine chunk imports these at
 // runtime, and a module two lazy chunks share is hoisted into `__common`.
 import type { LivePass } from './engine/live3d/livePass';
 import { RailIndex, type RailFeature, railLinesOf } from './railTunnels';
-import { reportMapDefect } from './shared';
+import { reportMapDefect } from '@goway.to/maps/plugin';
 import type { MapLiveGlyph, MapLiveLayer, MapLivePoint } from './types';
 
 export const LIVE_SOURCE_ID = `${GOWAY_LAYER_PREFIX}live`;

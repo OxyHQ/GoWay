@@ -253,9 +253,23 @@ export {
   GOWAY_STYLE_URL_PREFIX,
   gowayStyleUrl,
   parseGoWayStyleUrl,
+  // GoWay's tile schema (OpenMapTiles v3)
+  OPENMAPTILES_SOURCE_LAYERS,
+  OPENMAPTILES_SOURCE_LAYER_NAMES,
+  TRANSPORTATION_CLASSES,
+  LANDCOVER_CLASSES,
+  LANDUSE_CLASSES,
+  PLACE_CLASSES,
+  WATER_CLASSES,
+  POI_CLASSES,
+  AVAILABLE_FONTS,
+  FONT_STACKS,
 } from '@goway/contracts';
 
 export type {
+  // GoWay's tile schema
+  AvailableFont,
+  OpenMapTilesSourceLayer,
   // Map styles
   MapLightPreset,
   MapStyleDefinition,
