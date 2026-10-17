@@ -37,7 +37,7 @@ export interface ExploreMarkerProps {
 function ExploreMarkerComponent({ marker, capability, onPress }: ExploreMarkerProps) {
   const base = <DefaultMapMarker item={markerItem(marker)} onPress={onPress} />;
 
-  if (!capability || marker.count != null) return base;
+  if (!capability) return base;
 
   const presented = presentCapability(capability);
   if (presented.stale) return base;

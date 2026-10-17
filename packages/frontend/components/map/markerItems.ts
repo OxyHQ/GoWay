@@ -1,9 +1,8 @@
 /**
  * GoWay's markers as `@goway.to/maps` markers.
  *
- * GoWay's explore screen collapses its own groups of places
- * (`lib/goway/markers.ts`) and marks the selected one; the SDK draws a marker
- * from its data and a body from an item. These two functions are the one
+ * GoWay marks the selected marker and which markers may cluster; the SDK draws
+ * a marker from its data, clusters what may be, and draws a body from an item. These two functions are the one
  * place a GoWay marker becomes both, for both forks.
  */
 import type { MapMarkerData, MapMarkerItem } from '@goway.to/maps';
@@ -21,15 +20,11 @@ export function markerData(marker: MapMarker): MapMarkerData {
   };
 }
 
-/** What Bloom draws for it: a pre-collapsed group is a cluster bubble, the selected one active. */
+/** What Bloom draws for a GoWay marker: a pill, active when it is the selected one. */
 export function markerItem(marker: MapMarker): MapMarkerItem {
-  const state = marker.selected ? 'active' : 'default';
-  if (marker.count != null && marker.count > 1) {
-    return {
-      kind: 'cluster',
-      cluster: { id: marker.id, coordinate: marker.coordinate, count: marker.count, markerIds: [] },
-      state,
-    };
-  }
-  return { kind: 'point', marker: markerData(marker), state };
+  return {
+    kind: 'point',
+    marker: markerData(marker),
+    state: marker.selected ? 'active' : 'default',
+  };
 }

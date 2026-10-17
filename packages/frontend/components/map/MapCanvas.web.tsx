@@ -27,6 +27,7 @@ import {
   GeoJSONSource,
   Layer,
   MapPlugin,
+  type MapMarkerData,
   type MapMarkerItem,
   Markers,
   MapView,
@@ -345,10 +346,22 @@ export const MapCanvas = forwardRef<MapApi, MapCanvasProps>(function MapCanvas(
   );
 
   // --- Markers: GoWay's, drawn by the SDK ---------------------------------
-  const data = useMemo(() => allMarkers.map(markerData), [allMarkers]);
+  // Places may gather into Bloom's cluster bubble (by `@goway.to/maps`'s
+  // clustering, never the selected one); everything else is always a pin.
+  const { clustered, pinned, selectedId } = useMemo(() => {
+    const gathered: MapMarkerData[] = [];
+    const alone: MapMarkerData[] = [];
+    let selected: string | null = null;
+    for (const marker of allMarkers) {
+      (marker.clustered ? gathered : alone).push(markerData(marker));
+      if (marker.clustered && marker.selected) selected = marker.id;
+    }
+    return { clustered: gathered, pinned: alone, selectedId: selected };
+  }, [allMarkers]);
   const drawMarker = useCallback(
-    (item: MapMarkerItem) => {
-      if (item.kind !== 'point') return null;
+    (item: MapMarkerItem, press: () => void) => {
+      // A cluster is Bloom's bubble; pressing it opens it where it splits.
+      if (item.kind === 'cluster') return <DefaultMapMarker item={item} onPress={press} />;
       const marker = markersById.get(item.marker.id);
       if (!marker) return null;
       // A model's stand-in is the canvas's own marker, never the caller's
@@ -415,7 +428,8 @@ export const MapCanvas = forwardRef<MapApi, MapCanvasProps>(function MapCanvas(
             </GeoJSONSource>
           );
         })}
-        <Markers data={data} renderMarker={drawMarker} />
+        <Markers data={clustered} cluster selectedId={selectedId} renderMarker={drawMarker} />
+        <Markers data={pinned} renderMarker={drawMarker} />
         <UserLocation visible={showUserLocation} />
       </MapView>
 

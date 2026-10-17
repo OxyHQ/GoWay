@@ -288,7 +288,10 @@ export interface MapCameraTarget {
 
 export interface MarkersProps {
   data: readonly MapMarkerData[];
-  /** The marker drawn active (and the cluster that holds it). */
+  /**
+   * The marker drawn active. With `cluster`, it is never folded into a
+   * cluster: what the reader is looking at stays on the map.
+   */
   selectedId?: string | null;
   /** Group nearby markers into Bloom cluster bubbles. */
   cluster?: boolean;

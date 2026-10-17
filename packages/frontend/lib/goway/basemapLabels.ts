@@ -191,7 +191,7 @@ export function declutterMarkerLabels(input: DeclutterInput): readonly MapMarker
 
   let changed = false;
   const next = markers.map((marker) => {
-    if (!marker.label || marker.selected || (marker.count != null && marker.count > 1)) {
+    if (!marker.label || marker.selected) {
       return marker;
     }
     const at = projectToPixels(marker.coordinate, zoom);

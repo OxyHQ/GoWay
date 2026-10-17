@@ -86,8 +86,8 @@ const NO_LABELS: readonly MapLabelFeature[] = [];
 /** Zoom the camera settles at when a place is opened from a list. */
 const DETAIL_ZOOM = 16;
 
-/** Padding kept around a cluster the user opened, in px. */
-const CLUSTER_FIT_PADDING = 96;
+/** Padding kept around a result's extent when it is framed, in px. */
+const RESULT_FIT_PADDING = 96;
 
 /**
  * Fallback padding for framing a route, in px, when the screen has not said how
@@ -308,7 +308,6 @@ export function useExplore(
     if (searching) {
       return {
         markers: results.map((result) => resultMarker(result, result.id === selectedMarkerId)),
-        clusters: new Map<string, Place[]>(),
         hiddenByZoom: 0,
       };
     }
@@ -429,7 +428,7 @@ export function useExplore(
       // dropping a pin in the middle of it and zooming to 16.
       if (result.boundingBox) {
         mapRef.current?.fitBounds(result.boundingBox, {
-          padding: CLUSTER_FIT_PADDING,
+          padding: RESULT_FIT_PADDING,
           maxZoom: 15,
           duration: cameraDuration,
         });
@@ -640,14 +639,6 @@ export function useExplore(
         if (slot >= 0) directions.beginEdit(slot);
         return;
       }
-      const cluster = built.clusters.get(marker.id);
-      if (cluster) {
-        mapRef.current?.fitCoordinates(
-          cluster.map((entry) => entry.location),
-          { padding: CLUSTER_FIT_PADDING, maxZoom: 17, duration: cameraDuration },
-        );
-        return;
-      }
       if (searching) {
         const result = results.find((entry) => entry.id === marker.id);
         if (result) selectResult(result);
@@ -656,17 +647,7 @@ export function useExplore(
       const place = places.find((entry) => entry.id === marker.id);
       if (place) selectPlace(place);
     },
-    [
-      built.clusters,
-      cameraDuration,
-      directions,
-      mapRef,
-      places,
-      results,
-      searching,
-      selectPlace,
-      selectResult,
-    ],
+    [directions, places, results, searching, selectPlace, selectResult],
   );
 
   return {

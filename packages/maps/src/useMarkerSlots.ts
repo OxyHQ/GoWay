@@ -30,19 +30,32 @@ export function useMarkerSlots({
   const map = useContext(MapRefContext);
   // Undrawable markers are dropped, and said so once (`shared.ts`).
   const drawable = drawableMarkers(data);
+  // The selected marker is never folded into a cluster: what the reader is
+  // looking at stays on the map, at its own coordinate, whatever the zoom.
+  const pinned =
+    cluster && selectedId != null ? drawable.find((m) => m.id === selectedId) : undefined;
   const index = useMemo(() => {
     const options: ClusterOptions | null = cluster
       ? { radius: clusterRadius, maxZoom: clusterMaxZoom, minPoints: clusterMinPoints }
       : null;
-    return indexMarkers(drawable, options);
-  }, [drawable, cluster, clusterRadius, clusterMaxZoom, clusterMinPoints]);
+    const gathered = pinned ? drawable.filter((marker) => marker !== pinned) : drawable;
+    return indexMarkers(gathered, options);
+  }, [drawable, pinned, cluster, clusterRadius, clusterMaxZoom, clusterMinPoints]);
   // Pressed before on this map: drawn muted, so the reader sees what they
   // have already looked at.
   const [visited, setVisited] = useState<ReadonlySet<string>>(() => new Set());
-  const slots = useMemo(
-    () => markerSlotsAt(index, zoom, selectedId, visited),
-    [index, zoom, selectedId, visited],
-  );
+  const slots = useMemo(() => {
+    const drawn = markerSlotsAt(index, zoom, selectedId, visited);
+    if (!pinned) return drawn;
+    return [
+      ...drawn,
+      {
+        key: `point:${pinned.id}`,
+        coordinate: pinned.coordinate,
+        item: { kind: 'point' as const, marker: pinned, state: 'active' as const },
+      },
+    ];
+  }, [index, zoom, selectedId, visited, pinned]);
 
   const press = useCallback(
     (slot: MarkerSlot) => {
