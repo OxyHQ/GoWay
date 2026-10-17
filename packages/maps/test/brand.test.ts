@@ -8,6 +8,8 @@ import { describe, expect, it } from 'bun:test';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
+import { logoAccessibility } from '../src/brand/logoAccessibility';
+
 const read = (path: string) => readFileSync(join(import.meta.dir, '..', 'src', path), 'utf8');
 
 describe('MapBrand', () => {
@@ -28,5 +30,29 @@ describe('MapBrand', () => {
     for (const fork of ['MapView.web.tsx', 'MapView.tsx']) {
       expect(read(fork)).toContain('      <MapBrand />');
     }
+  });
+});
+
+describe('GowayLogo accessibility', () => {
+  it('names the logo with ARIA on the web, where react-native-svg passes props to the DOM', () => {
+    expect(logoAccessibility('GoWay', 'web')).toEqual({ role: 'img', 'aria-label': 'GoWay' });
+    expect(logoAccessibility('', 'web')).toEqual({ 'aria-hidden': true });
+  });
+
+  it("keeps React Native's props on iOS and Android", () => {
+    for (const os of ['ios', 'android']) {
+      expect(logoAccessibility('GoWay', os)).toEqual({
+        accessible: true,
+        accessibilityRole: 'image',
+        accessibilityLabel: 'GoWay',
+      });
+      expect(logoAccessibility('', os)).toEqual({ accessible: false });
+    }
+  });
+
+  it('passes no React Native accessibility prop to the Svg itself', () => {
+    const source = read('brand/GowayLogo.tsx');
+    expect(source).not.toMatch(/\b(accessible|accessibilityRole|accessibilityLabel)=/);
+    expect(source).toContain('logoAccessibility(label, Platform.OS)');
   });
 });

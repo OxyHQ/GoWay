@@ -23,9 +23,11 @@
  * every call site instead of cropping in some of them.
  */
 import { memo } from 'react';
-import Svg, { Path } from 'react-native-svg';
+import { Platform } from 'react-native';
+import Svg, { Path, type SvgProps } from 'react-native-svg';
 
 import { GOWAY_INK, GOWAY_MARK, GOWAY_WORDMARK, aspectRatio, type GowayArtwork } from './artwork';
+import { logoAccessibility } from './logoAccessibility';
 
 /**
  * Which drawing to render.
@@ -76,11 +78,9 @@ function GowayLogoComponent({
       width={width}
       height={height}
       viewBox={artwork.viewBox}
-      // A decorative logo beside its own name is noise in a screen reader, so
+      // ARIA on the web, React Native's props on native (`logoAccessibility.ts`);
       // an empty label hides it rather than forcing callers to wrap it.
-      accessible={label !== ''}
-      accessibilityRole="image"
-      accessibilityLabel={label || undefined}
+      {...(logoAccessibility(label, Platform.OS) as SvgProps)}
       testID={testID}
     >
       {artwork.paths.map((path, index) => (
