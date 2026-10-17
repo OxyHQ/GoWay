@@ -88,6 +88,10 @@ const EXPECTED_FILES = [
   'package/dist/index.d.cts',
   'package/dist/index.d.ts',
   'package/dist/index.js',
+  'package/dist/geo.cjs',
+  'package/dist/geo.d.cts',
+  'package/dist/geo.d.ts',
+  'package/dist/geo.js',
   'package/dist/live.cjs',
   'package/dist/live.d.cts',
   'package/dist/live.d.ts',
@@ -194,6 +198,10 @@ async function main() {
       'roadAccess.cjs',
       'roadAccess.d.ts',
       'roadAccess.d.cts',
+      'geo.js',
+      'geo.cjs',
+      'geo.d.ts',
+      'geo.d.cts',
     ]) {
       await stat(join(root, 'dist', file)).catch(() =>
         fail(`dist/${file} is missing — run the build first`),
@@ -346,6 +354,12 @@ async function main() {
     run(process.execPath, ['road-access.mjs'], consumer, 'node ESM import of /road-access');
     run(process.execPath, ['road-access.cjs'], consumer, 'node CJS require of /road-access');
     pass('@goway.to/sdk/road-access: ESM and CJS resolve, a bus lane opens a road to buses only');
+
+    await writeFile(join(consumer, 'geo.mjs'), CONSUMER_GEO_ESM);
+    await writeFile(join(consumer, 'geo.cjs'), CONSUMER_GEO_CJS);
+    run(process.execPath, ['geo.mjs'], consumer, 'node ESM import of /geo');
+    run(process.execPath, ['geo.cjs'], consumer, 'node CJS require of /geo');
+    pass('@goway.to/sdk/geo: ESM and CJS resolve, a Pacific box is centred on the antimeridian');
 
     // ── 4. Bun ────────────────────────────────────────────────────────────────
     run('bun', ['program.mjs'], consumer, 'bun import');
@@ -576,6 +590,22 @@ ${ROAD_ACCESS_PROGRAM}`;
 
 const CONSUMER_ROAD_ACCESS_CJS = `const roadAccess = require('@goway.to/sdk/road-access');
 ${ROAD_ACCESS_PROGRAM}`;
+
+const GEO_PROGRAM = `
+const assert = require('node:assert');
+const pacific = { west: 170, south: -20, east: -170, north: -10 };
+assert.deepStrictEqual(geo.boundsCenter(pacific), { latitude: -15, longitude: 180 });
+assert.strictEqual(geo.isDegenerateBounds(pacific), false);
+assert.strictEqual(geo.boundsOf([]), null);
+`;
+
+const CONSUMER_GEO_ESM = `import { createRequire } from 'node:module';
+import * as geo from '@goway.to/sdk/geo';
+const require = createRequire(import.meta.url);
+${GEO_PROGRAM}`;
+
+const CONSUMER_GEO_CJS = `const geo = require('@goway.to/sdk/geo');
+${GEO_PROGRAM}`;
 
 const BUNDLE_ENTRY = `
 import { createGoWayClient } from '@goway.to/sdk';

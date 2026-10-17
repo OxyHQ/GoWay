@@ -24,7 +24,7 @@
  *    review).
  */
 import { CITY_TILE_EXTENT } from '@/lib/map/cityTiles';
-import { latitudeFromMercatorY, longitudeFromMercatorX } from '@/lib/map/geo';
+import { latitudeFromMercatorY, longitudeFromMercatorX } from '@goway.to/sdk/geo';
 
 import { crossSection, paintRulesAt } from '../cityStreets/lanes';
 import { drivingSideAt } from '../roads/drivingSide';

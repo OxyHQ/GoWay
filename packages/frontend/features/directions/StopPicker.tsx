@@ -32,7 +32,7 @@ import type { GeoBounds } from '@/components/map';
 import { classifyGoWayError, type GoWayFailureKind } from '@/lib/goway/errors';
 import { MIN_SEARCH_LENGTH, useSearch } from '@/lib/goway/queries';
 import type { LocationErrorReason } from '@/lib/map/useUserLocation';
-import { distanceMeters } from '@/lib/map/geo';
+import { distanceMeters } from '@goway.to/sdk/geo';
 import { useDebouncedValue } from '@/lib/useDebouncedValue';
 
 import { FailureState, LocationFailureState, NoResultsState } from '../explore/states';

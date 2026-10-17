@@ -11,7 +11,7 @@
  *
  * Pure: no three.js. The engine hands it its tiles, landmarks and ground.
  */
-import { EARTH_CIRCUMFERENCE_M } from '@/lib/map/geo';
+import { EARTH_CIRCUMFERENCE_M } from '@goway.to/sdk/geo';
 
 import { type Ground, type GroundGrid, gridAt } from '../city3d/terrainGround';
 import { type TileId, tileSizeMetres } from '../city3d/tileMath';

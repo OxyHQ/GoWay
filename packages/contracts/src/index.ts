@@ -19,6 +19,7 @@
 
 export * from './organization-lists';
 export * from './geo';
+export * from './geo-math';
 export * from './language';
 export * from './time';
 export * from './pagination';

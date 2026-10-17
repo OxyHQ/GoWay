@@ -25,7 +25,7 @@
  *     fitting a cluster) never does, and never replaces the box.
  */
 import type { GeoBounds, GeoCoordinate, MapViewportChange } from '@/components/map';
-import { boundsCenter, distanceMeters } from '@/lib/map/geo';
+import { boundsCenter, distanceMeters } from '@goway.to/sdk/geo';
 
 export interface CommittedBox {
   bounds: GeoBounds;

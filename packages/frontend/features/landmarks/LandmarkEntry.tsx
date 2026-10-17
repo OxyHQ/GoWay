@@ -15,7 +15,7 @@ import { Fab } from '@oxy.so/bloom/fab';
 import { RiBuilding2Line } from '@oxy.so/bloom/icons/RiBuilding2Line';
 
 import { formatMessage, useTranslation } from '@/lib/i18n';
-import { distanceMeters } from '@/lib/map/geo';
+import { distanceMeters } from '@goway.to/sdk/geo';
 import { LANDMARK_ENTRY_LABELS } from '@/lib/map/landmarks/labels';
 import type { PreparedLandmark } from '@/lib/map/landmarks/load';
 import { landmarkForPlace } from '@/lib/map/landmarks/match';

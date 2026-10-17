@@ -76,7 +76,7 @@
  *    meter: the read surface is public. Adding a key would be adding a way for
  *    the embed to stop working.
  */
-import { MERCATOR_MAX_LATITUDE } from './geo';
+import { MERCATOR_MAX_LATITUDE } from '@goway.to/sdk/geo';
 import {
   isMapLightPreset,
   isMapStyleId,

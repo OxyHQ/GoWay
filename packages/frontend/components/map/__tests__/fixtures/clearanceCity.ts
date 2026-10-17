@@ -19,7 +19,7 @@ import {
 import { packMesh } from '@/components/map/engine/city3d/packing';
 import type { createGround } from '@/components/map/engine/city3d/terrainGround';
 import { tileSizeMetres } from '@/components/map/engine/city3d/tileMath';
-import { latitudeFromMercatorY, longitudeFromMercatorX } from '@/lib/map/geo';
+import { latitudeFromMercatorY, longitudeFromMercatorX } from '@goway.to/sdk/geo';
 
 export const TILE = { z: 15, x: 16580, y: 12236 };
 export const N = 2 ** TILE.z;

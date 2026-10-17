@@ -19,7 +19,7 @@
  * `tileModelMatrix` uses to turn those metres back into mercator.
  */
 
-import { EARTH_CIRCUMFERENCE_M, latitudeFromMercatorY } from '@/lib/map/geo';
+import { EARTH_CIRCUMFERENCE_M, latitudeFromMercatorY } from '@goway.to/sdk/geo';
 
 const EXTENT = 4096;
 const ZOOM = 15;

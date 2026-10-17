@@ -1,20 +1,13 @@
 /**
- * Geographic helpers shared by both renderer forks and by feature code.
+ * Geographic arithmetic: Web Mercator, boxes, distances.
  *
- * Provider-neutral on purpose: everything here takes and returns GoWay's own
- * `{ latitude, longitude }` shapes, so a screen can reason about geometry
- * without importing a map engine.
+ * The ONE copy for every GoWay package — the SDK's clients, `@goway.to/maps`,
+ * GoWay's own app and its map workers. Pure functions over GoWay's own
+ * `{ latitude, longitude }` and `{ west, south, east, north }` shapes, with no
+ * schema and no `zod`, so `@goway.to/sdk/geo` loads in a worker without the
+ * HTTP client.
  */
-import type { GeoBounds, GeoCoordinate } from '@/components/map/types';
-
-// ── Web Mercator: the ONE copy of its arithmetic ─────────────────────────
-//
-// Here because this module is already in the first-paint bundle: the city-3D
-// engine (`engine/city3d/tileMath.ts`), the camera paths (`lib/map/camera/plane.ts`),
-// the simulation's worker and the live layer all read these, and a module two
-// lazy chunks import would be hoisted into `__common` (`engine3d/lazyChunk.ts`).
-// Each of them used to keep its own copy (`docs/MAP_PERFORMANCE.md` →
-// duplication).
+import type { GeoBoundingBox, GeoCoordinate } from './geo';
 
 /** MapLibre's Earth: `2π × 6,371,008.8 m`, the circumference its zoom scale is defined by. */
 export const EARTH_CIRCUMFERENCE_M = 2 * Math.PI * 6371008.8;
@@ -62,15 +55,7 @@ export function isValidCoordinate(value: unknown): value is GeoCoordinate {
   );
 }
 
-/**
- * Metres per screen pixel at a latitude and zoom, in Web Mercator.
- *
- * Needed because Bloom's `MapAreaCircle` takes a radius in PIXELS — it is a UI
- * component floating over the map, not a geographic layer, so it cannot know
- * the projection. Converting a real radius ("places within 500 m") into the
- * pixels that circle should span is map work, so it lives here rather than
- * being re-derived at each call site.
- */
+/** Metres per screen pixel at a latitude and zoom, in Web Mercator. */
 export function metersPerPixel(latitude: number, zoom: number): number {
   return (EARTH_CIRCUMFERENCE_M * Math.cos(latitude * DEG)) / (WORLD_TILE_SIZE * 2 ** zoom);
 }
@@ -81,8 +66,8 @@ export function metersToPixels(meters: number, latitude: number, zoom: number): 
   return scale > 0 ? meters / scale : 0;
 }
 
-/** The smallest box containing every coordinate, or `null` for an empty list. */
-export function boundsOf(coordinates: readonly GeoCoordinate[]): GeoBounds | null {
+/** The smallest box containing every valid coordinate, or `null` when there is none. */
+export function boundsOf(coordinates: readonly GeoCoordinate[]): GeoBoundingBox | null {
   const valid = coordinates.filter(isValidCoordinate);
   if (valid.length === 0) return null;
 
@@ -101,31 +86,36 @@ export function boundsOf(coordinates: readonly GeoCoordinate[]): GeoBounds | nul
   return { west, south, east, north };
 }
 
-/** Centre of a box. */
-export function boundsCenter(bounds: GeoBounds): GeoCoordinate {
+/**
+ * The east edge of a box as an engine draws it: carried past 180 when the box
+ * crosses the antimeridian (`west > east`), so `170 → -170` is the 20° strip it
+ * describes and not the 340° of the rest of the world.
+ */
+export function unwrappedEast(bounds: Pick<GeoBoundingBox, 'west' | 'east'>): number {
+  return bounds.east >= bounds.west ? bounds.east : bounds.east + 360;
+}
+
+/** Centre of a box, across the antimeridian when it crosses it. */
+export function boundsCenter(bounds: GeoBoundingBox): GeoCoordinate {
+  const middle = (bounds.west + unwrappedEast(bounds)) / 2;
   return {
     latitude: (bounds.south + bounds.north) / 2,
-    longitude: (bounds.west + bounds.east) / 2,
+    longitude: middle > 180 ? middle - 360 : middle,
   };
 }
 
 /**
  * A box with no area — a single point, or a list of identical points.
  *
- * Both engines answer a zero-area `fitBounds` with their maximum zoom, which
- * is certainly wrong: the caller asked to frame an AREA. Callers check this and
- * fall back to a `moveTo` at a sensible zoom.
+ * Both engines answer a zero-area fit with their maximum zoom, which is
+ * certainly wrong: the caller asked to frame an AREA. Callers check this and
+ * move to the centre at a sensible zoom instead.
  */
-export function isDegenerateBounds(bounds: GeoBounds): boolean {
-  return bounds.east - bounds.west <= 0 && bounds.north - bounds.south <= 0;
+export function isDegenerateBounds(bounds: GeoBoundingBox): boolean {
+  return unwrappedEast(bounds) - bounds.west <= 0 && bounds.north - bounds.south <= 0;
 }
 
-/**
- * Great-circle distance in metres (haversine).
- *
- * Accurate enough for "how far is this place" and for deciding whether the
- * viewport moved far enough to offer "Search this area"; not a routing engine.
- */
+/** Great-circle distance in metres (haversine). */
 export function distanceMeters(a: GeoCoordinate, b: GeoCoordinate): number {
   const radius = EARTH_CIRCUMFERENCE_M / (2 * Math.PI);
   const dLat = (b.latitude - a.latitude) * DEG;
@@ -140,16 +130,9 @@ export function distanceMeters(a: GeoCoordinate, b: GeoCoordinate): number {
 /**
  * Web Mercator world-pixel coordinates at a zoom level.
  *
- * Clustering is a SCREEN-SPACE question — "are these two pins closer together
- * than a finger is wide?" — and degrees do not answer it: one degree of
- * longitude is 111 km at the equator and 28 km in Reykjavík, so a
- * degree-threshold cluster is looser at the equator and tighter at the poles,
- * for the same apparent gap on screen. Projecting first makes the threshold a
- * pixel count that means the same thing everywhere.
- *
  * The origin is the top-left of the world at the given zoom; the world is
- * `TILE_SIZE_PX * 2^zoom` pixels square. Latitudes beyond ±85.05° are clamped,
- * because Mercator sends the poles to infinity.
+ * `WORLD_TILE_SIZE * 2^zoom` pixels square. Latitudes beyond ±85.05° are
+ * clamped, because Mercator sends the poles to infinity.
  */
 export function projectToPixels(coordinate: GeoCoordinate, zoom: number): { x: number; y: number } {
   const worldSize = WORLD_TILE_SIZE * 2 ** zoom;

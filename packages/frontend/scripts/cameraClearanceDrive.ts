@@ -16,7 +16,7 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import type { Page } from 'playwright-core';
 
-import { metersPerPixel } from '../lib/map/geo';
+import { metersPerPixel } from '@goway.to/sdk/geo';
 
 /** MapLibre's default vertical field of view, degrees. */
 const FOV = 36.87;

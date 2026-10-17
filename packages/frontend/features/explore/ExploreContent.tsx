@@ -27,7 +27,7 @@ import * as Skeleton from '@oxy.so/bloom/skeleton';
 import { RiRouteLine } from '@oxy.so/bloom/icons/RiRouteLine';
 
 import { DirectionsBody, DirectionsHeader } from '@/features/directions/DirectionsPanel';
-import { distanceMeters } from '@/lib/map/geo';
+import { distanceMeters } from '@goway.to/sdk/geo';
 
 import { CategoryShortcuts } from './CategoryShortcuts';
 import { PlaceDetails } from './PlaceDetails';

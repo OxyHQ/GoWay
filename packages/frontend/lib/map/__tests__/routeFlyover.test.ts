@@ -7,7 +7,7 @@ import { describe, expect, test } from 'bun:test';
 
 import { bearingDelta, createPlane, metresPerPixel } from '@/lib/map/camera/plane';
 import { cruiseZoom, followSeconds, planRouteFlyover } from '@/lib/map/camera/routeFlyover';
-import { distanceMeters } from '@/lib/map/geo';
+import { distanceMeters } from '@goway.to/sdk/geo';
 
 const VIEWPORT = { width: 1000, height: 700 };
 const ORIGIN = { latitude: 41.3874, longitude: 2.1686 };

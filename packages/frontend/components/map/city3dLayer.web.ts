@@ -86,7 +86,7 @@ import { streetPaletteInput } from '@/lib/map/style/streetPalette';
 import { OPENMAPTILES_SOURCE_LAYERS } from '@/lib/map/style/schema';
 import type { QualityProfile } from '@/lib/map/quality/profile';
 import { sunPosition } from '@/lib/map/sun';
-import { mercatorX, mercatorY } from '@/lib/map/geo';
+import { mercatorX, mercatorY } from '@goway.to/sdk/geo';
 
 import { followTerrain } from './city3dGround.web';
 import { cityLightFromSpec, sameCityLight } from './city3dLight';

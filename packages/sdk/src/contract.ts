@@ -209,6 +209,23 @@ export {
   // Geography, language, paging
   boundingBoxWidth,
   toGeoCoordinate,
+  // Geographic arithmetic (`@goway.to/sdk/geo`)
+  EARTH_CIRCUMFERENCE_M,
+  MERCATOR_MAX_LATITUDE,
+  WORLD_TILE_SIZE,
+  boundsCenter,
+  boundsOf,
+  distanceMeters,
+  isDegenerateBounds,
+  isValidCoordinate,
+  latitudeFromMercatorY,
+  longitudeFromMercatorX,
+  mercatorX,
+  mercatorY,
+  metersPerPixel,
+  metersToPixels,
+  projectToPixels,
+  unwrappedEast,
   toGeoPosition,
   baseLanguageTag,
   normalizeLanguageTag,
@@ -233,6 +250,9 @@ export {
   mapStyleDefinition,
   mapStylePath,
   resolveMapStyle,
+  GOWAY_STYLE_URL_PREFIX,
+  gowayStyleUrl,
+  parseGoWayStyleUrl,
 } from '@goway/contracts';
 
 export type {

@@ -57,7 +57,7 @@ import type {
 import type { MapApi, MapFitOptions, MapMarker, MapOverlay } from '@/components/map';
 import { gowayClient } from '@/lib/goway/client';
 import { classifyGoWayError, shouldRetryGoWay, type GoWayFailureKind } from '@/lib/goway/errors';
-import { distanceMeters } from '@/lib/map/geo';
+import { distanceMeters } from '@goway.to/sdk/geo';
 import type { LocationErrorReason, UserLocationApi } from '@/lib/map/useUserLocation';
 
 import { routeSteps, stepCoordinates, type RouteStep } from './maneuvers';

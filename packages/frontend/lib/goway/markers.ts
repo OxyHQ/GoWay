@@ -27,7 +27,7 @@ import { placeDisplayName } from '@goway.to/sdk';
 import type { CategoryTaxonomy, Place } from '@goway.to/sdk';
 
 import type { MapMarker } from '@/components/map';
-import { projectToPixels } from '@/lib/map/geo';
+import { projectToPixels } from '@goway.to/sdk/geo';
 
 import { capabilitySummary } from './capabilities';
 import { isVisibleAtZoom, resolveCategory } from './categories';

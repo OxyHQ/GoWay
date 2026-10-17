@@ -49,7 +49,7 @@ import { assetVolumes } from '@/components/map/engine/city3d/models';
 import { createGround } from '@/components/map/engine/city3d/terrainGround';
 import { tileSizeMetres } from '@/components/map/engine/city3d/tileMath';
 import { meshCityTile } from '@/components/map/engine/city3d/tileMeshing';
-import { EARTH_CIRCUMFERENCE_M, mercatorX, mercatorY } from '@/lib/map/geo';
+import { EARTH_CIRCUMFERENCE_M, mercatorX, mercatorY } from '@goway.to/sdk/geo';
 
 /** A street-level camera over the test tile: MapLibre's at a 1080 px tall screen. */
 function pose(over: Partial<CameraPose> = {}): CameraPose {

@@ -111,6 +111,8 @@ import {
   MAP_STYLE_INDEX_PATH,
   mapStylePath,
   resolveMapStyle,
+  GOWAY_STYLE_URL_PREFIX,
+  parseGoWayStyleUrl,
   roadAccessDecisionSchema,
   roadAccessInputSchema,
   roadRuleSetListQuerySchema,
@@ -756,6 +758,15 @@ export interface GoWayLinks {
   /** The catalogue of every published style and its documents (`parseMapStyleIndex` reads it). */
   mapStyleIndex(): string;
   /**
+   * The document a style URL names, ready for an engine.
+   *
+   * A `goway://styles/<id>` name resolves to its document in `light` (the
+   * name's own `?light=` wins when it has one), exactly as {@link mapStyle};
+   * any other URL is returned unchanged. A `goway://` name that is not a
+   * published style throws `GoWayValidationError`.
+   */
+  styleUrl(url: string, light?: MapLightPreset): string;
+  /**
    * The embeddable map (`<iframe src>`), framed on a viewport, in a GoWay
    * style and light: `https://goway.to/frame?lat=…&lng=…&zoom=…&style=…`.
    */
@@ -1083,6 +1094,12 @@ function createLinks(webBaseUrl: string): GoWayLinks {
     mapStyle: (style: MapStyleId, light?: MapLightPreset) =>
       `${webBaseUrl}${mapStylePath(styleSelection(style, light))}`,
     mapStyleIndex: () => `${webBaseUrl}${MAP_STYLE_INDEX_PATH}`,
+    styleUrl: (url: string, light?: MapLightPreset) => {
+      if (!url.startsWith(GOWAY_STYLE_URL_PREFIX)) return url;
+      const named = parseGoWayStyleUrl(url);
+      if (!named) throw new GoWayValidationError(`not a published GoWay style: ${url}`);
+      return `${webBaseUrl}${mapStylePath(styleSelection(named.style, named.light ?? light))}`;
+    },
     embed: (
       viewport: MapViewport,
       options: { style?: MapStyleId; light?: MapLightPreset } = {},

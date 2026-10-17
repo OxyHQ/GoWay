@@ -41,7 +41,12 @@
  */
 import type { Map as MapLibreMap } from 'maplibre-gl';
 
-import { latitudeFromMercatorY, longitudeFromMercatorX, mercatorX, mercatorY } from '@/lib/map/geo';
+import {
+  latitudeFromMercatorY,
+  longitudeFromMercatorX,
+  mercatorX,
+  mercatorY,
+} from '@goway.to/sdk/geo';
 
 import { PROGRAMMATIC } from './cameraReports.web';
 import { groundOf } from './city3dGround.web';

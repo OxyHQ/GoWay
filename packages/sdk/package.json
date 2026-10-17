@@ -1,6 +1,6 @@
 {
   "name": "@goway.to/sdk",
-  "version": "0.5.0",
+  "version": "0.6.0",
   "description": "The canonical, headless TypeScript client for GoWay's public geographic API \u2014 Places, capability filters, search, geocoding, routing, typed errors and canonical links for Node, Bun, browsers and React Native.",
   "license": "SEE LICENSE IN LICENSE",
   "author": "The Oxy Collective, Inc.",
@@ -65,6 +65,24 @@
       "default": {
         "types": "./dist/live.d.ts",
         "default": "./dist/live.js"
+      }
+    },
+    "./geo": {
+      "react-native": {
+        "types": "./dist/geo.d.ts",
+        "default": "./dist/geo.js"
+      },
+      "import": {
+        "types": "./dist/geo.d.ts",
+        "default": "./dist/geo.js"
+      },
+      "require": {
+        "types": "./dist/geo.d.cts",
+        "default": "./dist/geo.cjs"
+      },
+      "default": {
+        "types": "./dist/geo.d.ts",
+        "default": "./dist/geo.js"
       }
     },
     "./road-access": {

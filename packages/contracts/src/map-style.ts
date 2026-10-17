@@ -126,6 +126,44 @@ export function mapStylePath(selection: MapStyleSelection): string {
 /** Where the catalogue document is served, relative to GoWay's origin. */
 export const MAP_STYLE_INDEX_PATH = '/map/styles/index.json';
 
+/** The scheme a GoWay style is named by: `goway://styles/<id>`, `goway://styles/<id>?light=<preset>`. */
+export const GOWAY_STYLE_URL_PREFIX = 'goway://styles/';
+
+/** The `goway://` name of a style, optionally pinned to one light. */
+export function gowayStyleUrl(style: MapStyleId, light?: MapLightPreset): string {
+  return light === undefined
+    ? `${GOWAY_STYLE_URL_PREFIX}${style}`
+    : `${GOWAY_STYLE_URL_PREFIX}${style}?light=${light}`;
+}
+
+/**
+ * Read a `goway://styles/<id>[?light=<preset>]` name.
+ *
+ * `null` for any other string — an `https://` style URL is not a GoWay name and
+ * is used as it is. A `goway://` name with an unknown id or light is also
+ * `null`, never a guess: the caller reports it rather than drawing a different
+ * map than the one it was asked for.
+ */
+export function parseGoWayStyleUrl(
+  url: string,
+): { style: MapStyleId; light?: MapLightPreset } | null {
+  if (!url.startsWith(GOWAY_STYLE_URL_PREFIX)) return null;
+  const rest = url.slice(GOWAY_STYLE_URL_PREFIX.length);
+  const query = rest.indexOf('?');
+  const id = query === -1 ? rest : rest.slice(0, query);
+  if (!isMapStyleId(id)) return null;
+  if (query === -1) return { style: id };
+  const params = rest.slice(query + 1).split('&');
+  let light: MapLightPreset | undefined;
+  for (const param of params) {
+    const [key, value] = param.split('=');
+    if (key !== 'light') return null;
+    if (!isMapLightPreset(value)) return null;
+    light = value;
+  }
+  return light === undefined ? { style: id } : { style: id, light };
+}
+
 /**
  * `/map/styles/index.json`. OPEN on purpose: a style or a light GoWay adds
  * after an SDK was built is listed, not a parse failure — `id` and the light

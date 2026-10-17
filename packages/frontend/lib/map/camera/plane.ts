@@ -10,7 +10,7 @@
  * across a 100 km route it is a few per cent, which only changes how fast the
  * camera seems to travel, never where it goes.
  *
- * Pure arithmetic with no renderer. The projection itself is `lib/map/geo.ts`'s
+ * Pure arithmetic with no renderer. The projection itself is `@goway.to/sdk/geo`'s
  * — the one copy, in the first-paint bundle, so this lazy chunk and the
  * three.js one share it without it being hoisted into `__common`
  * (`components/engine3d/lazyChunk.ts`); the formulas are pinned by
@@ -27,7 +27,7 @@ import {
   mercatorY,
   metersPerPixel as metresPerPixel,
   WORLD_TILE_SIZE,
-} from '../geo';
+} from '@goway.to/sdk/geo';
 
 export {
   EARTH_CIRCUMFERENCE_M,

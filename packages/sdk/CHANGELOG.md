@@ -4,6 +4,26 @@ All notable changes to `@goway.to/sdk`. The package follows semantic versioning
 with the 0.x rule: while the major version is 0, a MINOR release may break the
 API or the contract, and a PATCH release never does.
 
+## 0.6.0
+
+What `@goway.to/maps` is built on: GoWay's style names and its geographic
+arithmetic, in the SDK so the map package, GoWay's app and its map workers
+share one copy. Additive.
+
+### Added
+
+- **`goway://` style names**, as Mapbox's `mapbox://styles/...`:
+  `gowayStyleUrl(style, light?)` → `goway://styles/<id>[?light=<preset>]`,
+  `parseGoWayStyleUrl(url)` reads one back (`null` for anything else), and
+  `client.links.styleUrl(url, light?)` resolves a name to its style document on
+  the client's web origin in the light asked for — the name's own `?light=`
+  wins — and passes any other URL through unchanged. `GOWAY_STYLE_URL_PREFIX`.
+- **`@goway.to/sdk/geo`**, a new entry point with no schema and no HTTP client:
+  Web Mercator (`mercatorX`/`mercatorY` and their inverses, `projectToPixels`,
+  `metersPerPixel`, `metersToPixels`), boxes (`boundsOf`, `boundsCenter`,
+  `isDegenerateBounds`, `unwrappedEast` — a box that crosses the antimeridian is
+  the strip it describes), `distanceMeters` and `isValidCoordinate`.
+
 ## 0.4.0 — unreleased
 
 Two changes to how GoWay names places' kinds. The place category taxonomy
