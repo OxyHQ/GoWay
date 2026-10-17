@@ -36,6 +36,15 @@
  * report is not cached at all. Failures are never cached. The cost of the
  * window is that a removed member keeps their access for up to the TTL, which
  * is the same bound Oxy's own clients accept.
+ *
+ * ## Organization authority, never cached
+ *
+ * {@link createOrganizationAuthority} asks the same question through the same
+ * client and translation, uncached, and demands an ORGANIZATION in which the
+ * person holds an active content role. Organization-list writes call it twice:
+ * once before taking any database connection, so a refused caller or an Oxy
+ * outage never holds a pooled connection or the list's lock, and again after
+ * the lock, so no queued write acts on a membership answer older than its turn.
  */
 
 import { OxyApiError, OxyServices, type AccountNode, type AccountRole } from '@oxy.so/core';
@@ -102,6 +111,41 @@ function translate(error: unknown): null {
   );
 }
 
+/**
+ * The account node as the caller sees it, on a client built for this one
+ * question and disposed after it — `null` when Oxy answers "no access".
+ */
+async function accountNodeFor(
+  oxyApiUrl: string,
+  accessToken: string,
+  oxyAccountId: string,
+): Promise<AccountNode | null> {
+  const client = new OxyServices({
+    baseURL: oxyApiUrl,
+    enableCache: false,
+    enableRetry: false,
+    requestTimeout: OXY_REQUEST_TIMEOUT_MS,
+  });
+  client.session.setAccessToken(accessToken);
+  try {
+    return await client.accounts.get(oxyAccountId);
+  } catch (error) {
+    return translate(error);
+  } finally {
+    client.dispose();
+  }
+}
+
+/** A session must carry its bearer to be asked about; behind `requireAuth` it always does. */
+function bearerOf(caller: OxyCaller): string {
+  if (caller.accessToken === null) {
+    // Reaching here without one means the middleware was rewired, and the
+    // answer to "may this unidentified request act for an account" is no.
+    throw new ApiError('unauthorized', 'This request requires an Oxy session.');
+  }
+  return caller.accessToken;
+}
+
 export function createAccountRoleResolver(
   options: AccountRoleResolverOptions,
 ): AccountRoleResolver {
@@ -109,31 +153,9 @@ export function createAccountRoleResolver(
   const now = options.now ?? Date.now;
   const answers = new Map<string, { role: AccountRole | null; expiresAt: number }>();
 
-  async function ask(accessToken: string, oxyAccountId: string): Promise<AccountRole | null> {
-    const client = new OxyServices({
-      baseURL: options.oxyApiUrl,
-      enableCache: false,
-      enableRetry: false,
-      requestTimeout: OXY_REQUEST_TIMEOUT_MS,
-    });
-    client.session.setAccessToken(accessToken);
-    try {
-      return roleOf(await client.accounts.get(oxyAccountId));
-    } catch (error) {
-      return translate(error);
-    } finally {
-      client.dispose();
-    }
-  }
-
   return {
     async roleIn(caller, oxyAccountId) {
-      if (caller.accessToken === null) {
-        // Behind `requireAuth` a session always carries its token; reaching here
-        // without one means the middleware was rewired, and the answer to "may
-        // this unidentified request act for an organization" is no.
-        throw new ApiError('unauthorized', 'This request requires an Oxy session.');
-      }
+      const accessToken = bearerOf(caller);
       const key =
         caller.operatedByOxyUserId === null
           ? null
@@ -144,7 +166,8 @@ export function createAccountRoleResolver(
         answers.delete(key);
       }
 
-      const role = await ask(caller.accessToken, oxyAccountId);
+      const node = await accountNodeFor(options.oxyApiUrl, accessToken, oxyAccountId);
+      const role = node === null ? null : roleOf(node);
       if (key !== null) {
         if (answers.size >= MAX_CACHED_ANSWERS) {
           const oldest = answers.keys().next();
@@ -154,5 +177,35 @@ export function createAccountRoleResolver(
       }
       return role;
     },
+  };
+}
+
+/** The roles that may edit an organization's content. */
+const ORGANIZATION_CONTENT_ROLES: ReadonlySet<AccountRole> = new Set(['owner', 'admin', 'editor']);
+
+/**
+ * Resolves when the caller is an active owner, administrator or editor of the
+ * ORGANIZATION `oxyAccountId`, asked live (no cache); throws `forbidden`
+ * otherwise, and fails closed like {@link AccountRoleResolver}.
+ */
+export type OrganizationAuthority = (caller: OxyCaller, oxyAccountId: string) => Promise<void>;
+
+export function createOrganizationAuthority(options: {
+  readonly oxyApiUrl: string;
+}): OrganizationAuthority {
+  return async (caller, oxyAccountId) => {
+    const node = await accountNodeFor(options.oxyApiUrl, bearerOf(caller), oxyAccountId);
+    const membership = node?.callerMembership ?? null;
+    if (
+      node?.kind !== 'organization' ||
+      membership === null ||
+      membership.status !== 'active' ||
+      !ORGANIZATION_CONTENT_ROLES.has(membership.role)
+    ) {
+      throw new ApiError(
+        'forbidden',
+        'An active organization owner, administrator or editor is required.',
+      );
+    }
   };
 }

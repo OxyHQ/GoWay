@@ -15,9 +15,13 @@
  *    cache entries. They are rounded to ~1 m before they become a key.
  */
 import {
+  useInfiniteQuery,
   useMutation,
+  useQueries,
   useQuery,
   useQueryClient,
+  type InfiniteData,
+  type UseInfiniteQueryResult,
   type UseMutationResult,
   type UseQueryResult,
 } from '@tanstack/react-query';
@@ -27,6 +31,12 @@ import type {
   CategoryTaxonomy,
   GeoBoundingBox,
   GeoCoordinate,
+  OrganizationList,
+  OrganizationListEntry,
+  OrganizationListEntryInput,
+  OrganizationListInput,
+  OrganizationListUpdate,
+  Page,
   Place,
   PlaceId,
   PlaceMedia,
@@ -47,6 +57,7 @@ import { deviceLocale } from '@/lib/i18n';
 import { oxyServices } from '@/lib/oxyServices';
 
 import { gowayClient } from './client';
+import { LIST_REFRESH_MS, nextListRefreshMs } from './organizationLists';
 import { shouldRetryGoWay } from './errors';
 
 /** ~1 m at the equator. Enough precision for a viewport, few enough digits to key on. */
@@ -350,5 +361,184 @@ export function useAddPlacePhoto(
     },
     onSuccess: () =>
       queryClient.invalidateQueries({ queryKey: ['goway', 'place', placeId, 'media'] }),
+  });
+}
+
+// ── Organization lists ──────────────────────────────────────────────────────
+
+const ORGANIZATION_LISTS = ['goway', 'organization-lists'] as const;
+const ORGANIZATION_LIST_INDEX = [...ORGANIZATION_LISTS, 'index'] as const;
+
+/** Everything cached about one list: its detail, its entry pages and their places. */
+function organizationListKey(listId: string) {
+  return [...ORGANIZATION_LISTS, 'list', listId] as const;
+}
+
+/** The public lists, a page at a time (`fetchNextPage` follows `nextCursor`). */
+export function useOrganizationLists(): UseInfiniteQueryResult<
+  InfiniteData<Page<OrganizationList>, string | null>
+> {
+  return useInfiniteQuery({
+    queryKey: ORGANIZATION_LIST_INDEX,
+    retry: shouldRetryGoWay,
+    initialPageParam: null as string | null,
+    queryFn: ({ pageParam, signal }) =>
+      gowayClient.organizationLists.list(pageParam ? { cursor: pageParam } : {}, { signal }),
+    getNextPageParam: (page) => page.nextCursor,
+  });
+}
+
+/** One list. Re-read every minute while open; its `revision` fences a reorder. */
+export function useOrganizationList(listId: string): UseQueryResult<OrganizationList> {
+  return useQuery({
+    queryKey: organizationListKey(listId),
+    retry: shouldRetryGoWay,
+    refetchInterval: LIST_REFRESH_MS,
+    queryFn: ({ signal }) => gowayClient.organizationLists.get(listId, { signal }),
+  });
+}
+
+/**
+ * A list's entries, a page at a time. Expiry is the server's decision, so an
+ * open `active` view re-reads itself just after its earliest entry ends.
+ */
+export function useOrganizationListEntries(
+  listId: string,
+  state: 'active' | 'all',
+): UseInfiniteQueryResult<InfiniteData<Page<OrganizationListEntry>, string | null>> {
+  return useInfiniteQuery({
+    queryKey: [...organizationListKey(listId), 'entries', state],
+    retry: shouldRetryGoWay,
+    initialPageParam: null as string | null,
+    queryFn: ({ pageParam, signal }) =>
+      gowayClient.organizationLists.entries(
+        listId,
+        { state, ...(pageParam ? { cursor: pageParam } : {}) },
+        { signal },
+      ),
+    getNextPageParam: (page) => page.nextCursor,
+    refetchInterval: (query) =>
+      nextListRefreshMs(
+        query.state.data?.pages.flatMap((page) => page.items) ?? [],
+        state,
+        Date.now(),
+      ),
+  });
+}
+
+function placesById(results: readonly UseQueryResult<readonly Place[]>[]) {
+  return {
+    places: new Map(results.flatMap((result) => result.data ?? []).map((p) => [p.id, p] as const)),
+    isError: results.some((result) => result.isError),
+  };
+}
+
+/**
+ * The live places an entry list references, one batch per entry page (a page
+ * is never larger than a place batch). An entry stores only the place id;
+ * name and position are always the place's current ones.
+ */
+export function useOrganizationListPlaces(
+  listId: string,
+  pages: readonly (readonly OrganizationListEntry[])[],
+): { places: ReadonlyMap<string, Place>; isError: boolean } {
+  return useQueries({
+    queries: pages.map((entries) => {
+      const ids = [...new Set(entries.map((entry) => entry.placeId))].sort();
+      return {
+        queryKey: [...organizationListKey(listId), 'places', ids],
+        enabled: ids.length > 0,
+        retry: shouldRetryGoWay,
+        refetchInterval: LIST_REFRESH_MS,
+        queryFn: async ({ signal }: { signal: AbortSignal }) =>
+          (await gowayClient.places.getMany(ids, { signal })).items,
+      };
+    }),
+    combine: placesById,
+  });
+}
+
+/** Re-read one list now: detail, entries and places. */
+export function useRefreshOrganizationList(listId: string): () => Promise<void> {
+  const queryClient = useQueryClient();
+  return () => queryClient.invalidateQueries({ queryKey: organizationListKey(listId) });
+}
+
+/** Create a list for an organization. Oxy decides, server-side, whether the caller may. */
+export function useCreateOrganizationList(): UseMutationResult<
+  OrganizationList,
+  Error,
+  OrganizationListInput
+> {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (input: OrganizationListInput) => gowayClient.organizationLists.create(input),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ORGANIZATION_LIST_INDEX }),
+  });
+}
+
+/** Every edit an organization makes to one of its lists. */
+export type OrganizationListEdit =
+  | { kind: 'update'; input: OrganizationListUpdate }
+  | { kind: 'delete' }
+  | { kind: 'addEntry'; input: OrganizationListEntryInput }
+  | { kind: 'updateEntry'; entryId: string; input: OrganizationListEntryInput }
+  | { kind: 'completeEntry'; entryId: string }
+  | { kind: 'deleteEntry'; entryId: string }
+  | { kind: 'moveEntryUp'; entryId: string; revision: number };
+
+/** Swap an entry with the one before it, over the WHOLE list (every state), fenced by `revision`. */
+async function moveEntryUp(listId: string, entryId: string, revision: number): Promise<unknown> {
+  const ids: string[] = [];
+  for await (const item of gowayClient.organizationLists.iterateEntries(listId, { state: 'all' }))
+    ids.push(item.id);
+  const index = ids.indexOf(entryId);
+  const previous = ids[index - 1];
+  if (index <= 0 || previous === undefined) return;
+  ids[index - 1] = entryId;
+  ids[index] = previous;
+  return gowayClient.organizationLists.order(listId, { revision, entryIds: ids });
+}
+
+function applyEdit(listId: string, edit: OrganizationListEdit): Promise<unknown> {
+  const lists = gowayClient.organizationLists;
+  switch (edit.kind) {
+    case 'update':
+      return lists.update(listId, edit.input);
+    case 'delete':
+      return lists.delete(listId);
+    case 'addEntry':
+      return lists.addEntry(listId, edit.input);
+    case 'updateEntry':
+      return lists.updateEntry(listId, edit.entryId, edit.input);
+    case 'completeEntry':
+      return lists.completeEntry(listId, edit.entryId);
+    case 'deleteEntry':
+      return lists.deleteEntry(listId, edit.entryId);
+    case 'moveEntryUp':
+      return moveEntryUp(listId, edit.entryId, edit.revision);
+  }
+}
+
+/**
+ * Edit one list. One mutation for every kind of edit, so the screen has one
+ * pending state and one failure, as an editor works one change at a time.
+ * Success re-reads the list (and the index, whose titles may have changed);
+ * a deleted list re-reads only the index, since the list itself is gone.
+ */
+export function useEditOrganizationList(
+  listId: string,
+): UseMutationResult<unknown, Error, OrganizationListEdit> {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (edit: OrganizationListEdit) => applyEdit(listId, edit),
+    onSuccess: async (_result, edit) => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ORGANIZATION_LIST_INDEX }),
+        edit.kind === 'delete'
+          ? undefined
+          : queryClient.invalidateQueries({ queryKey: organizationListKey(listId) }),
+      ]);
+    },
   });
 }

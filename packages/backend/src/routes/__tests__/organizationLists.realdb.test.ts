@@ -12,7 +12,7 @@ import { apiAuthor } from '../../__tests__/placesFixtures';
 import { startFakeOxy, membershipKey, type FakeOxy } from '../../__tests__/fakeOxy';
 import { fakeRequireAuth, serve, session, type TestApi } from '../../__tests__/httpHarness';
 import { createOrganizationListsRouter } from '../organizationLists';
-import { createOrganizationAuthority } from '../../oxy/organizationAuthority';
+import { createOrganizationAuthority } from '../../oxy/accountRoles';
 import { listEntries } from '../../db/organizationLists';
 let suite: SuiteDatabase;
 let oxy: FakeOxy;
@@ -54,7 +54,8 @@ beforeAll(async () => {
   api = await serve(
     createOrganizationListsRouter({
       requireAuth: fakeRequireAuth,
-      authorize: createOrganizationAuthority(oxy.url),
+      authorize: createOrganizationAuthority({ oxyApiUrl: oxy.url }),
+      writeRateLimit: (_req, _res, next) => next(),
     }),
   );
   place = await createPlace(
@@ -322,6 +323,39 @@ describe('organization lists, real API and PostGIS with Oxy HTTP authority', () 
     expect(
       (await api.call<OrganizationList>('GET', `/organization-lists/${list.id}`)).body.title,
     ).toBe(list.title);
+  });
+  it('refuses a stranger, and an Oxy outage, without queueing behind the list lock', async () => {
+    const list = await create();
+    let release!: () => void;
+    let acquired!: () => void;
+    const unlocked = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const locked = new Promise<void>((resolve) => {
+      acquired = resolve;
+    });
+    const holder = suite.client.begin(async (tx) => {
+      await tx`select id from organization_lists where id = ${list.id} for update`;
+      acquired();
+      await unlocked;
+    });
+    await locked;
+    try {
+      // Both answer while another write still holds the row: neither reached the lock.
+      expect(
+        (
+          await api.call('PUT', `/organization-lists/${list.id}`, session('stranger'), {
+            title: 'X',
+          })
+        ).status,
+      ).toBe(403);
+      oxy.mode = 'down';
+      expect((await api.call('DELETE', `/organization-lists/${list.id}`, owner)).status).toBe(503);
+    } finally {
+      oxy.mode = 'ok';
+      release();
+      await holder;
+    }
   });
   it('removes withdrawn places from the active public view without retaining their facts', async () => {
     const list = await create();

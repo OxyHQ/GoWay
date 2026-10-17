@@ -15,7 +15,7 @@ import * as repo from '../db/organizationLists';
 import { parsePath, parseBody, parseQuery } from '../http/validation';
 import { cursorBinding, decodeCursor, pageOf } from '../http/cursor';
 import { requiredOxyCaller } from '../oxy/caller';
-import type { OrganizationAuthority } from '../oxy/organizationAuthority';
+import type { OrganizationAuthority } from '../oxy/accountRoles';
 
 const route =
   (fn: (req: Request, res: Response) => Promise<void>): RequestHandler =>
@@ -26,8 +26,11 @@ const route =
 export function createOrganizationListsRouter(deps: {
   requireAuth: RequestHandler;
   authorize: OrganizationAuthority;
+  /** Mounted before `requireAuth` on every write, like the report limit. */
+  writeRateLimit: RequestHandler;
 }) {
   const router = Router();
+  const write = [deps.writeRateLimit, deps.requireAuth];
   async function mutate(
     req: Request,
     fn: (
@@ -38,7 +41,9 @@ export function createOrganizationListsRouter(deps: {
   ) {
     const { listId } = parsePath(organizationListPathSchema, { listId: req.params.listId });
     const caller = requiredOxyCaller(req);
-    // Authority is checked while holding the aggregate lock: no queued mutation can reuse an earlier membership result.
+    // Asked first with no connection held, so a refused caller or an Oxy outage never takes a pooled connection or the lock.
+    await deps.authorize(caller, (await repo.getList(getDb(), listId)).oxyAccountId);
+    // Asked again under the aggregate lock, authoritatively: no queued mutation can reuse an earlier membership result.
     return getDb().transaction(async (tx) => {
       const list = await repo.getList(tx, listId, true);
       await deps.authorize(caller, list.oxyAccountId);
@@ -69,7 +74,7 @@ export function createOrganizationListsRouter(deps: {
   );
   router.post(
     '/organization-lists',
-    deps.requireAuth,
+    ...write,
     route(async (req, res) => {
       const input = parseBody(organizationListInputSchema, req.body);
       const caller = requiredOxyCaller(req);
@@ -91,7 +96,7 @@ export function createOrganizationListsRouter(deps: {
   );
   router.put(
     '/organization-lists/:listId',
-    deps.requireAuth,
+    ...write,
     route(async (req, res) => {
       const input = parseBody(organizationListUpdateSchema, req.body);
       res.json(await mutate(req, (tx, list, actor) => repo.touchList(tx, list.id, actor, input)));
@@ -99,7 +104,7 @@ export function createOrganizationListsRouter(deps: {
   );
   router.delete(
     '/organization-lists/:listId',
-    deps.requireAuth,
+    ...write,
     route(async (req, res) => {
       await mutate(req, (tx, list) => repo.deleteList(tx, list.id));
       res.sendStatus(204);
@@ -141,7 +146,7 @@ export function createOrganizationListsRouter(deps: {
   );
   router.post(
     '/organization-lists/:listId/entries',
-    deps.requireAuth,
+    ...write,
     route(async (req, res) => {
       const input = parseBody(organizationListEntryInputSchema, req.body);
       res
@@ -155,7 +160,7 @@ export function createOrganizationListsRouter(deps: {
   );
   router.put(
     '/organization-lists/:listId/entries/:entryId',
-    deps.requireAuth,
+    ...write,
     route(async (req, res) => {
       const { entryId } = parsePath(organizationListEntryPathSchema, req.params);
       const input = parseBody(organizationListEntryInputSchema, req.body);
@@ -166,7 +171,7 @@ export function createOrganizationListsRouter(deps: {
   );
   router.post(
     '/organization-lists/:listId/entries/:entryId/complete',
-    deps.requireAuth,
+    ...write,
     route(async (req, res) => {
       const { entryId } = parsePath(organizationListEntryPathSchema, req.params);
       res.json(
@@ -176,7 +181,7 @@ export function createOrganizationListsRouter(deps: {
   );
   router.delete(
     '/organization-lists/:listId/entries/:entryId',
-    deps.requireAuth,
+    ...write,
     route(async (req, res) => {
       const { entryId } = parsePath(organizationListEntryPathSchema, req.params);
       await mutate(req, (tx, list, actor) => repo.deleteEntry(tx, list.id, entryId, actor));
@@ -185,7 +190,7 @@ export function createOrganizationListsRouter(deps: {
   );
   router.put(
     '/organization-lists/:listId/order',
-    deps.requireAuth,
+    ...write,
     route(async (req, res) => {
       const input = parseBody(organizationListOrderInputSchema, req.body);
       res.json(
