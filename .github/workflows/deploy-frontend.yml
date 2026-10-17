@@ -42,7 +42,7 @@ concurrency:
 jobs:
   deploy:
     name: Build and publish the web app
-    runs-on: ubuntu-latest
+    runs-on: ${{ vars.OXY_CI_RUNNER == 'home' && github.actor != 'dependabot[bot]' && (!startsWith(github.event_name, 'pull_request') || github.event.pull_request.head.repo.full_name == github.repository) && fromJSON('["self-hosted","oxy-home"]') || 'ubuntu-latest' }}
     # MAIN ONLY. `workflow_dispatch` can be aimed at any branch from the Actions
     # UI, and `wrangler deploy` here is not a preview — it replaces what
     # `goway.to` serves, in one step, with no separate promotion. Without this
