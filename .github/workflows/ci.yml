@@ -138,6 +138,13 @@ jobs:
 
       - name: Typecheck
         run: bun run typecheck
+      # The developer docs (docs/developers/) name every export of each package
+      # entry in its API reference, link only to pages and headings that exist,
+      # carry a generated HTTP operation reference that matches the contracts,
+      # and hold example code that compiles against this tree. After the builds
+      # above: the examples import @goway.to/maps and @goway.to/sdk by name.
+      - name: Verify the developer docs
+        run: bun run check:docs
       - name: Build the backend
         # `typecheck` runs `bun check` (TypeScript 7), which emits nothing. The
         # runtime image is still compiled by tsc 5.9, so this keeps that
