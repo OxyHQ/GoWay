@@ -96,12 +96,24 @@ const EXPECTED_FILES = [
   'package/dist/live.d.cts',
   'package/dist/live.d.ts',
   'package/dist/live.js',
+  'package/dist/map.cjs',
+  'package/dist/map.d.cts',
+  'package/dist/map.d.ts',
+  'package/dist/map.js',
   'package/dist/roadAccess.cjs',
   'package/dist/roadAccess.d.cts',
   'package/dist/roadAccess.d.ts',
   'package/dist/roadAccess.js',
   'package/package.json',
 ];
+
+/** The entries a renderer loads, which must import nothing at all — zod included. */
+const ZOD_FREE_FILES = new Set([
+  'package/dist/geo.js',
+  'package/dist/geo.cjs',
+  'package/dist/map.js',
+  'package/dist/map.cjs',
+]);
 
 /** The manifest fields a consumer's package manager and the registry read. */
 const PUBLISHED_FIELDS = [
@@ -202,6 +214,10 @@ async function main() {
       'geo.cjs',
       'geo.d.ts',
       'geo.d.cts',
+      'map.js',
+      'map.cjs',
+      'map.d.ts',
+      'map.d.cts',
     ]) {
       await stat(join(root, 'dist', file)).catch(() =>
         fail(`dist/${file} is missing — run the build first`),
@@ -269,6 +285,10 @@ async function main() {
         for (const [, specifier] of text.matchAll(importSpecifier)) {
           if (builtins.has(specifier)) fail(`${name} imports the Node built-in ${specifier}`);
           if (specifier.startsWith('.')) continue;
+          // The renderer's entries load no schema: no zod, so a map does not
+          // carry GoWay's whole contract into an app's bundle.
+          if (ZOD_FREE_FILES.has(name))
+            fail(`${name} imports ${specifier}; /geo and /map must import nothing`);
           // Declarations may name a zod subpath for a type TypeScript could not
           // spell from the root; the JavaScript imports the root only.
           const allowed =
@@ -360,6 +380,12 @@ async function main() {
     run(process.execPath, ['geo.mjs'], consumer, 'node ESM import of /geo');
     run(process.execPath, ['geo.cjs'], consumer, 'node CJS require of /geo');
     pass('@goway.to/sdk/geo: ESM and CJS resolve, a Pacific box is centred on the antimeridian');
+
+    await writeFile(join(consumer, 'map.mjs'), CONSUMER_MAP_ESM);
+    await writeFile(join(consumer, 'map.cjs'), CONSUMER_MAP_CJS);
+    run(process.execPath, ['map.mjs'], consumer, 'node ESM import of /map');
+    run(process.execPath, ['map.cjs'], consumer, 'node CJS require of /map');
+    pass('@goway.to/sdk/map: ESM and CJS resolve, a goway:// name resolves to its document');
 
     // ── 4. Bun ────────────────────────────────────────────────────────────────
     run('bun', ['program.mjs'], consumer, 'bun import');
@@ -606,6 +632,25 @@ ${GEO_PROGRAM}`;
 
 const CONSUMER_GEO_CJS = `const geo = require('@goway.to/sdk/geo');
 ${GEO_PROGRAM}`;
+
+const MAP_PROGRAM = `
+const assert = require('node:assert');
+assert.strictEqual(
+  map.styleDocumentUrl(map.gowayStyleUrl('standard'), 'night'),
+  'https://goway.to/map/styles/standard/night.json',
+);
+assert.strictEqual(map.styleDocumentUrl('goway://styles/nope'), null);
+assert.strictEqual(map.OPENMAPTILES_SOURCE_LAYERS.poi, 'poi');
+assert.strictEqual(map.localizedLabel({ en: 'Map', es: 'Mapa' }, 'es-MX'), 'Mapa');
+`;
+
+const CONSUMER_MAP_ESM = `import { createRequire } from 'node:module';
+import * as map from '@goway.to/sdk/map';
+const require = createRequire(import.meta.url);
+${MAP_PROGRAM}`;
+
+const CONSUMER_MAP_CJS = `const map = require('@goway.to/sdk/map');
+${MAP_PROGRAM}`;
 
 const BUNDLE_ENTRY = `
 import { createGoWayClient } from '@goway.to/sdk';

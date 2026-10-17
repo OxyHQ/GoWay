@@ -1,6 +1,6 @@
 {
   "name": "@goway.to/maps",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "GoWay's maps SDK for React and React Native: one declarative map for web and native — GoWay styles that follow your theme, Bloom markers with clustering, a camera framed by value, user location without a prompt on mount.",
   "license": "SEE LICENSE IN LICENSE",
   "author": "The Oxy Collective, Inc.",
@@ -77,7 +77,7 @@
     "supercluster": "^8.0.1"
   },
   "peerDependencies": {
-    "@goway.to/sdk": ">=0.6.0",
+    "@goway.to/sdk": ">=0.7.0",
     "@maplibre/maplibre-react-native": ">=11.4.0",
     "@oxy.so/bloom": ">=10.16.0",
     "expo-location": "*",

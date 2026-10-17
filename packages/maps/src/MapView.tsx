@@ -105,13 +105,11 @@ export const MapView = forwardRef<MapViewRef, MapViewProps>(function MapView(pro
   } = props;
   const theme = useTheme();
 
-  let styleUrl: string | null = null;
-  let styleError: MapError | null = null;
-  try {
-    styleUrl = resolveStyleUrl(mapStyle, lightPreset, theme.isDark);
-  } catch (cause) {
-    styleError = { reason: 'style', message: String(cause) };
-  }
+  const styleUrl = resolveStyleUrl(mapStyle, lightPreset, theme.isDark);
+  const styleError: MapError | null =
+    styleUrl === null
+      ? { reason: 'style', message: `not a published GoWay style: ${mapStyle}` }
+      : null;
 
   const mapRef = useRef<MapRef>(null);
   const cameraRef = useRef<CameraRef>(null);

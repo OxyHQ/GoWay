@@ -41,7 +41,7 @@
  *    what the collision system actually PLACED, not with what the tiles
  *    contain.
  */
-import { OPENMAPTILES_SOURCE_LAYERS as SL } from '@goway.to/sdk';
+import { OPENMAPTILES_SOURCE_LAYERS as SL } from '@goway.to/sdk/map';
 
 import { isDrawableCoordinate } from './shared';
 import type { GeoCoordinate, MapLabelFeature, MapLabelKind } from './types';

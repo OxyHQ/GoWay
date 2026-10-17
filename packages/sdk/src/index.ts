@@ -15,12 +15,8 @@
  * renderer and no provider client; its one dependency is `zod`.
  */
 
-export {
-  createGoWayClient,
-  DEFAULT_GOWAY_API_BASE_URL,
-  DEFAULT_GOWAY_TIMEOUT_MS,
-  DEFAULT_GOWAY_WEB_BASE_URL,
-} from './client';
+export { createGoWayClient, DEFAULT_GOWAY_API_BASE_URL, DEFAULT_GOWAY_TIMEOUT_MS } from './client';
+export { DEFAULT_GOWAY_WEB_BASE_URL, styleDocumentUrl } from './styleDocument';
 export type {
   GoWayCapturesApi,
   GoWayCategoriesApi,

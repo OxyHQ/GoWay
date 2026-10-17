@@ -111,8 +111,6 @@ import {
   MAP_STYLE_INDEX_PATH,
   mapStylePath,
   resolveMapStyle,
-  GOWAY_STYLE_URL_PREFIX,
-  parseGoWayStyleUrl,
   roadAccessDecisionSchema,
   roadAccessInputSchema,
   roadRuleSetListQuerySchema,
@@ -230,12 +228,11 @@ import {
   type QueryValue,
   type TransportConfig,
 } from './transport';
+import { DEFAULT_GOWAY_WEB_BASE_URL, styleDocumentUrl } from './styleDocument';
 import { validInput } from './validate';
 
 /** The public API origin a client talks to unless told otherwise. */
 export const DEFAULT_GOWAY_API_BASE_URL = 'https://api.goway.to';
-/** The web origin canonical links are built on unless told otherwise. */
-export const DEFAULT_GOWAY_WEB_BASE_URL = 'https://goway.to';
 /** How long one request may take, token acquisition and body included. */
 export const DEFAULT_GOWAY_TIMEOUT_MS = 15_000;
 
@@ -1095,10 +1092,11 @@ function createLinks(webBaseUrl: string): GoWayLinks {
       `${webBaseUrl}${mapStylePath(styleSelection(style, light))}`,
     mapStyleIndex: () => `${webBaseUrl}${MAP_STYLE_INDEX_PATH}`,
     styleUrl: (url: string, light?: MapLightPreset) => {
-      if (!url.startsWith(GOWAY_STYLE_URL_PREFIX)) return url;
-      const named = parseGoWayStyleUrl(url);
-      if (!named) throw new GoWayValidationError(`not a published GoWay style: ${url}`);
-      return `${webBaseUrl}${mapStylePath(styleSelection(named.style, named.light ?? light))}`;
+      const document = styleDocumentUrl(url, light, webBaseUrl);
+      if (document === null) {
+        throw new GoWayValidationError(`not a published GoWay style or light: ${url} (${light})`);
+      }
+      return document;
     },
     embed: (
       viewport: MapViewport,
