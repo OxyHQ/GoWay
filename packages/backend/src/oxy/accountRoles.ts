@@ -102,6 +102,41 @@ function translate(error: unknown): null {
   );
 }
 
+/**
+ * The account node as Oxy answers it to the CALLER, uncached: `null` when Oxy
+ * answers that the caller has no access (403/404), `unauthorized` for a session
+ * Oxy refuses, `service_unavailable` for anything else. The one place GoWay
+ * builds a per-caller Oxy client and translates its errors; every authority
+ * check (place roles here, organization lists in `organizationAuthority.ts`)
+ * asks through it.
+ */
+export async function readCallerAccount(
+  oxyApiUrl: string,
+  caller: OxyCaller,
+  oxyAccountId: string,
+): Promise<AccountNode | null> {
+  if (caller.accessToken === null) {
+    // Behind `requireAuth` a session always carries its token; reaching here
+    // without one means the middleware was rewired, and the answer to "may
+    // this unidentified request act for an organization" is no.
+    throw new ApiError('unauthorized', 'This request requires an Oxy session.');
+  }
+  const client = new OxyServices({
+    baseURL: oxyApiUrl,
+    enableCache: false,
+    enableRetry: false,
+    requestTimeout: OXY_REQUEST_TIMEOUT_MS,
+  });
+  client.session.setAccessToken(caller.accessToken);
+  try {
+    return await client.accounts.get(oxyAccountId);
+  } catch (error) {
+    return translate(error);
+  } finally {
+    client.dispose();
+  }
+}
+
 export function createAccountRoleResolver(
   options: AccountRoleResolverOptions,
 ): AccountRoleResolver {
@@ -109,31 +144,8 @@ export function createAccountRoleResolver(
   const now = options.now ?? Date.now;
   const answers = new Map<string, { role: AccountRole | null; expiresAt: number }>();
 
-  async function ask(accessToken: string, oxyAccountId: string): Promise<AccountRole | null> {
-    const client = new OxyServices({
-      baseURL: options.oxyApiUrl,
-      enableCache: false,
-      enableRetry: false,
-      requestTimeout: OXY_REQUEST_TIMEOUT_MS,
-    });
-    client.session.setAccessToken(accessToken);
-    try {
-      return roleOf(await client.accounts.get(oxyAccountId));
-    } catch (error) {
-      return translate(error);
-    } finally {
-      client.dispose();
-    }
-  }
-
   return {
     async roleIn(caller, oxyAccountId) {
-      if (caller.accessToken === null) {
-        // Behind `requireAuth` a session always carries its token; reaching here
-        // without one means the middleware was rewired, and the answer to "may
-        // this unidentified request act for an organization" is no.
-        throw new ApiError('unauthorized', 'This request requires an Oxy session.');
-      }
       const key =
         caller.operatedByOxyUserId === null
           ? null
@@ -144,7 +156,8 @@ export function createAccountRoleResolver(
         answers.delete(key);
       }
 
-      const role = await ask(caller.accessToken, oxyAccountId);
+      const node = await readCallerAccount(options.oxyApiUrl, caller, oxyAccountId);
+      const role = node === null ? null : roleOf(node);
       if (key !== null) {
         if (answers.size >= MAX_CACHED_ANSWERS) {
           const oldest = answers.keys().next();

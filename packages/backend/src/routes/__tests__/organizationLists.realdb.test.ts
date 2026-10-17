@@ -14,6 +14,8 @@ import { fakeRequireAuth, serve, session, type TestApi } from '../../__tests__/h
 import { createOrganizationListsRouter } from '../organizationLists';
 import { createOrganizationAuthority } from '../../oxy/organizationAuthority';
 import { listEntries } from '../../db/organizationLists';
+import type { RequestHandler } from 'express';
+const passThrough: RequestHandler = (_req, _res, next) => next();
 let suite: SuiteDatabase;
 let oxy: FakeOxy;
 let api: TestApi;
@@ -55,6 +57,7 @@ beforeAll(async () => {
     createOrganizationListsRouter({
       requireAuth: fakeRequireAuth,
       authorize: createOrganizationAuthority(oxy.url),
+      writeRateLimit: passThrough,
     }),
   );
   place = await createPlace(
@@ -70,6 +73,44 @@ afterAll(async () => {
 });
 
 describe('organization lists, real API and PostGIS with Oxy HTTP authority', () => {
+  it('asks Oxy first without holding the list lock, then again under it', async () => {
+    const list = await create();
+    const authority = createOrganizationAuthority(oxy.url);
+    // Whether the list row was locked at each authority check: a NOWAIT lock
+    // from another connection fails exactly while a write transaction holds it.
+    const locked: boolean[] = [];
+    const probe = await serve(
+      createOrganizationListsRouter({
+        requireAuth: fakeRequireAuth,
+        writeRateLimit: passThrough,
+        authorize: async (caller, accountId) => {
+          locked.push(
+            await suite.client`select id from organization_lists where id = ${list.id} for update nowait`.then(
+              () => false,
+              () => true,
+            ),
+          );
+          await authority(caller, accountId);
+        },
+      }),
+    );
+    try {
+      const renamed = await probe.call('PUT', `/organization-lists/${list.id}`, owner, {
+        title: 'Renamed',
+      });
+      expect(renamed.status).toBe(200);
+      expect(locked).toEqual([false, true]);
+      oxy.mode = 'down';
+      const refused = await probe.call('PUT', `/organization-lists/${list.id}`, owner, {
+        title: 'Never',
+      });
+      expect(refused.status).toBe(503);
+      expect(locked).toEqual([false, true, false]);
+    } finally {
+      oxy.mode = 'ok';
+      await probe.close();
+    }
+  });
   it('is public and stores only an existing place reference, reading timezone from its current row', async () => {
     const list = await create();
     const entry = await add(list);

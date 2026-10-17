@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { ActivityIndicator, ScrollView, Share, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
@@ -9,16 +9,22 @@ import { useOxy } from '@oxy.so/services';
 import type { AccountNode } from '@oxy.so/core';
 import {
   placeDisplayName,
-  type OrganizationList,
   type OrganizationListEntry,
   type OrganizationListEntryInput,
-  type Place,
-  type SearchResult,
 } from '@goway.to/sdk';
-import { gowayClient } from '@/lib/goway/client';
-import { oxyServices } from '@/lib/oxyServices';
+import {
+  useCreateOrganizationList,
+  useOrganizationList,
+  useOrganizationListEntries,
+  useOrganizationLists,
+  useOrganizationListWrites,
+  usePlace,
+  usePlacesById,
+  useSearch,
+} from '@/lib/goway/queries';
 import { useAuthGate } from '@/lib/authGate';
 import { useTranslation } from '@/lib/i18n';
+import { useDebouncedValue } from '@/lib/useDebouncedValue';
 import { SearchField } from '@/features/explore/SearchField';
 import { editableOrganizations, utcInput, parseUtcInput } from './model';
 
@@ -43,85 +49,46 @@ function Field({
     </TextField>
   );
 }
-function useOrganizations() {
-  const { canUsePrivateApi, user } = useOxy();
-  const [organizations, setOrganizations] = useState<AccountNode[]>([]);
-  const [failed, setFailed] = useState(false);
-  // biome-ignore lint/correctness/useExhaustiveDependencies: a changed session must discard the previous account's choices.
-  useEffect(() => {
-    let active = true;
-    setOrganizations([]);
-    setFailed(false);
-    if (canUsePrivateApi)
-      void oxyServices.accounts
-        .list()
-        .then((nodes) => {
-          if (active) setOrganizations(editableOrganizations(nodes));
-        })
-        .catch(() => {
-          if (active) setFailed(true);
-        });
-    return () => {
-      active = false;
-    };
-  }, [canUsePrivateApi, user?.id]);
-  return { organizations, failed };
+/**
+ * The signed-in person's organizations they may edit lists for — from Oxy's own
+ * account graph, which `OxyProvider` loads and refreshes per session. A UI hint
+ * only: every write is authorized afresh by the API.
+ */
+function useOrganizations(): AccountNode[] {
+  const { accounts } = useOxy();
+  return useMemo(() => editableOrganizations(accounts), [accounts]);
 }
 function nameOf(org: AccountNode) {
   return org.account.name?.displayName || org.account.username || org.accountId;
 }
 
+/** Draft ownership belongs to one Oxy session: a changed session remounts it empty. */
 export function OrganizationListsScreen() {
+  const { user } = useOxy();
+  return <OrganizationListsView key={user?.id ?? ''} />;
+}
+
+function OrganizationListsView() {
   const router = useRouter();
   const { t } = useTranslation();
   const gate = useAuthGate();
-  const { organizations, failed } = useOrganizations();
-  const { user } = useOxy();
-  const [items, setItems] = useState<OrganizationList[]>([]);
-  const [cursor, setCursor] = useState<string | null>(null);
-  const [error, setError] = useState(false);
-  const [busy, setBusy] = useState(false);
+  const organizations = useOrganizations();
+  const lists = useOrganizationLists();
+  const create = useCreateOrganizationList();
+  const items = lists.data?.pages.flatMap((page) => page.items) ?? [];
+  const busy = lists.isFetching || create.isPending;
   const [accountId, setAccountId] = useState('');
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
-  // biome-ignore lint/correctness/useExhaustiveDependencies: reset draft ownership whenever the selected Oxy session changes.
-  useEffect(() => {
-    setAccountId('');
-    setTitle('');
-    setDescription('');
-  }, [user?.id]);
-  const load = useCallback(async (next?: string) => {
-    setBusy(true);
-    setError(false);
-    try {
-      const page = await gowayClient.organizationLists.list(next ? { cursor: next } : {});
-      setItems((old) => (next ? [...old, ...page.items] : page.items));
-      setCursor(page.nextCursor);
-    } catch {
-      setError(true);
-    } finally {
-      setBusy(false);
-    }
-  }, []);
-  useEffect(() => {
-    void load();
-  }, [load]);
-  async function create() {
-    if (!gate.canUsePrivateApi || busy) return;
-    setBusy(true);
-    setError(false);
-    try {
-      const list = await gowayClient.organizationLists.create({
-        oxyAccountId: accountId,
-        title,
-        description,
-      });
-      router.push({ pathname: '/lists/[listId]', params: { listId: list.id } });
-    } catch {
-      setError(true);
-    } finally {
-      setBusy(false);
-    }
+  function submit() {
+    if (!gate.canUsePrivateApi || create.isPending) return;
+    create.mutate(
+      { oxyAccountId: accountId, title, description },
+      {
+        onSuccess: (list) =>
+          router.push({ pathname: '/lists/[listId]', params: { listId: list.id } }),
+      },
+    );
   }
   return (
     <SafeAreaView className="flex-1 bg-background">
@@ -131,8 +98,10 @@ export function OrganizationListsScreen() {
         </Button>
         <Text className="text-sectionTitle text-foreground">{t('lists.title')}</Text>
         <Text>{t('lists.public')}</Text>
-        {(error || failed) && <Text accessibilityRole="alert">{t('lists.error')}</Text>}
-        <Button appearance="outline" disabled={busy} onPress={() => void load()}>
+        {(lists.isError || create.isError) && (
+          <Text accessibilityRole="alert">{t('lists.error')}</Text>
+        )}
+        <Button appearance="outline" disabled={busy} onPress={() => void lists.refetch()}>
           {t('lists.refresh')}
         </Button>
         {items.map((list) => (
@@ -147,8 +116,8 @@ export function OrganizationListsScreen() {
           </Button>
         ))}
         {busy && <ActivityIndicator />}
-        {cursor && (
-          <Button disabled={busy} onPress={() => void load(cursor)}>
+        {lists.hasNextPage && (
+          <Button disabled={busy} onPress={() => void lists.fetchNextPage()}>
             {t('lists.more')}
           </Button>
         )}
@@ -170,7 +139,7 @@ export function OrganizationListsScreen() {
             ))}
             <Field label={t('lists.name')} value={title} onChange={setTitle} />
             <Field label={t('lists.description')} value={description} onChange={setDescription} />
-            <Button disabled={busy || !accountId || !title.trim()} onPress={() => void create()}>
+            <Button disabled={busy || !accountId || !title.trim()} onPress={submit}>
               {t('lists.create')}
             </Button>
           </View>
@@ -197,46 +166,16 @@ function EntryEditor({
   const [placeId, setPlaceId] = useState(entry?.placeId ?? initialPlaceId ?? '');
   const [activity, setActivity] = useState(entry?.activity ?? '');
   const [information, setInformation] = useState(entry?.information ?? '');
-  const [starts, setStarts] = useState(utcInput(entry?.startsAt ?? new Date().toISOString()));
-  const [ends, setEnds] = useState(
+  const [starts, setStarts] = useState(() => utcInput(entry?.startsAt ?? new Date().toISOString()));
+  const [ends, setEnds] = useState(() =>
     utcInput(entry?.endsAt ?? new Date(Date.now() + 3600000).toISOString()),
   );
   const [query, setQuery] = useState('');
-  const [results, setResults] = useState<SearchResult[]>([]);
-  const [selected, setSelected] = useState<Place | null>(null);
   const [error, setError] = useState('');
-  const [searching, setSearching] = useState(false);
-  useEffect(() => {
-    const abort = new AbortController();
-    setSelected(null);
-    if (placeId)
-      void gowayClient.places
-        .get(placeId, { signal: abort.signal })
-        .then(setSelected)
-        .catch(() => {});
-    return () => abort.abort();
-  }, [placeId]);
-  useEffect(() => {
-    const abort = new AbortController();
-    setResults([]);
-    if (query.trim().length < 2) return;
-    const timer = setTimeout(() => {
-      setSearching(true);
-      void gowayClient.search
-        .query({ query: query.trim() }, { signal: abort.signal })
-        .then((page) => setResults(page.items.filter((p) => p.placeId)))
-        .catch(() => {
-          if (!abort.signal.aborted) setError(t('lists.error'));
-        })
-        .finally(() => {
-          if (!abort.signal.aborted) setSearching(false);
-        });
-    }, 250);
-    return () => {
-      clearTimeout(timer);
-      abort.abort();
-    };
-  }, [query, t]);
+  const selected = usePlace(placeId || null).data ?? null;
+  const search = useSearch(useDebouncedValue(query, 250));
+  const results = (search.data?.items ?? []).filter((p) => p.placeId);
+  const searching = search.isFetching;
   async function save() {
     let input: OrganizationListEntryInput;
     try {
@@ -279,7 +218,9 @@ function EntryEditor({
       <Text>{t('lists.utc')}</Text>
       <Field label={t('lists.starts')} value={starts} onChange={setStarts} />
       <Field label={t('lists.ends')} value={ends} onChange={setEnds} />
-      {!!error && <Text accessibilityRole="alert">{error}</Text>}
+      {(!!error || search.isError) && (
+        <Text accessibilityRole="alert">{error || t('lists.error')}</Text>
+      )}
       <Button disabled={busy || !activity.trim() || !selected} onPress={() => void save()}>
         {t('lists.save')}
       </Button>
@@ -291,131 +232,67 @@ function EntryEditor({
 }
 
 export function OrganizationListScreen() {
-  const { listId, placeId: initialPlaceId } = useLocalSearchParams<{
-    listId: string;
-    placeId?: string;
-  }>();
+  const { listId, placeId } = useLocalSearchParams<{ listId: string; placeId?: string }>();
+  const { user } = useOxy();
+  // Editor state belongs to one session and one list: either changing remounts it.
+  return (
+    <OrganizationListView
+      key={`${user?.id ?? ''}:${listId}`}
+      listId={listId}
+      {...(placeId ? { initialPlaceId: placeId } : {})}
+    />
+  );
+}
+
+function OrganizationListView({
+  listId,
+  initialPlaceId,
+}: {
+  listId: string;
+  initialPlaceId?: string;
+}) {
   const router = useRouter();
   const { t, locale } = useTranslation();
   const gate = useAuthGate();
-  const { user } = useOxy();
-  const { organizations } = useOrganizations();
-  const [list, setList] = useState<OrganizationList | null>(null);
-  const [entries, setEntries] = useState<OrganizationListEntry[]>([]);
-  const [places, setPlaces] = useState<Map<string, Place>>(new Map());
-  const [cursor, setCursor] = useState<string | null>(null);
+  const organizations = useOrganizations();
   const [all, setAll] = useState(false);
   const [manage, setManage] = useState(false);
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState(false);
   const [editing, setEditing] = useState<OrganizationListEntry | 'new' | null>(null);
   const [editList, setEditList] = useState(false);
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [confirm, setConfirm] = useState<string | null>(null);
+  const detail = useOrganizationList(listId);
+  const page = useOrganizationListEntries(listId, all || manage ? 'all' : 'active');
+  const writes = useOrganizationListWrites(listId);
+  const list = detail.data ?? null;
+  const entries = page.data?.pages.flatMap((p) => p.items) ?? [];
+  const places = usePlacesById(entries.map((entry) => entry.placeId)).data;
+  const writing = Object.values(writes).some((write) => write.isPending);
+  const busy = detail.isFetching || page.isFetching || writing;
+  const error =
+    detail.isError || page.isError || Object.values(writes).some((write) => write.isError);
   const canEdit =
     gate.canUsePrivateApi &&
     !!list &&
     organizations.some((org) => org.accountId === list.oxyAccountId);
-  const requestVersion = useRef(0);
-  // biome-ignore lint/correctness/useExhaustiveDependencies: editor state belongs to one session and list.
-  useEffect(() => {
-    setManage(false);
-    setEditing(null);
-    setEditList(false);
-    setConfirm(null);
-  }, [user?.id, listId]);
-  const load = useCallback(
-    async (next?: string) => {
-      const version = ++requestVersion.current;
-      setBusy(true);
-      setError(false);
-      if (!next) {
-        setEntries([]);
-        setPlaces(new Map());
-      }
-      try {
-        const [detail, page] = await Promise.all([
-          gowayClient.organizationLists.get(listId),
-          gowayClient.organizationLists.entries(listId, {
-            state: all || manage ? 'all' : 'active',
-            ...(next ? { cursor: next } : {}),
-          }),
-        ]);
-        if (version !== requestVersion.current) return;
-        setList(detail);
-        setEntries((old) => (next ? [...old, ...page.items] : page.items));
-        setCursor(page.nextCursor);
-        const ids = [...new Set(page.items.map((e) => e.placeId))];
-        if (ids.length) {
-          const current = await gowayClient.places.getMany(ids);
-          if (version === requestVersion.current)
-            setPlaces(
-              (old) =>
-                new Map([
-                  ...(next ? old : new Map<string, Place>()),
-                  ...current.items.map((p) => [p.id, p] as const),
-                ]),
-            );
-        }
-      } catch {
-        if (version === requestVersion.current) setError(true);
-      } finally {
-        if (version === requestVersion.current) setBusy(false);
-      }
-    },
-    [listId, all, manage],
-  );
-  useEffect(() => {
-    void load();
-    return () => {
-      requestVersion.current++;
-    };
-  }, [load]);
-  // Expiry is decided by the server; refresh while open so an idle screen also drops ended entries.
-  useEffect(() => {
-    const timer = setInterval(() => {
-      void load();
-    }, 60000);
-    return () => clearInterval(timer);
-  }, [load]);
-  useEffect(() => {
-    if (all || manage || entries.length === 0) return;
-    const end = Math.min(...entries.map((entry) => Date.parse(entry.endsAt)));
-    const delay = Math.min(2147483647, Math.max(1, end - Date.now() + 10));
-    const timer = setTimeout(() => {
-      void load();
-    }, delay);
-    return () => clearTimeout(timer);
-  }, [entries, all, manage, load]);
-  async function mutate(fn: () => Promise<unknown>) {
-    if (!canEdit || busy) return;
-    setBusy(true);
-    setError(false);
-    try {
-      await fn();
-      setEditing(null);
-      setEditList(false);
-      setConfirm(null);
-      await load();
-    } catch {
-      setError(true);
-    } finally {
-      setBusy(false);
-    }
+  /** Run one write; a success closes whatever editor asked for it. */
+  function mutate<T>(
+    write: { mutate: (variables: T, options: { onSuccess: () => void }) => void },
+    variables: T,
+  ) {
+    if (!canEdit || writing) return;
+    write.mutate(variables, {
+      onSuccess: () => {
+        setEditing(null);
+        setEditList(false);
+        setConfirm(null);
+      },
+    });
   }
-  async function moveUp(entry: OrganizationListEntry) {
-    if (!list) return;
-    const ids: string[] = [];
-    for await (const item of gowayClient.organizationLists.iterateEntries(listId, { state: 'all' }))
-      ids.push(item.id);
-    const index = ids.indexOf(entry.id);
-    if (index <= 0) return;
-    const previous = ids[index - 1];
-    const current = ids[index];
-    if (previous === undefined || current === undefined) return;
-    [ids[index - 1], ids[index]] = [current, previous];
-    await gowayClient.organizationLists.order(listId, { revision: list.revision, entryIds: ids });
+  function refresh() {
+    void detail.refetch();
+    void page.refetch();
   }
   return (
     <SafeAreaView className="flex-1 bg-background">
@@ -433,7 +310,7 @@ export function OrganizationListScreen() {
               onPress={() =>
                 void Share.share({
                   message: `https://goway.to/lists/${encodeURIComponent(listId)}`,
-                }).catch(() => setError(true))
+                }).catch(() => {})
               }
             >
               {t('lists.share')}
@@ -441,7 +318,7 @@ export function OrganizationListScreen() {
           </>
         )}
         {error && <Text accessibilityRole="alert">{t('lists.error')}</Text>}
-        <Button disabled={busy} appearance="outline" onPress={() => void load()}>
+        <Button disabled={busy} appearance="outline" onPress={refresh}>
           {t('lists.refresh')}
         </Button>
         {!manage && (
@@ -477,10 +354,8 @@ export function OrganizationListScreen() {
                   setConfirm('list');
                   return;
                 }
-                void mutate(async () => {
-                  await gowayClient.organizationLists.delete(listId);
-                  router.replace('/lists');
-                });
+                if (!canEdit || writing) return;
+                writes.remove.mutate(undefined, { onSuccess: () => router.replace('/lists') });
               }}
             >
               {t(confirm === 'list' ? 'lists.confirmDelete' : 'lists.delete')}
@@ -491,14 +366,7 @@ export function OrganizationListScreen() {
           <View className="gap-space-12">
             <Field label={t('lists.name')} value={title} onChange={setTitle} />
             <Field label={t('lists.description')} value={description} onChange={setDescription} />
-            <Button
-              disabled={busy}
-              onPress={() =>
-                void mutate(() =>
-                  gowayClient.organizationLists.update(listId, { title, description }),
-                )
-              }
-            >
+            <Button disabled={busy} onPress={() => mutate(writes.update, { title, description })}>
               {t('lists.save')}
             </Button>
             <Button onPress={() => setEditList(false)}>{t('lists.cancel')}</Button>
@@ -511,18 +379,16 @@ export function OrganizationListScreen() {
             {...(initialPlaceId ? { initialPlaceId } : {})}
             busy={busy}
             onCancel={() => setEditing(null)}
-            onSave={(input) =>
-              mutate(() =>
-                editing === 'new'
-                  ? gowayClient.organizationLists.addEntry(listId, input)
-                  : gowayClient.organizationLists.updateEntry(listId, editing.id, input),
-              )
+            onSave={async (input) =>
+              editing === 'new'
+                ? mutate(writes.addEntry, input)
+                : mutate(writes.updateEntry, { entryId: editing.id, input })
             }
           />
         )}
         {!busy && entries.length === 0 && <Text>{t('lists.empty')}</Text>}
         {entries.map((entry) => {
-          const place = places.get(entry.placeId);
+          const place = places?.get(entry.placeId);
           const zone = entry.timezone ?? 'UTC';
           const date = (s: string) =>
             new Intl.DateTimeFormat(locale, {
@@ -559,21 +425,17 @@ export function OrganizationListScreen() {
                     {t('lists.edit')}
                   </Button>
                   {!entry.completedAt && (
-                    <Button
-                      disabled={busy}
-                      onPress={() =>
-                        void mutate(() =>
-                          gowayClient.organizationLists.completeEntry(listId, entry.id),
-                        )
-                      }
-                    >
+                    <Button disabled={busy} onPress={() => mutate(writes.completeEntry, entry.id)}>
                       {t('lists.complete')}
                     </Button>
                   )}
                   <Button
                     disabled={busy || entry.position === 0}
                     appearance="outline"
-                    onPress={() => void mutate(() => moveUp(entry))}
+                    onPress={() =>
+                      list &&
+                      mutate(writes.moveEntryUp, { entryId: entry.id, revision: list.revision })
+                    }
                   >
                     {t('lists.up')}
                   </Button>
@@ -582,9 +444,7 @@ export function OrganizationListScreen() {
                     appearance="outline"
                     onPress={() =>
                       confirm === entry.id
-                        ? void mutate(() =>
-                            gowayClient.organizationLists.deleteEntry(listId, entry.id),
-                          )
+                        ? mutate(writes.deleteEntry, entry.id)
                         : setConfirm(entry.id)
                     }
                   >
@@ -596,8 +456,8 @@ export function OrganizationListScreen() {
           );
         })}
         {busy && <ActivityIndicator />}
-        {cursor && (
-          <Button disabled={busy} onPress={() => void load(cursor)}>
+        {page.hasNextPage && (
+          <Button disabled={busy} onPress={() => void page.fetchNextPage()}>
             {t('lists.more')}
           </Button>
         )}

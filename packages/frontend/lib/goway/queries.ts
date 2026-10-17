@@ -15,9 +15,12 @@
  *    cache entries. They are rounded to ~1 m before they become a key.
  */
 import {
+  useInfiniteQuery,
   useMutation,
   useQuery,
   useQueryClient,
+  type InfiniteData,
+  type UseInfiniteQueryResult,
   type UseMutationResult,
   type UseQueryResult,
 } from '@tanstack/react-query';
@@ -27,6 +30,12 @@ import type {
   CategoryTaxonomy,
   GeoBoundingBox,
   GeoCoordinate,
+  OrganizationList,
+  OrganizationListEntry,
+  OrganizationListEntryInput,
+  OrganizationListInput,
+  OrganizationListUpdate,
+  Page,
   Place,
   PlaceId,
   PlaceMedia,
@@ -351,4 +360,160 @@ export function useAddPlacePhoto(
     onSuccess: () =>
       queryClient.invalidateQueries({ queryKey: ['goway', 'place', placeId, 'media'] }),
   });
+}
+
+// ── Organization lists ──────────────────────────────────────────────────────
+
+/** Every organization-list read lives under this key, so one write refreshes them all. */
+const ORGANIZATION_LISTS_KEY = ['goway', 'organization-lists'] as const;
+
+/** Re-ask an open list at least this often: an entry's end is decided by the server. */
+const ORGANIZATION_LIST_REFRESH_MS = 60_000;
+
+/** The public organization lists, newest first, a page at a time. */
+export function useOrganizationLists(): UseInfiniteQueryResult<
+  InfiniteData<Page<OrganizationList>, string | null>
+> {
+  return useInfiniteQuery({
+    queryKey: [...ORGANIZATION_LISTS_KEY, 'index'],
+    retry: shouldRetryGoWay,
+    initialPageParam: null as string | null,
+    getNextPageParam: (page: Page<OrganizationList>) => page.nextCursor,
+    queryFn: async ({ pageParam, signal }) =>
+      gowayClient.organizationLists.list(pageParam ? { cursor: pageParam } : {}, { signal }),
+  });
+}
+
+/** One list's detail. */
+export function useOrganizationList(listId: string): UseQueryResult<OrganizationList> {
+  return useQuery({
+    queryKey: [...ORGANIZATION_LISTS_KEY, listId, 'detail'],
+    retry: shouldRetryGoWay,
+    refetchInterval: ORGANIZATION_LIST_REFRESH_MS,
+    queryFn: async ({ signal }) => gowayClient.organizationLists.get(listId, { signal }),
+  });
+}
+
+/**
+ * A list's entries, a page at a time. `active` is what the server considers
+ * running now, so an open screen re-asks when the soonest one ends (and at
+ * least every minute) rather than deciding expiry on the device.
+ */
+export function useOrganizationListEntries(
+  listId: string,
+  state: 'active' | 'all',
+): UseInfiniteQueryResult<InfiniteData<Page<OrganizationListEntry>, string | null>> {
+  return useInfiniteQuery({
+    queryKey: [...ORGANIZATION_LISTS_KEY, listId, 'entries', state],
+    retry: shouldRetryGoWay,
+    initialPageParam: null as string | null,
+    getNextPageParam: (page: Page<OrganizationListEntry>) => page.nextCursor,
+    queryFn: async ({ pageParam, signal }) =>
+      gowayClient.organizationLists.entries(
+        listId,
+        { state, ...(pageParam ? { cursor: pageParam } : {}) },
+        { signal },
+      ),
+    refetchInterval: (query) => {
+      const entries = query.state.data?.pages.flatMap((page) => page.items) ?? [];
+      if (state !== 'active' || entries.length === 0) return ORGANIZATION_LIST_REFRESH_MS;
+      const soonestEnd = Math.min(...entries.map((entry) => Date.parse(entry.endsAt)));
+      return Math.min(ORGANIZATION_LIST_REFRESH_MS, Math.max(1_000, soonestEnd - Date.now() + 10));
+    },
+  });
+}
+
+/** The current places behind a page of entries, by id. One `getMany`, never one read per entry. */
+export function usePlacesById(
+  placeIds: readonly string[],
+): UseQueryResult<ReadonlyMap<string, Place>> {
+  const ids = [...new Set(placeIds)].sort();
+  return useQuery({
+    queryKey: ['goway', 'places', 'many', ids],
+    enabled: ids.length > 0,
+    retry: shouldRetryGoWay,
+    placeholderData: (previous) => previous,
+    queryFn: async ({ signal }) =>
+      new Map((await gowayClient.places.getMany(ids, { signal })).items.map((p) => [p.id, p])),
+  });
+}
+
+/** Create a list owned by one of the signed-in person's organizations. */
+export function useCreateOrganizationList(): UseMutationResult<
+  OrganizationList,
+  Error,
+  OrganizationListInput
+> {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (input: OrganizationListInput) => gowayClient.organizationLists.create(input),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ORGANIZATION_LISTS_KEY }),
+  });
+}
+
+/** Every write to one list and its entries; each refreshes every list read on success. */
+export interface OrganizationListWrites {
+  update: UseMutationResult<OrganizationList, Error, OrganizationListUpdate>;
+  remove: UseMutationResult<void, Error, void>;
+  addEntry: UseMutationResult<OrganizationListEntry, Error, OrganizationListEntryInput>;
+  updateEntry: UseMutationResult<
+    OrganizationListEntry,
+    Error,
+    { entryId: string; input: OrganizationListEntryInput }
+  >;
+  completeEntry: UseMutationResult<OrganizationListEntry, Error, string>;
+  deleteEntry: UseMutationResult<void, Error, string>;
+  /** Move an entry one place up, against the list's current revision. */
+  moveEntryUp: UseMutationResult<void, Error, { entryId: string; revision: number }>;
+}
+
+export function useOrganizationListWrites(listId: string): OrganizationListWrites {
+  const queryClient = useQueryClient();
+  const onSuccess = () => queryClient.invalidateQueries({ queryKey: ORGANIZATION_LISTS_KEY });
+  const lists = gowayClient.organizationLists;
+  return {
+    update: useMutation({
+      mutationFn: (input: OrganizationListUpdate) => lists.update(listId, input),
+      onSuccess,
+    }),
+    remove: useMutation({
+      mutationFn: async () => {
+        await lists.delete(listId);
+      },
+      onSuccess,
+    }),
+    addEntry: useMutation({
+      mutationFn: (input: OrganizationListEntryInput) => lists.addEntry(listId, input),
+      onSuccess,
+    }),
+    updateEntry: useMutation({
+      mutationFn: ({ entryId, input }: { entryId: string; input: OrganizationListEntryInput }) =>
+        lists.updateEntry(listId, entryId, input),
+      onSuccess,
+    }),
+    completeEntry: useMutation({
+      mutationFn: (entryId: string) => lists.completeEntry(listId, entryId),
+      onSuccess,
+    }),
+    deleteEntry: useMutation({
+      mutationFn: async (entryId: string) => {
+        await lists.deleteEntry(listId, entryId);
+      },
+      onSuccess,
+    }),
+    moveEntryUp: useMutation({
+      mutationFn: async ({ entryId, revision }: { entryId: string; revision: number }) => {
+        // The order is the whole list's, so it is read whole — not the page on screen.
+        const ids: string[] = [];
+        for await (const item of lists.iterateEntries(listId, { state: 'all' })) ids.push(item.id);
+        const index = ids.indexOf(entryId);
+        const previous = ids[index - 1];
+        if (index <= 0 || previous === undefined) return;
+        ids[index - 1] = entryId;
+        ids[index] = previous;
+        await lists.order(listId, { revision, entryIds: ids });
+      },
+      onSuccess,
+    }),
+  };
 }

@@ -1,45 +1,33 @@
-import { OxyServices, OxyApiError } from '@oxy.so/core';
 import { ApiError } from '../http/apiError';
-import type { OxyCaller } from './accountRoles';
+import { type OxyCaller, readCallerAccount } from './accountRoles';
 
-/** Each mutation checks the live organization graph, including switched sessions. No member cache. */
+/** The roles that may write an organization's lists. */
+const LIST_EDITOR_ROLES: readonly string[] = ['owner', 'admin', 'editor'];
+
+/**
+ * May this caller write lists for that organization? Throws when not.
+ *
+ * Asked of Oxy's live account graph on every call — no member cache, so a
+ * removed editor loses access at once — through the one Oxy client and error
+ * mapping in `accountRoles.ts`. Only an ACTIVE membership counts, never the
+ * session's own account: a list belongs to an organization, not a person.
+ */
 export type OrganizationAuthority = (caller: OxyCaller, accountId: string) => Promise<void>;
+
 export function createOrganizationAuthority(oxyApiUrl: string): OrganizationAuthority {
   return async (caller, accountId) => {
-    if (!caller.accessToken) throw new ApiError('unauthorized', 'An Oxy session is required.');
-    const oxy = new OxyServices({
-      baseURL: oxyApiUrl,
-      enableCache: false,
-      enableRetry: false,
-      requestTimeout: 5000,
-    });
-    oxy.session.setAccessToken(caller.accessToken);
-    try {
-      const account = await oxy.accounts.get(accountId);
-      const member = account.callerMembership;
-      if (
-        account.kind !== 'organization' ||
-        !member ||
-        member.status !== 'active' ||
-        !['owner', 'admin', 'editor'].includes(member.role)
-      ) {
-        throw new ApiError(
-          'forbidden',
-          'An active organization owner, administrator or editor is required.',
-        );
-      }
-    } catch (error) {
-      if (error instanceof ApiError) throw error;
-      if (error instanceof OxyApiError && error.status === 401)
-        throw new ApiError('unauthorized', 'The Oxy session is no longer valid.');
-      if (error instanceof OxyApiError && [403, 404].includes(error.status ?? 0))
-        throw new ApiError('forbidden', 'Organization access is required.');
+    const account = await readCallerAccount(oxyApiUrl, caller, accountId);
+    const member = account?.callerMembership;
+    if (
+      account?.kind !== 'organization' ||
+      !member ||
+      member.status !== 'active' ||
+      !LIST_EDITOR_ROLES.includes(member.role)
+    ) {
       throw new ApiError(
-        'service_unavailable',
-        'Organization access cannot be checked. Try again shortly.',
+        'forbidden',
+        'An active organization owner, administrator or editor is required.',
       );
-    } finally {
-      oxy.dispose();
     }
   };
 }

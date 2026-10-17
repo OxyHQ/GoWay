@@ -177,3 +177,16 @@ export const reportRateLimit: RequestHandler = createGoWayRateLimit({
   anonymousMax: 30,
   windowMs: 15 * 60_000,
 });
+
+/**
+ * A limit for organization-list writes, on top of `apiRateLimit`.
+ *
+ * Every write asks Oxy's account graph who may act for the organization, so an
+ * unbounded writer makes GoWay an amplifier against Oxy. Sixty in fifteen
+ * minutes is an editor rebuilding a whole day's programme, twice.
+ */
+export const organizationListWriteRateLimit: RequestHandler = createGoWayRateLimit({
+  authenticatedMax: 60,
+  anonymousMax: 60,
+  windowMs: 15 * 60_000,
+});

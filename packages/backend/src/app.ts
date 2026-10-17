@@ -29,6 +29,7 @@ import {
   optionalAuth,
   placeFiles,
   reportRateLimit,
+  organizationListWriteRateLimit,
   requireAuth,
   requireOperator,
 } from './middleware/auth';
@@ -143,6 +144,7 @@ export function createApp(options: CreateAppOptions = {}): Express {
     createOrganizationListsRouter({
       requireAuth,
       authorize: createOrganizationAuthority(config.oxyApiUrl),
+      writeRateLimit: organizationListWriteRateLimit,
     }),
   );
   v1.use(createCategoriesRouter());
