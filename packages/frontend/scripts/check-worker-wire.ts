@@ -4,7 +4,7 @@
  * see, because Bun's `Response` ignores `encodeBody` and their cache is a Map.
  *
  * ```bash
- * bun run --cwd packages/frontend check:worker-wire            # this tree's worker/
+ * bun run --cwd packages/frontend check:worker-wire            # this tree's Worker (packages/map-service/src)
  * bun packages/frontend/scripts/check-worker-wire.ts --worker=<dir with index.js>
  * ```
  *
@@ -36,7 +36,7 @@ import { convertV4MiniflareOptions, Miniflare } from 'miniflare';
 
 import { mergeEntries, mergeManifest } from './build-satellite-manifest';
 import { writePmtiles } from './citygen/pmtilesWriter';
-import { COMPRESSION, TILE_TYPE } from '../worker/pmtiles.js';
+import { COMPRESSION, TILE_TYPE } from '@goway/map-service/pmtiles.js';
 
 const args = Object.fromEntries(
   process.argv.slice(2).map((raw) => {
@@ -44,9 +44,9 @@ const args = Object.fromEntries(
     return [flag, value ?? 'true'];
   }),
 );
-const workerDir = resolve(args.worker ?? join(import.meta.dir, '..', 'worker'));
-/** Where the Worker's npm dependencies are installed. */
-const FRONTEND_DIR = join(import.meta.dir, '..');
+/** The Worker's package: its npm modules (`maplibre-contour`, `@jsquash/webp`) resolve from here. */
+const MAP_SERVICE_DIR = join(import.meta.dir, '..', '..', 'map-service');
+const workerDir = resolve(args.worker ?? join(MAP_SERVICE_DIR, 'src'));
 
 /** The deployed Worker's compatibility date, so the runtime behaves as it does. */
 const COMPATIBILITY_DATE = (() => {
@@ -120,7 +120,7 @@ const SAT_MANIFEST = mergeManifest(
  * The Worker as wrangler deploys it: ONE bundle of `index.js` and everything
  * it imports — the npm modules the contour route uses (`maplibre-contour`,
  * `@jsquash/webp`) included — with each WebAssembly import kept as its own
- * `CompiledWasm` module, as wrangler's default rule does. Loading `worker/`'s
+ * `CompiledWasm` module, as wrangler's default rule does. Loading the Worker's
  * files one by one instead fails at the first bare npm import.
  */
 async function bundle(
@@ -138,12 +138,12 @@ async function bundle(
     // `.wasm` import stays an import, of the module listed next to the bundle.
     plugins: [
       {
-        name: 'frontend-node-modules',
+        name: 'map-service-node-modules',
         setup(build) {
           build.onResolve({ filter: /^[^./]/ }, (args) =>
             args.path.endsWith('.wasm')
               ? { path: args.path, external: true }
-              : { path: Bun.resolveSync(args.path, FRONTEND_DIR) },
+              : { path: Bun.resolveSync(args.path, MAP_SERVICE_DIR) },
           );
         },
       },
@@ -157,7 +157,7 @@ async function bundle(
   for (const [, specifier] of code.matchAll(/from\s*["']([^"']+\.wasm)["']/g)) {
     const target = join(dir, specifier);
     mkdirSync(dirname(target), { recursive: true });
-    cpSync(Bun.resolveSync(specifier, FRONTEND_DIR), target);
+    cpSync(Bun.resolveSync(specifier, MAP_SERVICE_DIR), target);
     modules.push({ type: 'CompiledWasm', path: target });
   }
   return { dir, modules };

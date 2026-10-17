@@ -3,7 +3,7 @@
  *
  * ## Why this file exists
  *
- * `worker/index.js` is the only code in the web deployment that a build cannot
+ * `map-service/src/index.js` is the only code in the web deployment that a build cannot
  * see. `tsc` does not read it, `expo export` does not bundle it, `map:style:check`
  * does not know it exists, and the first execution of every line in it happens
  * in production. That is the worst place to discover that a regex admits
@@ -33,12 +33,12 @@ import worker, {
   serveGlyphs,
   serveTerrain,
   serveTile,
-} from '../index.js';
+} from '@goway/map-service/index.js';
 import { MAPTERHORN_ENDPOINTS } from '../../lib/map/provider.ts';
 import {
   UPSTREAM_FONTSTACK as BUILD_UPSTREAM_FONTSTACK,
   UPSTREAM_GLYPH_TEMPLATE,
-} from '../../scripts/build-map-glyphs.ts';
+} from '../build-map-glyphs.ts';
 
 const TILEJSON = 'https://tiles.openfreemap.org/planet';
 const GLYPHS = 'https://tiles.openfreemap.org/fonts/{fontstack}/{range}.pbf';
@@ -372,7 +372,10 @@ describe('a stored gzip tile reaches the browser as the archive stores it', () =
   // header is only ever set together with it, and a cache entry is never
   // returned as the answer.
   it('declares gzip only with encodeBody manual, and never answers with a cache entry', async () => {
-    const source = await readFile(new URL('../tiles.js', import.meta.url), 'utf8');
+    const source = await readFile(
+      new URL('../../../map-service/src/tiles.js', import.meta.url),
+      'utf8',
+    );
     const respond = source.slice(source.indexOf('export async function tileResponse'));
     const body = respond.slice(0, respond.indexOf('\n}\n'));
     expect(body).toContain("out.set('content-encoding', 'gzip')");

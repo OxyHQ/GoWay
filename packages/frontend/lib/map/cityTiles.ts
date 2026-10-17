@@ -314,7 +314,7 @@ export interface CityTileTree {
  * Where a browser asks WHICH AREAS the city tiles cover, relative to the
  * page's origin. Two shapes:
  *
- *  - production (`worker/city.js`, the planet build of
+ *  - production (`map-service/src/city.js`, the planet build of
  *    `docs/MAP_CITY_PLANET.md`): `{ "schema": 2, "tiles": { "maxZoom": 14,
  *    "bits": "…" } }` — the exact set of z14 tiles some regional archive owns,
  *    as a coverage tree ({@link CityCoverageTiles});
@@ -338,7 +338,7 @@ export const CITY_COVERAGE_METADATA_KEY = 'goway:coverage';
 export type CityCoverageBox = readonly [number, number, number, number];
 
 /**
- * The tiles some archive owns, encoded (`worker/coverageTree.js`). Kept
+ * The tiles some archive owns, encoded (`map-service/src/coverageTree.js`). Kept
  * encoded here and decoded only by the engine (`coverageIndex.ts`): this
  * module is shared by two lazy chunks and therefore loads at first paint, so
  * the decoder must not live in it.

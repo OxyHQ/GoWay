@@ -109,7 +109,7 @@ describe('fetchCityCoverageDocument: where the road archive is published', () =>
   const roads = { maxZoom: 14, bits: 'Aw==' };
 
   test('goway.to before any region: nothing covered, no road tile asked for, not a failure', async () => {
-    // What production answers today (`worker/city.js` with no manifest).
+    // What production answers today (`map-service/src/city.js` with no manifest).
     expect(
       await fetchCityCoverageDocument('x', answer(200, { schema: 2, regions: [], tiles: null })),
     ).toEqual({ buildings: [], roads: [], failed: false });

@@ -11,7 +11,7 @@ import type { LodTile } from '@/components/map/engine/city3d/lod';
 import { assignSources } from '@/components/map/engine/city3d/sources';
 import { parseCityCoverage, tileCovered } from '@/lib/map/cityTiles';
 import { rectOwnership } from '@/scripts/citygen/ownership';
-import { encodeCoverageTree } from '@/worker/coverageTree.js';
+import { encodeCoverageTree } from '@goway/map-service/coverageTree.js';
 
 const BARCELONA: [number, number, number, number] = [2.052, 41.317, 2.228, 41.468];
 const CITY = { tileZoom: 15, coverage: [BARCELONA] };
@@ -84,7 +84,7 @@ describe('assignSources', () => {
 });
 
 describe('assignSources over production’s owned-tile coverage', () => {
-  // The union of the published regions at z14, as `worker/city.js` serves it:
+  // The union of the published regions at z14, as `map-service/src/city.js` serves it:
   // here, the z14 tiles of a small rectangle around the Eixample.
   const eixample = tileAt(2.1686, 41.3874);
   const tiles = encodeCoverageTree(

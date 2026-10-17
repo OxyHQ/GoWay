@@ -45,7 +45,7 @@
  * scale — this holds the needed nodes in memory, so the planet is compiled in
  * shards (see `citygen/compile.ts` and the doc). Everything the two builds
  * share is shared: the extract (`~/osm-data`, the same Geofabrik files), the
- * archive format (PMTiles v3, read by `worker/pmtiles.js`), the `.tiles/`
+ * archive format (PMTiles v3, read by `map-service/src/pmtiles.js`), the `.tiles/`
  * output directory and the receipt beside it.
  *
  * ## Licence
@@ -77,7 +77,7 @@ import {
   CITY_PROPS,
 } from '../lib/map/cityTiles';
 import { CITY_LOD2_PROPS, CITY_LOD2_SOURCES, CITY_TILE_LOD2_LAYER } from '../lib/map/cityOfficial';
-import { COMPRESSION, PMTiles, TILE_TYPE } from '../worker/pmtiles.js';
+import { COMPRESSION, PMTiles, TILE_TYPE } from '@goway/map-service/pmtiles.js';
 import { compile } from './citygen/compile';
 import { type ConflateStats, conflate, type Lod2TileFeature } from './citygen/lod2/conflate';
 import { type IngestedFile, ingest } from './citygen/lod2/ingest';

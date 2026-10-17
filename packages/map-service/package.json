@@ -1,0 +1,21 @@
+{
+  "name": "@goway/map-service",
+  "version": "0.1.0",
+  "private": true,
+  "license": "SEE LICENSE IN LICENSE",
+  "description": "GoWay's map origin: the Cloudflare Worker that answers goway.to/map/* \u2014 tiles, glyphs, terrain, contours, the 3D city and satellite imagery, read out of R2 archives.",
+  "exports": {
+    "./*.js": "./src/*.js"
+  },
+  "scripts": {
+    "test": "bun test"
+  },
+  "dependencies": {
+    "@jsquash/webp": "1.5.0",
+    "maplibre-contour": "0.1.1"
+  },
+  "devDependencies": {
+    "@mapbox/vector-tile": "3.0.0",
+    "pbf": "5.1.2"
+  }
+}

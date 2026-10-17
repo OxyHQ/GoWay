@@ -2,7 +2,7 @@
  * Whether a tile lies wholly inside the city tiles' coverage, for either form
  * of the coverage document (`lib/map/cityTiles.ts` → `CITY_COVERAGE_PATH`):
  * development's compile boxes, or production's owned-tile set — the union of
- * every published region's tiles (`worker/city.js`).
+ * every published region's tiles (`map-service/src/city.js`).
  *
  * The owned-tile set arrives encoded and is decoded here, once per document,
  * because this module is the engine's alone: the coverage-tree decoder must
@@ -15,7 +15,12 @@ import {
   type CityCoverageTiles,
   tileCovered,
 } from '@/lib/map/cityTiles';
-import { type CoverageNode, coverageAt, decodeCoverageTree, FULL } from '@/worker/coverageTree.js';
+import {
+  type CoverageNode,
+  coverageAt,
+  decodeCoverageTree,
+  FULL,
+} from '@goway/map-service/coverageTree.js';
 
 const decoded = new Map<string, CoverageNode | null>();
 

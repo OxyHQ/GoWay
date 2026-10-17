@@ -84,6 +84,7 @@ jobs:
               - 'packages/frontend/**'
               - 'packages/sdk/**'
               - 'packages/maps/**'
+              - 'packages/map-service/**'
               - 'packages/contracts/**'
               - 'packages/*/package.json'
               - 'package.json'
@@ -235,7 +236,7 @@ jobs:
         # native module, no Expo runtime — so it needs none of the setup a
         # component test would, and it takes well under a second.
         #
-        # `worker/index.js` is the one that could not be checked any other way.
+        # `map-service/src/index.js` is the one that could not be checked any other way.
         # `tsc` does not read it, `expo export` does not bundle it, and its
         # first execution would otherwise be in production.
         run: bun run test:frontend
@@ -261,6 +262,8 @@ jobs:
         run: bun run test:sdk
       - name: Test the maps SDK
         run: bun run test:maps
+      - name: Test the map origin's Worker
+        run: bun run test:map-service
 
       - name: Smoke-test the published SDK tarball
         # The build already ran above; this packs what it produced.

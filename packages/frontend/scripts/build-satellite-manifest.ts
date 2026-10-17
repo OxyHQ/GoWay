@@ -30,8 +30,8 @@ import {
   intersectCoverageTrees,
   subtractCoverageTrees,
   unionCoverageTrees,
-} from '../worker/coverageTree.js';
-import { parseSatelliteManifest } from '../worker/satellite.js';
+} from '@goway/map-service/coverageTree.js';
+import { parseSatelliteManifest } from '@goway/map-service/satellite.js';
 import type { SetEntry } from './build-satellite-set';
 import { checkSet, IMAGERY_SETS } from './imagery/catalogue';
 import { cellsTree, parseCellKey } from './imagery/cells';

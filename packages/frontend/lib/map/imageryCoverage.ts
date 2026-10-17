@@ -16,7 +16,12 @@
  * (`components/map/useImageryCredits.ts`): the tree decoder stays out of the
  * first-paint bundle.
  */
-import { coverageAt, type CoverageNode, decodeCoverageTree, EMPTY } from '@/worker/coverageTree.js';
+import {
+  coverageAt,
+  type CoverageNode,
+  decodeCoverageTree,
+  EMPTY,
+} from '@goway/map-service/coverageTree.js';
 
 import { IMAGERY_TIER_IDS, IMAGERY_TIERS, isImageryTierId, type ImageryTierId } from './imagery';
 import { type ImagerySourceId, isImagerySourceId } from './imagerySources';

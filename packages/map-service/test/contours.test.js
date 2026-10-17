@@ -1,17 +1,17 @@
 /**
- * Contours at the edge (`worker/contours.js`), without a Workers runtime: the
+ * Contours at the edge (`map-service/src/contours.js`), without a Workers runtime: the
  * DEM and the WebP decoder are the two seams, so a synthetic mountain stands
  * in for both and the tracer, the levels and the route run for real.
  *
  * What this cannot prove: that workerd instantiates the WebAssembly decoder
- * (`webpDecode.js`); `scripts/serve-map-build.ts` runs the same module with
+ * (`webpDecode.js`); GoWay's `scripts/serve-map-build.ts` runs the same module with
  * the same decoder in Node, and the PR's contact sheet is drawn through it.
  */
 import { describe, expect, test } from 'bun:test';
 import { VectorTile } from '@mapbox/vector-tile';
 import { PbfReader } from 'pbf';
 
-import { MEMORY_BUDGET } from '../budget.js';
+import { MEMORY_BUDGET } from '../src/budget.js';
 import {
   CONTOUR_CACHE_ENTRIES,
   CONTOUR_ENTRY_BYTES,
@@ -19,8 +19,8 @@ import {
   contourTileOf,
   createContourService,
   serveContours,
-} from '../contours.js';
-import worker from '../index.js';
+} from '../src/contours.js';
+import worker from '../src/index.js';
 
 const SIZE = 512;
 

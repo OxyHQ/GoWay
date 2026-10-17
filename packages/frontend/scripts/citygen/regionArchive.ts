@@ -17,7 +17,7 @@ import {
   countCoverageTiles,
   coverageTreeBounds,
   decodeCoverageTree,
-} from '../../worker/coverageTree.js';
+} from '@goway/map-service/coverageTree.js';
 import { OWNERSHIP_ZOOM, ownsTile, type TileRect } from './ownership';
 
 /** Metadata keys a regional archive adds (beside `goway:coverage`, `goway:kind`…). */
@@ -38,7 +38,7 @@ export interface OwnershipFile {
   polygon: { url: string; sha256: string };
   /** For a part of a split region: which part, and its tile rectangle. */
   part: { index: number; of: number; rect: TileRect } | null;
-  /** The owned tiles (`worker/coverageTree.js` encoding) at {@link OWNERSHIP_ZOOM}. */
+  /** The owned tiles (`map-service/src/coverageTree.js` encoding) at {@link OWNERSHIP_ZOOM}. */
   ownership: { maxZoom: number; nodes: number; bits: string };
   /** How many z15 tiles that is. */
   tiles: number;

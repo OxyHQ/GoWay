@@ -9,7 +9,7 @@ import { join } from 'node:path';
 import { validateStyleMin } from '@maplibre/maplibre-gl-style-spec';
 import type { StyleSpecification } from '@maplibre/maplibre-gl-style-spec';
 
-import { encodeCoverageTree } from '@/worker/coverageTree.js';
+import { encodeCoverageTree } from '@goway/map-service/coverageTree.js';
 import { cellsTree } from '@/scripts/imagery/cells';
 
 import { contrastRatio, flattenColour } from '../colour';

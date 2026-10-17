@@ -29,7 +29,7 @@ import {
   STEP_S,
 } from '../components/map/engine/cityLife/sim/simulation';
 import { CITY_TILE_ZOOM } from '../lib/map/cityTiles';
-import { PMTiles } from '../worker/pmtiles.js';
+import { PMTiles } from '@goway/map-service/pmtiles.js';
 
 const args = Object.fromEntries(
   process.argv.slice(2).map((raw) => {

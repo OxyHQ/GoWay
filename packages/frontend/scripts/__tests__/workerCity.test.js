@@ -1,5 +1,5 @@
 /**
- * The city tiles at the edge (`worker/city.js`): which region's archive
+ * The city tiles at the edge (`map-service/src/city.js`): which region's archive
  * answers a tile, and what the client is told when none does.
  *
  * Built from the real pieces, not copies of them: the archives are written by
@@ -20,10 +20,15 @@
  */
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 
-import { mergeManifest } from '../../scripts/build-city-manifest';
-import { rectOwnership } from '../../scripts/citygen/ownership';
-import { writePmtiles } from '../../scripts/citygen/pmtilesWriter';
-import { forgetCityManifest, ownerOf, parseCityManifest, serveCity } from '../city.js';
+import { mergeManifest } from '../build-city-manifest';
+import { rectOwnership } from '../citygen/ownership';
+import { writePmtiles } from '../citygen/pmtilesWriter';
+import {
+  forgetCityManifest,
+  ownerOf,
+  parseCityManifest,
+  serveCity,
+} from '@goway/map-service/city.js';
 import {
   coverageAt,
   countCoverageTiles,
@@ -31,9 +36,9 @@ import {
   EMPTY,
   encodeCoverageTree,
   FULL,
-} from '../coverageTree.js';
-import * as workerModule from '../index.js';
-import { forgetDirectories } from '../tiles.js';
+} from '@goway/map-service/coverageTree.js';
+import * as workerModule from '@goway/map-service/index.js';
+import { forgetDirectories } from '@goway/map-service/tiles.js';
 
 const STAMP = '20261011-test';
 const MANIFEST_KEY = 'city/manifest.json';

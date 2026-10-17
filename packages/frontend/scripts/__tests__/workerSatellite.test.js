@@ -1,5 +1,5 @@
 /**
- * Satellite imagery at the edge (`worker/satellite.js`): which set's archive
+ * Satellite imagery at the edge (`map-service/src/satellite.js`): which set's archive
  * answers a tile, the fall-through to the next set where the first has no
  * tile, and what the client is told.
  *
@@ -15,16 +15,16 @@
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 
 import { IMAGERY_TIERS } from '../../lib/map/imagery';
-import { mergeEntries, mergeManifest } from '../../scripts/build-satellite-manifest';
-import { writePmtiles } from '../../scripts/citygen/pmtilesWriter';
-import { COMPRESSION, TILE_TYPE } from '../pmtiles.js';
+import { mergeEntries, mergeManifest } from '../build-satellite-manifest';
+import { writePmtiles } from '../citygen/pmtilesWriter';
+import { COMPRESSION, TILE_TYPE } from '@goway/map-service/pmtiles.js';
 import {
   candidatesFor,
   forgetSatelliteManifest,
   parseSatelliteManifest,
   satelliteTiers,
   serveSatellite,
-} from '../satellite.js';
+} from '@goway/map-service/satellite.js';
 
 const MANIFEST_KEY = 'satellite/manifest.json';
 const encoder = new TextEncoder();

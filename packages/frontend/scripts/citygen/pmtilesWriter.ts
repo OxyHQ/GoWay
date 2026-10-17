@@ -5,7 +5,7 @@
  * city tiles are written by GoWay's compiler, and the production plan for
  * them is the basemap's: one archive in R2, read by byte range in the Worker
  * (`docs/MAP_3D_CITY.md` → Hosting). So this writes exactly what
- * `worker/pmtiles.js` reads, and `__tests__/cityTiles.test.ts` round-trips an
+ * `map-service/src/pmtiles.js` reads, and `__tests__/cityTiles.test.ts` round-trips an
  * archive through THAT reader, not a second one.
  *
  * Layout: header (127 B) · root directory · metadata · leaf directories · tile
@@ -17,7 +17,7 @@
  */
 import { gzipSync } from 'node:zlib';
 
-import { COMPRESSION, HEADER_BYTES, TILE_TYPE, zxyToTileId } from '../../worker/pmtiles.js';
+import { COMPRESSION, HEADER_BYTES, TILE_TYPE, zxyToTileId } from '@goway/map-service/pmtiles.js';
 
 export interface PmtilesTile {
   z: number;

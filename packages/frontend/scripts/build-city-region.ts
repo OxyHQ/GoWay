@@ -54,7 +54,7 @@ import {
   coverageTreeBounds,
   encodeCoverageTree,
   type CoverageNode,
-} from '../worker/coverageTree.js';
+} from '@goway/map-service/coverageTree.js';
 import { nodeDensity } from './citygen/density';
 import {
   OWNERSHIP_ZOOM,

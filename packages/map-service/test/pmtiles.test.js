@@ -40,13 +40,13 @@ import {
   findEntry,
   readHeader,
   zxyToTileId,
-} from '../pmtiles.js';
-import * as workerModule from '../index.js';
-import { serveTerrain, serveTile } from '../index.js';
-import { forgetDirectories } from '../tiles.js';
+} from '../src/pmtiles.js';
+import * as workerModule from '../src/index.js';
+import { serveTerrain, serveTile } from '../src/index.js';
+import { forgetDirectories } from '../src/tiles.js';
 
 /**
- * The zoom `worker/index.js` stops at, copied rather than imported.
+ * The zoom `map-service/src/index.js` stops at, copied rather than imported.
  *
  * It cannot be imported, and the reason is the test at the bottom of this
  * file: workerd refuses to start a Worker whose entry module has a named

@@ -189,7 +189,7 @@ function coverageTree(value: unknown): CityCoverageTiles | null {
  * coverage: the layer then draws the basemap's buildings everywhere rather
  * than a flat map, and asks for no road tile. Exported for tests.
  *
- * The production document (`worker/city.js`) carries owned-tile sets, passed
+ * The production document (`map-service/src/city.js`) carries owned-tile sets, passed
  * on ENCODED; the engine decodes them (`engine/city3d/coverageIndex.ts`), so
  * the decoder ships in the engine's chunk only. The shape is checked here all
  * the same, so a document that is neither form is "no coverage" and reported,
