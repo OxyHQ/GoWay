@@ -108,58 +108,25 @@ describe('the throw itself', () => {
   });
 });
 
-describe('producer — a cluster of no places (lib/goway/markers.ts)', () => {
-  /**
-   * The bucket that broke it: the selected place, twice.
-   *
-   * `buildMarkers` draws the selection expanded and collapses "the rest" of its
-   * bucket into a bubble beside it. When the list carries the same place twice —
-   * a duplicate row, a refetch merged onto a stale page — "the rest" is EMPTY,
-   * and the mean of no coordinates is `0 / 0` on both axes.
-   */
+describe('producer — places (lib/goway/markers.ts)', () => {
+  /** The same place twice: a duplicate row, a refetch merged onto a stale page. */
   const duplicated = [place('dup', 41.3874, 2.1686), place('dup', 41.3874, 2.1686)];
 
-  test('draws no bubble for it, rather than one at (NaN, NaN)', () => {
-    const { markers, clusters } = buildMarkers({
+  test('one marker per place, each surviving the engine, each free to cluster', () => {
+    const { markers } = buildMarkers({
       places: duplicated,
       zoom: 15,
       selectedPlaceId: 'dup',
       taxonomy: undefined,
     });
-
-    expect(markers).toHaveLength(1);
-    expect(markers[0].id).toBe('dup');
-    expect([...clusters.keys()]).toEqual([]);
-  });
-
-  test('every marker it produces survives the engine', () => {
-    for (const marker of buildMarkers({
-      places: duplicated,
-      zoom: 15,
-      selectedPlaceId: 'dup',
-      taxonomy: undefined,
-    }).markers) {
+    for (const marker of markers) {
       expect(() => draw(marker.coordinate)).not.toThrow();
+      // Clustering is the map's (`<Markers cluster>`), which never folds the
+      // selected one; no marker here carries an averaged position.
+      expect(marker.clustered).toBe(true);
     }
-  });
-
-  test('a real cluster beside the selection is still drawn', () => {
-    // Same 72 px bucket, three DISTINCT places, one of them selected.
-    const bucket = [
-      place('a', 41.3874, 2.1686),
-      place('b', 41.38741, 2.16861),
-      place('c', 41.38742, 2.16862),
-    ];
-    const { markers, clusters } = buildMarkers({
-      places: bucket,
-      zoom: 15,
-      selectedPlaceId: 'a',
-      taxonomy: undefined,
-    });
-
-    expect(markers.map((marker) => marker.id)).toContain('a');
-    expect(clusters.size).toBe(1);
-    for (const marker of markers) expect(() => draw(marker.coordinate)).not.toThrow();
+    // One place, one marker, however many times the list carries it.
+    expect(markers.map((marker) => marker.id)).toEqual(['dup']);
   });
 });
 

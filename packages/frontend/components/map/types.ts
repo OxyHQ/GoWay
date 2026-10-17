@@ -64,8 +64,12 @@ export interface MapMarker {
   kind?: string;
   /** Short text drawn in the default marker (a price, a name, a count). */
   label?: string;
-  /** Number of collapsed points; renders as a cluster bubble when > 1. */
-  count?: number;
+  /**
+   * May be gathered into a cluster bubble with its neighbours (GoWay's places).
+   * Absent — route stops, a tapped label's pin, search results — it is always
+   * its own pin.
+   */
+  clustered?: boolean;
   selected?: boolean;
   accessibilityLabel?: string;
 }

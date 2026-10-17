@@ -190,11 +190,6 @@ describe('de-confliction — no marker is ever removed', () => {
     );
   });
 
-  test('a cluster keeps its text, because a count duplicates nothing', () => {
-    const markers = [marker('c1', undefined, { count: 7 })];
-    expect(declutterMarkerLabels({ markers, labels: [label('x')], zoom: 16 })).toBe(markers);
-  });
-
   test('nothing to work with is a no-op, not a crash', () => {
     const markers = [marker('p1', 'Bar Marsella')];
     expect(declutterMarkerLabels({ markers, labels: [], zoom: 16 })).toBe(markers);
@@ -214,7 +209,7 @@ describe('de-confliction — no marker is ever removed', () => {
     const markers = [
       marker('a', 'One'),
       marker('b', 'Two'),
-      marker('c', undefined, { count: 4 }),
+      marker('c', undefined),
       marker('d', 'Four', { selected: true }),
     ];
     const out = declutterMarkerLabels({ markers, labels: [label('x')], zoom: 18 });
