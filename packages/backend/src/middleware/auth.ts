@@ -33,7 +33,12 @@ import type { RequestHandler } from 'express';
 import { isLiveShapeRequest } from './liveShapeRequest';
 import type { OxyActorChain } from '../oxy/caller';
 import { config } from '../config';
-import { createAccountRoleResolver, type AccountRoleResolver } from '../oxy/accountRoles';
+import {
+  createAccountRoleResolver,
+  createOrganizationAuthority,
+  type AccountRoleResolver,
+  type OrganizationAuthority,
+} from '../oxy/accountRoles';
 import { getDb } from '../db/postgres';
 import {
   createFileReferenceWorker,
@@ -81,6 +86,11 @@ export const optionalAuth: RequestHandler = createOptionalOxyAuth(oxyClient);
 
 /** Answers "what is this caller's role in that Oxy account?" — see `oxy/accountRoles`. */
 export const accountRoles: AccountRoleResolver = createAccountRoleResolver({
+  oxyApiUrl: config.oxyApiUrl,
+});
+
+/** Answers "may this caller edit that organization's content?", live — see `oxy/accountRoles`. */
+export const organizationAuthority: OrganizationAuthority = createOrganizationAuthority({
   oxyApiUrl: config.oxyApiUrl,
 });
 
@@ -175,5 +185,19 @@ export const contributionRateLimit: RequestHandler = createGoWayRateLimit({
 export const reportRateLimit: RequestHandler = createGoWayRateLimit({
   authenticatedMax: 30,
   anonymousMax: 30,
+  windowMs: 15 * 60_000,
+});
+
+/**
+ * A limit for organization-list writes — creating, editing, reordering and
+ * deleting lists and their activities — on top of `apiRateLimit`.
+ *
+ * Every write asks Oxy (twice) whether the caller may act for the
+ * organization, so a flood of them is a flood at Oxy too. A hundred and twenty
+ * in fifteen minutes is a long editing session; beyond it is a script.
+ */
+export const organizationListWriteRateLimit: RequestHandler = createGoWayRateLimit({
+  authenticatedMax: 120,
+  anonymousMax: 120,
   windowMs: 15 * 60_000,
 });

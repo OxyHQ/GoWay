@@ -27,6 +27,8 @@ import {
   contributionRateLimit,
   fileReferences,
   optionalAuth,
+  organizationAuthority,
+  organizationListWriteRateLimit,
   placeFiles,
   reportRateLimit,
   requireAuth,
@@ -34,7 +36,6 @@ import {
 } from './middleware/auth';
 import { createGoWayCors } from './middleware/cors';
 import type { LiveService } from './live';
-import { createOrganizationAuthority } from './oxy/organizationAuthority';
 import { healthRouter } from './routes/health';
 import { createCaptureRouter } from './routes/capture';
 import { createCategoriesRouter } from './routes/categories';
@@ -142,7 +143,8 @@ export function createApp(options: CreateAppOptions = {}): Express {
   v1.use(
     createOrganizationListsRouter({
       requireAuth,
-      authorize: createOrganizationAuthority(config.oxyApiUrl),
+      authorize: organizationAuthority,
+      writeRateLimit: organizationListWriteRateLimit,
     }),
   );
   v1.use(createCategoriesRouter());
