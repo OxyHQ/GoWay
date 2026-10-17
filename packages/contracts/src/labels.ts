@@ -25,7 +25,9 @@
  */
 
 import { z } from 'zod';
-import { matchLanguageTag } from './language';
+import type { LocalizedLabels } from './localized-label';
+
+export * from './localized-label';
 
 /**
  * The languages every in-code label is written in, as canonical tags. The
@@ -68,25 +70,7 @@ export const labelsSchema = z.object({
 }) satisfies z.ZodType<Labels>;
 
 /**
- * Labels keyed by canonical language tag: English always, any others as they
- * exist. Every {@link Labels} is one.
- */
-export type LocalizedLabels = Readonly<{ en: string; [language: string]: string }>;
-
-/**
  * {@link LocalizedLabels} as a response publishes them. Open, so a language
  * GoWay adds is not a parse failure in an SDK built before it.
  */
 export const localizedLabelsSchema = z.object({ en: labelSchema }).catchall(labelSchema);
-
-/**
- * The label for a reader of `locale`: the best match among the languages the
- * entry has (see {@link matchLanguageTag}), English when none serves.
- *
- * `es-MX` reads `es`; `pt-PT` reads `pt-BR`; `zh-Hans-CN` and `zh-SG` read
- * `zh-Hans`; `zh-TW` reads `zh-Hans` too until a `zh-Hant` label exists.
- */
-export function localizedLabel(entry: LocalizedLabels, locale?: string | null): string {
-  const language = matchLanguageTag(Object.keys(entry), locale);
-  return (language === undefined ? undefined : entry[language]) ?? entry.en;
-}

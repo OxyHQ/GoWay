@@ -47,7 +47,7 @@ import {
   type ViewStyle,
 } from 'react-native';
 import Animated, { useAnimatedStyle, withTiming } from 'react-native-reanimated';
-import { localizedLabel } from '@goway.to/sdk';
+import { localizedLabel } from '@goway.to/sdk/map';
 import { useBloomLocale } from '@oxy.so/bloom/locale';
 import { useBottomEdgeInset } from '@oxy.so/bloom/layout';
 import { RiInformationLine } from '@oxy.so/bloom/icons/RiInformationLine';

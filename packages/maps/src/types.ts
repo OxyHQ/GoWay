@@ -9,7 +9,7 @@
  */
 import type { ReactNode } from 'react';
 import type { StyleProp, ViewStyle } from 'react-native';
-import type { MapLightPreset } from '@goway.to/sdk';
+import type { MapLightPreset } from '@goway.to/sdk/map';
 import type { GeoBoundingBox, GeoCoordinate } from '@goway.to/sdk/geo';
 
 export type { GeoBoundingBox, GeoCoordinate };

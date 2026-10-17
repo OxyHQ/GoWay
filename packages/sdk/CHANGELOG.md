@@ -4,6 +4,27 @@ All notable changes to `@goway.to/sdk`. The package follows semantic versioning
 with the 0.x rule: while the major version is 0, a MINOR release may break the
 API or the contract, and a PATCH release never does.
 
+## 0.7.0
+
+A map no longer carries GoWay's whole contract into an app. Additive.
+
+### Added
+
+- **`@goway.to/sdk/map`**, a new entry point for a renderer, with no HTTP
+  client and no schema — no zod at all (the release smoke test holds `/map`
+  and `/geo` to importing nothing): the style names and catalogue
+  (`gowayStyleUrl`, `parseGoWayStyleUrl`, `MAP_STYLE_IDS`, `resolveMapStyle`,
+  …), GoWay's tile schema (`OPENMAPTILES_SOURCE_LAYERS` and the class
+  vocabularies) and `localizedLabel`. About 12 KB, where the root entry and
+  zod are several hundred.
+- **`styleDocumentUrl(url, light?, webBaseUrl?)`** (root and `/map`): the
+  document a `goway://styles/<id>` name stands for — the rule
+  `client.links.styleUrl` applies, now shared — or the URL unchanged when it
+  is not a GoWay name, or `null` for a name or light that is not published.
+
+`@goway.to/maps` 0.1.2 resolves its style through `/map`; in Homiio's web
+bundle that was the difference between the map fitting its size budget and not.
+
 ## 0.6.0
 
 What `@goway.to/maps` is built on: GoWay's style names, its tile schema and its

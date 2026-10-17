@@ -3,6 +3,13 @@
 All notable changes to `@goway.to/maps`. Semantic versioning with the 0.x rule:
 while the major version is 0, a MINOR release may break the API.
 
+## 0.1.2
+
+- The map resolves its style through `@goway.to/sdk/map`, which has no HTTP
+  client and no zod, instead of the SDK's root entry. A web app no longer
+  bundles GoWay's whole contract to draw a map: in Homiio that was about
+  170 KB of gzipped JavaScript. Needs `@goway.to/sdk` 0.7.0.
+
 ## 0.1.1
 
 - A `MapView` given a `height` keeps it. The root was `flex: 1`, a zero flex
