@@ -1,6 +1,6 @@
 {
   "name": "@goway.to/maps",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "GoWay's maps SDK for React and React Native: one declarative map for web and native — GoWay styles that follow your theme, Bloom markers with clustering, a camera framed by value, user location without a prompt on mount.",
   "license": "SEE LICENSE IN LICENSE",
   "author": "The Oxy Collective, Inc.",

@@ -3,6 +3,14 @@
 All notable changes to `@goway.to/maps`. Semantic versioning with the 0.x rule:
 while the major version is 0, a MINOR release may break the API.
 
+## 0.1.1
+
+- The GoWay mark has an accessible name on the web. `react-native-svg` hands
+  its props to the DOM `<svg>` unchanged, so the logo's React Native
+  accessibility props landed there as unknown attributes — no name in a
+  browser, and a React warning about `accessible` on every map. The web now
+  gets `role="img"` and `aria-label`; iOS and Android are unchanged.
+
 ## 0.1.0
 
 The first release: GoWay's map as an SDK, with GoWay's own app as its first
