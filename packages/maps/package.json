@@ -102,7 +102,7 @@
   "devDependencies": {
     "@goway.to/sdk": "workspace:*",
     "@maplibre/maplibre-react-native": "^11.4.0",
-    "@oxy.so/bloom": "^10.16.1",
+    "@oxy.so/bloom": "12.0.0",
     "@types/react": "^19.2.17",
     "@types/supercluster": "^7.1.3",
     "expo-location": "~57.0.19",
