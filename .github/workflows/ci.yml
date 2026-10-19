@@ -111,6 +111,11 @@ jobs:
           # `FROM oven/bun:<ver>` disagrees with it, so CI, the image and the
           # lockfile gate cannot disagree about which bun wrote bun.lock.
           bun-version-file: package.json
+      # Expo SDK 58's CLI supports Node 22.13+ / 24.3+ only; pin a supported
+      # major instead of trusting the runner image's default Node.
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: '24'
       - name: Install exact dependency graph
         # --ignore-scripts because the root postinstall builds the contracts and
         # the SDK; both are built explicitly below, in dependency order.
@@ -358,6 +363,11 @@ jobs:
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
         with:
           bun-version-file: package.json
+      # Expo SDK 58's CLI supports Node 22.13+ / 24.3+ only; pin a supported
+      # major instead of trusting the runner image's default Node.
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: '24'
       - name: Install exact dependency graph
         run: bun install --frozen-lockfile --ignore-scripts
       - name: Build the contracts
