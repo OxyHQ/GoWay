@@ -10,7 +10,7 @@ An env variable is only what differs per deployment (secrets, origins, buckets, 
 
 ## Oxy SDK (do not deviate)
 
-- ONE `OxyProvider` from `@oxy.so/services` (web + native) with the registered `clientId` (`EXPO_PUBLIC_OXY_CLIENT_ID`); sign-in is the in-app `OxyAccountDialog`, never a redirect to an IdP.
+- ONE `OxyProvider` from `@oxy.so/services/ui/client` (not the root; web + native) with the registered `clientId` (`EXPO_PUBLIC_OXY_CLIENT_ID`); sign-in is the in-app `OxyAccountDialog`, never a redirect to an IdP.
 - All Expo config comes from `@oxy.so/app-preset`; fix the preset, never copy config back into the app.
 - Theming is NativeWind via `BloomThemeProvider`; never hardcode brand colors and never restate a token `@oxy.so/bloom/design-tokens/theme.css` already defines.
 - Gate private API calls on `useAuth().canUsePrivateApi`; the root `Stack` alone swaps route groups.
