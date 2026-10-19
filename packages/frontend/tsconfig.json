@@ -1,6 +1,7 @@
 {
   "extends": "@oxy.so/app-preset/tsconfig/frontend.json",
   "compilerOptions": {
+    "types": ["bun"],
     "paths": {
       "@/*": ["./*"]
     }
