@@ -346,10 +346,13 @@ gate's street view with the street detail on, over synthetic road tiles of the
 synthetic city (`fixtures/syntheticCity.ts` → `roadTile`: every street between
 its blocks, three lanes, turn lanes, names, a signal at every junction and a
 zebra on every arm), through the real street worker and the map's glyphs. Over
-the plain street view it adds **+8 draw calls (4 road tiles), ~61 k triangles
-and ~4 MB of GPU memory**, at every preset (4 tiles fit all three); the budget
-is that plus 10%, and a test asserts the streets really drew and stayed inside
-the preset's triangles.
+the plain street view it adds **+8 draw calls (4 road tiles), ~293 k
+triangles and ~9.9 MB of GPU memory**, at every preset (4 tiles fit all
+three; the triangles are the terrain-facet cut, `MAP_TERRAIN_GLOBE.md` →
+"Everything on the drawn ground"); the budget is that plus 10%, and a test
+asserts the streets really drew and stayed inside the preset's triangles. A
+vertex is x and y only (8 bytes of position): a surface's height above the
+ground rides in its `attr`'s last byte, in millimetres, a marking's is 0.
 
 Not measured: a real GPU, and a mid-range Android device (the city's Phase 1
 device gating applies here too).

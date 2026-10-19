@@ -13,7 +13,12 @@ import {
   type StreetLattice,
   splitToLattice,
 } from '@/components/map/engine/cityStreets/groundLattice';
-import { Buffers, MODE, STREET_LIFT_M } from '@/components/map/engine/cityStreets/meshBuffers';
+import {
+  Buffers,
+  MODE,
+  STREET_LIFT_M,
+  STREET_Z_PER_M,
+} from '@/components/map/engine/cityStreets/meshBuffers';
 import { StreetAtlas } from '@/components/map/engine/cityStreets/streetAtlas';
 import { meshStreetTile, type StreetMesh } from '@/components/map/engine/cityStreets/streetMesher';
 import { decodeRoadTile } from '@/components/map/engine/roads/roadTiles';
@@ -210,18 +215,27 @@ function surface(lng: number, lat: number): number {
 type Ground = (x: number, y: number) => number;
 
 /**
- * Sample points inside every triangle of a packed buffer (positions x, y, z),
- * placed as the vertex shader places them — each vertex on `street`, plus its
- * own z — against `drawn` at the same point: how far `drawn` rises above
- * them, at worst, over how many of them, and the largest gap either way.
+ * Sample points inside every triangle of a packed buffer (positions x, y; a
+ * surface's height in its attr's last byte, a marking's 0), placed as the
+ * vertex shader places them — each vertex on `street`, plus its own height —
+ * against `drawn` at the same point: how far `drawn` rises above them, at
+ * worst, over how many of them, and the largest gap either way.
  */
 function against(
-  buffers: { positions: Float32Array; indices: Uint32Array },
+  buffers: { positions: Float32Array; attrs: Uint8Array; indices: Uint32Array },
   street: Ground,
   drawn: Ground,
   only?: (vertex: number) => boolean,
+  heights = true,
 ) {
-  const { positions: p, indices } = buffers;
+  const { positions: xy, attrs, indices } = buffers;
+  // x, y, z per vertex, as the shader assembles them.
+  const p = new Float64Array((xy.length / 2) * 3);
+  for (let v = 0; v < xy.length / 2; v++) {
+    p[v * 3] = xy[v * 2];
+    p[v * 3 + 1] = xy[v * 2 + 1];
+    p[v * 3 + 2] = heights ? attrs[v * 4 + 3] / STREET_Z_PER_M : 0;
+  }
   let worst = 0;
   let gap = 0;
   let samples = 0;
@@ -307,17 +321,19 @@ describe('a street tile on a creased ground', () => {
     // centre points the shader widens), at every point inside them.
     const { attrs } = cut.markings;
     const flat = (vertex: number) => attrs[vertex * 4 + 1] !== MODE.line;
-    expect(against(cut.markings, facets, facets, flat).gap).toBeLessThan(1e-4);
+    expect(against(cut.markings, facets, facets, flat, false).gap).toBeLessThan(1e-4);
     // Uncut on the bilinear DEM, the same paint is off the asphalt's plane.
     const { attrs: before } = uncut.markings;
     const flatBefore = (vertex: number) => before[vertex * 4 + 1] !== MODE.line;
-    expect(against(uncut.markings, bilinear, bilinear, flatBefore).gap).toBeGreaterThan(0.005);
+    expect(against(uncut.markings, bilinear, bilinear, flatBefore, false).gap).toBeGreaterThan(
+      0.005,
+    );
   });
 
   test('painted lines follow the creases: a vertex at every mesh crossing', () => {
     const lineVertices = (m: StreetMesh) => {
       let count = 0;
-      for (let i = 0; i < m.markings.positions.length / 3; i++) {
+      for (let i = 0; i < m.markings.positions.length / 2; i++) {
         if (m.markings.attrs[i * 4 + 1] === MODE.line) count++;
       }
       return count;
