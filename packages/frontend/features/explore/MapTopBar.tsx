@@ -18,7 +18,7 @@ import { Button, GlyphButton } from '@oxy.so/bloom/button';
 import { RiListUnordered } from '@oxy.so/bloom/icons/RiListUnordered';
 import { Pressable, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useOxy } from '@oxy.so/services';
+import { useOxy } from '@oxy.so/services/ui/client';
 import { getNormalizedUserHandle } from '@oxy.so/core';
 import { Avatar } from '@oxy.so/bloom/avatar';
 import { useTheme } from '@oxy.so/bloom/theme';
