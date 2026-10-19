@@ -90,7 +90,10 @@ module.exports = {
       favicon: FAVICON,
     },
     plugins: [
-      'expo-router',
+      // SDK 58 splits every web route into its own async chunk by default;
+      // GoWay keeps SDK 57's synchronous web routes, the bundle shape the
+      // deploy's shell check and the chunk tests are written against.
+      ['expo-router', { asyncRoutes: { web: false } }],
       [
         'expo-splash-screen',
         {

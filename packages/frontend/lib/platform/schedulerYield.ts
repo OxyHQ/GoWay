@@ -21,7 +21,7 @@
  *   the API's shape: a promise for the continuation.
  */
 interface SchedulerScope {
-  scheduler?: { yield?: () => Promise<void> } & Record<string, unknown>;
+  scheduler?: { yield?: () => Promise<void> };
 }
 
 /** Install `scheduler.yield()` where it is missing; resolves once it is there (or cannot be). */

@@ -19,6 +19,7 @@
  * main thread can never be different releases.
  */
 import {
+  type ComponentRef,
   forwardRef,
   type ReactNode,
   type RefObject,
@@ -139,7 +140,7 @@ export const MapView = forwardRef<MapViewRef, MapViewProps>(function MapView(pro
   const engineKey = `${styleUrl}|${projection}|${retry}`;
 
   const attachEngine = useCallback(
-    (node: View | null) => {
+    (node: ComponentRef<typeof View> | null) => {
       if (!node || !styleUrl) return;
       // react-native-web renders a `<View>` as a `<div>` and its ref IS that
       // node, so MapLibre gets a real container without a portal of its own.

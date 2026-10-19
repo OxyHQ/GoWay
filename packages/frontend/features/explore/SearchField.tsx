@@ -6,8 +6,8 @@
  * indicator, a back affordance for leaving a result, and the accessible naming
  * that turns a bare input into something a screen-reader user can act on.
  */
-import { forwardRef } from 'react';
-import { View, type TextInput } from 'react-native';
+import { type ForwardRefExoticComponent, forwardRef, type RefAttributes } from 'react';
+import { type TextInputInstance, View } from 'react-native';
 import { Search } from '@oxy.so/bloom/search';
 import { GlyphButton } from '@oxy.so/bloom/button';
 import { Loading } from '@oxy.so/bloom/loading';
@@ -27,7 +27,9 @@ export interface SearchFieldProps {
   testID?: string;
 }
 
-export const SearchField = forwardRef<TextInput, SearchFieldProps>(function SearchField(
+export const SearchField: ForwardRefExoticComponent<
+  SearchFieldProps & RefAttributes<TextInputInstance>
+> = forwardRef<TextInputInstance, SearchFieldProps>(function SearchField(
   {
     value,
     onChangeText,

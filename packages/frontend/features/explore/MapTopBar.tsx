@@ -26,7 +26,6 @@ import { useClaimTopEdge, windowEdgeGap } from '@oxy.so/bloom/layout';
 import { RiUserLine } from '@oxy.so/bloom/icons/RiUserLine';
 import { AliaChatSheet, type AliaChatSheetRef } from '@alia.onl/sdk';
 import { AliaAvatarIcon } from '@alia.onl/sdk/avatar';
-import { VoiceSession } from '@alia.onl/sdk/voice';
 
 import { GowayLogo } from '@goway.to/maps';
 import { useAuthGate } from '@/lib/authGate';
@@ -135,7 +134,6 @@ export function MapTopBar() {
       {gate.canUsePrivateApi && (
         <AliaChatSheet
           ref={aliaChatRef}
-          voiceSession={VoiceSession}
           clientContext={t('map.aliaClientContext')}
           welcomeSuggestions={aliaWelcomeSuggestions}
         />
