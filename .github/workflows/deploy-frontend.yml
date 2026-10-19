@@ -68,6 +68,12 @@ jobs:
           # this deploy cannot disagree about which bun built what shipped.
           bun-version-file: package.json
 
+      # Expo SDK 58's CLI supports Node 22.13+ / 24.3+ only; pin a supported
+      # major instead of trusting the runner image's default Node.
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: '24'
+
       - name: Install exact dependency graph
         # `--ignore-scripts` matches ci.yml. The root `postinstall` builds
         # the contracts and the SDK, and letting it run here would mean the two

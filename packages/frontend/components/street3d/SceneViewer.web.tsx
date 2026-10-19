@@ -19,7 +19,16 @@
  * renders a second for forty labels is the wrong tool, and a label lagging its
  * building by a frame reads as the label sliding.
  */
-import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import {
+  type ComponentRef,
+  memo,
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
 import { Pressable, View } from 'react-native';
 import { Text } from '@oxy.so/bloom/typography';
 
@@ -93,7 +102,7 @@ function SceneViewerComponent({
   style,
   testID,
 }: SceneViewerProps) {
-  const hostRef = useRef<View>(null);
+  const hostRef = useRef<ComponentRef<typeof View>>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const engineRef = useRef<SceneEngine | null>(null);
   const labelElements = useRef(new Map<string, HTMLElement>());
@@ -401,7 +410,8 @@ const SceneLabel = memo(function SceneLabel({
   onPress?: (id: string) => void;
 }) {
   const ref = useCallback(
-    (node: View | null) => register(label.id, node as unknown as HTMLElement | null),
+    (node: ComponentRef<typeof Pressable> | null) =>
+      register(label.id, node as unknown as HTMLElement | null),
     [label.id, register],
   );
   return (
