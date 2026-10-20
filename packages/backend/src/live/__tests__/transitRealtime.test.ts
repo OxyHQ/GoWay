@@ -71,7 +71,7 @@ describe('joinRealtime / applyRealtime', () => {
   const build = () => TransitSchedule.build(files, NOW);
   const days = serviceDays(NOW, 'Europe/Madrid');
   const departureAt = (schedule: TransitSchedule, tripId: string, stopId: string) => {
-    const [{ group }] = schedule.stationsNear(41.39, 2.17, 300) as [{ group: number }];
+    const [{ group }] = schedule.stationsNear(41.39, 2.17, 300) as unknown as [{ group: number }];
     const found = schedule
       .scheduledDepartures(group, days, NOW, NOW + 6 * 3600_000, 100)
       .find(
