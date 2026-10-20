@@ -243,6 +243,25 @@ function toCandidates(payload: unknown, provider: 'photon'): ProviderCandidate[]
   return candidates;
 }
 
+/** Photon's `location_bias_scale` default is 0.2; a search box wants nearby first. */
+const LOCATION_BIAS_SCALE = 0.4;
+/** What a position with no viewport reads as: a city, which is where people search. */
+const NEAR_ZOOM = 14;
+
+/**
+ * Photon's `zoom` (1 = world, 18 = street) for the request's bias.
+ *
+ * From the viewport's longitude span, assuming a ~512 px wide map: a span of
+ * 360° is zoom 1 and each halving is one level closer.
+ */
+function biasZoom(request: Pick<ProviderForwardRequest, 'near' | 'viewport'>): number {
+  if (request.near || !request.viewport) return NEAR_ZOOM;
+  const { west, east } = request.viewport;
+  const span = east >= west ? east - west : 360 - west + east;
+  const zoom = Math.round(Math.log2(360 / Math.max(span, 1e-6))) + 1;
+  return Math.min(18, Math.max(1, zoom));
+}
+
 export function createPhotonProvider(options: PhotonProviderOptions): SearchProvider {
   const { config, fetch, timeoutMs, attempts } = options;
   const languages = new Set(config.languages);
@@ -289,6 +308,14 @@ export function createPhotonProvider(options: PhotonProviderOptions): SearchProv
         ['lang', language(request.locale)],
         ['lat', bias?.latitude],
         ['lon', bias?.longitude],
+        // Without these Photon biases every position alike, so a street-level
+        // viewport and a continental one pull results equally hard.
+        ...(bias
+          ? ([
+              ['zoom', biasZoom(request)],
+              ['location_bias_scale', LOCATION_BIAS_SCALE],
+            ] as QueryParam[])
+          : []),
       ];
       for (const tag of photonOsmTags(request.osmTags ?? [])) params.push(['osm_tag', tag]);
       return call('/api', params, request.signal);

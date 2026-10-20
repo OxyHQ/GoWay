@@ -169,6 +169,20 @@ describe('the Photon adapter', () => {
     expect(params.get('bbox')).toBeNull();
     expect(Number(params.get('lat'))).toBeCloseTo(41.4, 6);
     expect(Number(params.get('lon'))).toBeCloseTo(2.1, 6);
+    // A 0.2° viewport is a neighbourhood: zoom ~11, not the world.
+    expect(Number(params.get('zoom'))).toBeGreaterThanOrEqual(10);
+    expect(Number(params.get('location_bias_scale'))).toBeGreaterThan(0.2);
+  });
+
+  it('sends no bias parameters when there is nothing to bias toward', async () => {
+    const { photon, recorder } = provider(() =>
+      jsonResponse({ type: 'FeatureCollection', features: [] }),
+    );
+    await photon.forward({ query: 'museum', limit: 5 });
+
+    const params = paramsOf(recorder.urls[0] ?? '');
+    expect(params.get('zoom')).toBeNull();
+    expect(params.get('location_bias_scale')).toBeNull();
   });
 
   it('prefers an explicit `near` over the viewport', async () => {

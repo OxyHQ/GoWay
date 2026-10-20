@@ -8,13 +8,13 @@
  */
 
 import { describe, expect, it } from 'bun:test';
-import type { PlaceCapability, PlaceWithDistance, SearchResultKind } from '@goway/contracts';
+import type { PlaceCapability, SearchResultKind } from '@goway/contracts';
 import { SEEDED_CATALOG, seededCategories } from '../../__tests__/categoryFixtures';
 import { catalogOf } from '../../categories/catalog';
 import { isApiError } from '../../http/apiError';
 import { BoundedCache } from '../cache';
 import type { ProviderCandidate, SearchProvider } from '../provider';
-import { createSearchService, placeMatchesText, type SearchService } from '../searchService';
+import { createSearchService, type SearchService } from '../searchService';
 import { UpstreamError } from '../upstream';
 import { buildPlace, fakeGateway } from './fixtures';
 import { defined } from '../../__tests__/defined';
@@ -111,7 +111,7 @@ describe('degradation', () => {
     // difference between "some sources are unavailable" and "nothing is there"
     // is one a consumer has to be able to tell.
     expect(results.results).toHaveLength(1);
-    expect(results.providers).toEqual(['nominatim']);
+    expect(results.providers).toEqual(['nominatim', 'goway']);
     expect(results.degradedProviders).toEqual(['photon']);
   });
 
@@ -208,7 +208,6 @@ describe('GoWay Places enrichment', () => {
 
   it('shows one café, not two, when GoWay Places and a geocoder both know it', async () => {
     const place = buildPlace({ id: 'p1', name: 'Cafè Sagrada' });
-    const nearby: PlaceWithDistance[] = [{ ...place, distanceMeters: 12 }];
     const provider = stub('photon', {
       forward: [
         candidate({
@@ -227,7 +226,7 @@ describe('GoWay Places enrichment', () => {
         gateway: fakeGateway({
           bindings: { 'openstreetmap:node/1': 'p1' },
           places: [place],
-          nearby,
+          byText: [place],
         }),
       },
     );
@@ -267,7 +266,7 @@ describe('GoWay Places enrichment', () => {
     // With no GoWay place to represent the group, the candidate keeps its own
     // provenance verbatim rather than being relabelled.
     expect(results.results[0]?.source).toBe('photon');
-    expect(results.providers).toEqual(['photon', 'nominatim']);
+    expect(results.providers).toEqual(['photon', 'nominatim', 'goway']);
   });
 
   it('never groups two records on their names alone', async () => {
@@ -536,9 +535,9 @@ describe('endpoint modes', () => {
     const interactiveResults = await subject.search(QUERY, { gateway: fakeGateway() });
     const explicitResults = await subject.forward(QUERY, { gateway: fakeGateway() });
 
-    expect(interactiveResults.providers).toEqual(['photon']);
+    expect(interactiveResults.providers).toEqual(['photon', 'goway']);
     // The same provider may answer an explicit, user-initiated lookup.
-    expect(explicitResults.providers).toEqual(['photon', 'nominatim']);
+    expect(explicitResults.providers).toEqual(['photon', 'nominatim', 'goway']);
   });
 
   it('blends GoWay places into a reverse lookup', async () => {
@@ -661,25 +660,50 @@ describe('caching', () => {
   });
 });
 
-describe('placeMatchesText', () => {
-  it('folds diacritics so "cafe" finds "Café"', () => {
-    expect(placeMatchesText(buildPlace({ name: 'Café Sagrada' }), 'cafe', SEEDED_CATALOG)).toBe(
-      true,
-    );
+describe('GoWay text search', () => {
+  const near = { latitude: 41.4036, longitude: 2.1744 };
+
+  it('asks the database for the typed text, anchored or not', async () => {
+    const gateway = fakeGateway();
+    await service([stub('photon')]).search({ ...QUERY, query: 'Cafe' }, { gateway });
+    await service([stub('photon')]).search({ ...QUERY, query: 'Cafe', near }, { gateway });
+
+    expect(gateway.textQueries).toHaveLength(2);
+    expect(gateway.textQueries[0]?.text).toBe('Cafe');
+    expect(gateway.textQueries[0]?.center).toBeUndefined();
+    expect(gateway.textQueries[1]?.center).toEqual(near);
+    expect(gateway.textQueries[1]?.radiusMeters).toBeGreaterThan(5_000);
   });
 
-  it('matches on a category, by its label in every label language, and on the street', () => {
-    const place = buildPlace({
-      name: 'Nothing Relevant',
-      categories: ['food.bakery'],
-      address: { street: 'Gran Via' },
-    });
-    expect(placeMatchesText(place, 'bakery', SEEDED_CATALOG)).toBe(true);
-    expect(placeMatchesText(place, 'panadería', SEEDED_CATALOG)).toBe(true);
-    // A key is not a word anybody types.
-    expect(placeMatchesText(place, 'food.', SEEDED_CATALOG)).toBe(false);
-    expect(placeMatchesText(place, 'gran via', SEEDED_CATALOG)).toBe(true);
-    expect(placeMatchesText(place, 'pharmacy', SEEDED_CATALOG)).toBe(false);
+  it('treats a word that names a category as a category search too', async () => {
+    const gateway = fakeGateway();
+    await service([stub('photon')]).search({ ...QUERY, query: 'panadería', near }, { gateway });
+    await service([stub('photon')]).search({ ...QUERY, query: 'Starbucks', near }, { gateway });
+
+    expect(gateway.textQueries[0]?.categoryIntent).toContain('food.bakery');
+    expect(gateway.textQueries[1]?.categoryIntent).toBeUndefined();
+  });
+
+  it('ranks the place called exactly what was typed above a nearer partial match', async () => {
+    const exact = buildPlace({ id: 'exact', name: 'Central' });
+    const partial = buildPlace({ id: 'partial', name: 'Parking Central Norte' });
+    const results = await service([stub('photon')]).search(
+      { ...QUERY, query: 'central', near },
+      { gateway: fakeGateway({ byText: [partial, exact] }) },
+    );
+
+    expect(results.results.map((result) => result.placeId)).toEqual(['exact', 'partial']);
+  });
+
+  it('keeps a category filter as the question and appends what the text did not match', async () => {
+    const matched = buildPlace({ id: 'matched', name: 'Cafè Sagrada', categories: ['food.cafe'] });
+    const other = buildPlace({ id: 'other', name: 'Bar Pepe', categories: ['food.cafe'] });
+    const results = await service([stub('photon')]).search(
+      { ...QUERY, query: 'sagrada', near, categories: ['food.cafe'] },
+      { gateway: fakeGateway({ byText: [matched], nearby: [{ ...other, distanceMeters: 5 }] }) },
+    );
+
+    expect(results.results.map((result) => result.placeId)).toEqual(['matched', 'other']);
   });
 });
 

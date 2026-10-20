@@ -60,7 +60,7 @@ describe('the index', () => {
 
   it("lists a station's departures across its platforms, with the trip's own headsign or its last stop", async () => {
     const schedule = await read();
-    const [{ group }] = schedule.stationsNear(41.39, 2.17, 300) as [{ group: number }];
+    const [{ group }] = schedule.stationsNear(41.39, 2.17, 300) as unknown as [{ group: number }];
     const days = serviceDays(NOON, schedule.timeZone);
     const departures = schedule
       .scheduledDepartures(group, days, NOON, NOON + 6 * 3600_000, 100)
@@ -91,7 +91,7 @@ describe('the index', () => {
 
   it('reads a trip running past 24:00 as the next morning of its service day', async () => {
     const schedule = await read();
-    const [{ group }] = schedule.stationsNear(41.39, 2.17, 300) as [{ group: number }];
+    const [{ group }] = schedule.stationsNear(41.39, 2.17, 300) as unknown as [{ group: number }];
     // Tuesday 20:00Z is 22:00 Madrid; TN (Tuesday's service, "24:10") leaves 00:10 Wednesday = 22:10Z.
     const at = Date.parse('2026-10-20T20:00:00Z');
     const found = schedule.scheduledDepartures(
@@ -117,7 +117,7 @@ describe('the index', () => {
 
   it('applies the calendar and its exceptions', async () => {
     const schedule = await read();
-    const [{ group }] = schedule.stationsNear(41.39, 2.17, 300) as [{ group: number }];
+    const [{ group }] = schedule.stationsNear(41.39, 2.17, 300) as unknown as [{ group: number }];
     // Thursday 2026-10-22 is removed for WD; the Sunday service runs on Sundays only.
     const thursday = Date.parse('2026-10-22T09:00:00Z');
     expect(
@@ -185,7 +185,7 @@ describe('what it refuses', () => {
     const lines = scheduleFiles().stopTimes.split('\n');
     const shuffled = [lines[0], ...lines.slice(1).reverse()].join('\n');
     const schedule = await read({ stopTimes: shuffled });
-    const [{ group }] = schedule.stationsNear(41.39, 2.17, 300) as [{ group: number }];
+    const [{ group }] = schedule.stationsNear(41.39, 2.17, 300) as unknown as [{ group: number }];
     const found = schedule.scheduledDepartures(
       group,
       serviceDays(NOON, schedule.timeZone),

@@ -25,6 +25,7 @@
  *    citizen and a list that never settles.
  */
 import { useCallback, useEffect, useMemo, useRef, useState, type RefObject } from 'react';
+import { Keyboard } from 'react-native';
 import { useReducedMotion } from 'react-native-reanimated';
 import type { GeoCoordinate, Place, PlaceCapability, SearchResult } from '@goway.to/sdk';
 
@@ -54,6 +55,7 @@ import {
   usePlacesInBounds,
   useSearch,
 } from '@/lib/goway/queries';
+import { useRecentSearches } from '@/lib/search/useRecentSearches';
 import { useDebouncedValue } from '@/lib/useDebouncedValue';
 import { useUserLocation } from '@goway.to/maps';
 
@@ -106,6 +108,19 @@ export interface ExploreController {
   setQuery: (value: string) => void;
   clearQuery: () => void;
   searchBusy: boolean;
+  /**
+   * The box says something the results are not about yet: typing is ahead of
+   * the request, or the list on screen belongs to the previous query. The list
+   * is dimmed rather than blanked, so the panel does not flash empty per key.
+   */
+  searchStale: boolean;
+  /** Enter: open the best result, or at least put the keyboard away. */
+  submitSearch: () => void;
+  retrySearch: () => void;
+  /** Searches run lately on this device, newest first. */
+  recentSearches: readonly string[];
+  runRecentSearch: (query: string) => void;
+  clearRecentSearches: () => void;
   /** Search failed; the panel shows the matching sentence. */
   searchFailure: GoWayFailureKind | null;
   /** Some geocoders answered and some did not — a short list, not an error. */
@@ -253,7 +268,12 @@ export function useExplore(
     categories,
   });
 
-  const searching = debouncedQuery.trim().length >= MIN_SEARCH_LENGTH;
+  // From what is IN the box, not from the debounced copy: leaving search mode
+  // or entering it waits for nothing, and only the request does.
+  const searching = query.trim().length >= MIN_SEARCH_LENGTH;
+  const typingAhead = query.trim() !== debouncedQuery.trim();
+  const searchStale = searching && (typingAhead || searchQuery.isPlaceholderData);
+  const recents = useRecentSearches();
   const results = useMemo(() => searchQuery.data?.items ?? [], [searchQuery.data]);
 
   const selectedPlaceId = selection?.kind === 'place' ? selection.placeId : null;
@@ -411,6 +431,7 @@ export function useExplore(
 
   const selectPlace = useCallback(
     (place: Place) => {
+      Keyboard.dismiss();
       setSelection({ kind: 'place', placeId: place.id, seed: place });
       focus(place.location);
     },
@@ -419,10 +440,12 @@ export function useExplore(
 
   const selectResult = useCallback(
     (result: SearchResult) => {
+      recents.add(query);
       if (result.place) {
         selectPlace(result.place);
         return;
       }
+      Keyboard.dismiss();
       setSelection({ kind: 'result', result });
       // A locality or a street has an EXTENT; framing it says more than
       // dropping a pin in the middle of it and zooming to 16.
@@ -436,8 +459,18 @@ export function useExplore(
         focus(result.coordinate);
       }
     },
-    [cameraDuration, focus, mapRef, selectPlace],
+    [cameraDuration, focus, mapRef, query, recents.add, selectPlace],
   );
+
+  const submitSearch = useCallback(() => {
+    const best = searching && !searchStale ? results[0] : undefined;
+    if (best) {
+      selectResult(best);
+      return;
+    }
+    Keyboard.dismiss();
+    if (searching) recents.add(query);
+  }, [query, recents.add, results, searchStale, searching, selectResult]);
 
   const clearSelection = useCallback(() => setSelection(null), []);
 
@@ -656,7 +689,13 @@ export function useExplore(
     query,
     setQuery,
     clearQuery,
-    searchBusy: searchQuery.isFetching,
+    searchBusy: searchQuery.isFetching || (searching && typingAhead),
+    searchStale,
+    submitSearch,
+    retrySearch: () => void searchQuery.refetch(),
+    recentSearches: recents.recent,
+    runRecentSearch: setQuery,
+    clearRecentSearches: recents.clear,
     searchFailure: failureOf(searchQuery.error),
     degradedProviders: searchQuery.data?.degradedProviders ?? [],
     results,

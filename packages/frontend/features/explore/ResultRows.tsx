@@ -24,7 +24,18 @@ import { formatAddress, formatDistance, formatPlaceSubtitle } from '@/lib/goway/
 import { openingSummary } from '@/lib/goway/hours';
 import { useCategoryTaxonomy } from '@/lib/goway/queries';
 
+import { useTranslation } from '@/lib/i18n';
+import { SEARCH_EN } from '@/lib/messages/search';
+
 import { useSaveControl } from '../saved/useSaveControl';
+
+type Translate = (key: string, values?: Record<string, string | number>) => string;
+
+/** English, for a caller outside the translated tree (the saved-list row). */
+const english: Translate = (key, values) =>
+  (SEARCH_EN[key] ?? key).replace(/\{(\w+)\}/g, (match, name: string) =>
+    values && name in values ? String(values[name]) : match,
+  );
 
 export interface PlaceRowProps {
   place: Place | PlaceWithDistance;
@@ -60,6 +71,7 @@ const ROW_CAPABILITIES = 2;
 export function placeRowCardProps(
   place: Place | PlaceWithDistance,
   taxonomy: CategoryTaxonomy | undefined,
+  t: Translate = english,
 ): Omit<PlaceCardProps, 'density' | 'style' | 'testID'> {
   const subtitle = formatPlaceSubtitle(place, taxonomy);
   const distance = 'distanceMeters' in place ? formatDistance(place.distanceMeters) : null;
@@ -72,7 +84,13 @@ export function placeRowCardProps(
 
   const facts = [
     ...(distance
-      ? [{ icon: RiMapPin2Line, label: distance, accessibilityLabel: `${distance} away` }]
+      ? [
+          {
+            icon: RiMapPin2Line,
+            label: distance,
+            accessibilityLabel: t('search.away', { distance }),
+          },
+        ]
       : []),
     ...capabilities.map((capability) => ({ label: presentCapability(capability).label })),
   ];
@@ -84,9 +102,9 @@ export function placeRowCardProps(
     photoVariant: 'thumb',
     rating: place.rating?.average,
     reviewCount: place.rating?.count,
-    badge: oxyVerified ? 'Verified by Oxy' : undefined,
+    badge: oxyVerified ? t('search.verifiedByOxy') : undefined,
     openState: closed ? 'closed' : opening?.state,
-    openLabel: closed ? 'Permanently closed' : undefined,
+    openLabel: closed ? t('search.permanentlyClosed') : undefined,
     hours: closed ? undefined : opening?.text,
     address: address ?? undefined,
     facts,
@@ -100,12 +118,13 @@ export function PlaceRow({
   saveable = true,
   testID,
 }: PlaceRowProps) {
+  const { t } = useTranslation();
   const taxonomy = useCategoryTaxonomy();
   const saving = useSaveControl({ id: place.id, name: placeDisplayName(place) }, saveable);
 
   const card = (
     <PlaceCard
-      {...placeRowCardProps(place, taxonomy)}
+      {...placeRowCardProps(place, taxonomy, t)}
       {...(saveable
         ? {
             favorite: saving.saved,
@@ -157,6 +176,7 @@ export function SearchResultRow({
   testID,
 }: SearchResultRowProps) {
   const theme = useTheme();
+  const { t } = useTranslation();
 
   if (result.place) {
     return (
@@ -179,7 +199,7 @@ export function SearchResultRow({
       onPress={onPress}
       title={result.displayName}
       subtitle={where ?? undefined}
-      accessibilityLabel={[result.displayName, KIND_WORDS[result.kind], where]
+      accessibilityLabel={[result.displayName, t(`search.kind.${result.kind}`), where]
         .filter(Boolean)
         .join(', ')}
       testID={testID}
@@ -191,16 +211,6 @@ export function SearchResultRow({
     />
   );
 }
-
-const KIND_WORDS: Record<SearchResult['kind'], string> = {
-  place: 'place',
-  address: 'address',
-  street: 'street',
-  locality: 'area',
-  region: 'region',
-  country: 'country',
-  poi: 'point of interest',
-};
 
 function contextLine(result: SearchResult): string | null {
   const parts = [result.context?.city, result.context?.region, result.context?.country].filter(

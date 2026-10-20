@@ -93,7 +93,7 @@ export function SavedListScreen() {
             id: item.id,
             note: item.note,
             place: place
-              ? { ...placeRowCardProps(place, taxonomy), onPress: () => setEditing(item) }
+              ? { ...placeRowCardProps(place, taxonomy, t), onPress: () => setEditing(item) }
               : { name: t('saved.unavailable'), onPress: () => setEditing(item) },
           },
         ];

@@ -8,7 +8,7 @@
  */
 
 import type { Place, PlaceWithDistance } from '@goway/contracts';
-import type { SourceRefInput } from '../../db/places/placesRepository';
+import type { SourceRefInput, TextQuery } from '../../db/places/placesRepository';
 import type { PlacesGateway } from '../placesGateway';
 import { sourceRefKey } from '../placesGateway';
 import type { FetchLike } from '../provider';
@@ -76,6 +76,8 @@ export interface FakeGatewayOptions {
   places?: readonly Place[];
   nearby?: readonly PlaceWithDistance[];
   inBounds?: readonly Place[];
+  /** What a text search returns, already in match order. */
+  byText?: readonly Place[];
   /** When set, every method rejects with it — the "database is down" case. */
   failure?: Error;
 }
@@ -85,6 +87,8 @@ export interface FakeGateway extends PlacesGateway {
   readonly refLookups: SourceRefInput[][];
   /** The locale each place lookup was asked to resolve names in. */
   readonly placeLocales: (string | undefined)[];
+  /** Every text query the service asked. */
+  readonly textQueries: TextQuery[];
 }
 
 export function fakeGateway(options: FakeGatewayOptions = {}): FakeGateway {
@@ -92,12 +96,14 @@ export function fakeGateway(options: FakeGatewayOptions = {}): FakeGateway {
   const byId = new Map((options.places ?? []).map((place) => [place.id, place]));
   const refLookups: SourceRefInput[][] = [];
   const placeLocales: (string | undefined)[] = [];
+  const textQueries: TextQuery[] = [];
 
   const reject = <T>(): Promise<T> => Promise.reject(options.failure);
 
   return {
     refLookups,
     placeLocales,
+    textQueries,
     findPlaceIdsBySourceRefs(refs) {
       if (options.failure) return reject();
       refLookups.push([...refs]);
@@ -125,6 +131,11 @@ export function fakeGateway(options: FakeGatewayOptions = {}): FakeGateway {
     findPlacesInBounds() {
       if (options.failure) return reject();
       return Promise.resolve([...(options.inBounds ?? [])]);
+    },
+    findPlacesByText(query) {
+      if (options.failure) return reject();
+      textQueries.push(query);
+      return Promise.resolve([...(options.byText ?? [])]);
     },
   };
 }

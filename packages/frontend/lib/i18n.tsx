@@ -5,6 +5,7 @@ import { createContext, useContext, useMemo, type ReactNode } from 'react';
 import { CREDITS_EN, CREDITS_ES } from './messages/credits';
 import { PRODUCTS_EN, PRODUCTS_ES } from './messages/products';
 import { SAVED_EN, SAVED_ES } from './messages/saved';
+import { SEARCH_EN, SEARCH_ES } from './messages/search';
 import { STREET3D_EN, STREET3D_ES } from './messages/street3d';
 import { TRANSIT_EN, TRANSIT_ES } from './messages/transit';
 
@@ -36,6 +37,7 @@ const en: Messages = {
   ...TRANSIT_EN,
   ...CREDITS_EN,
   ...LISTS_EN,
+  ...SEARCH_EN,
 };
 
 const es: Messages = {
@@ -58,6 +60,7 @@ const es: Messages = {
   ...TRANSIT_ES,
   ...CREDITS_ES,
   ...LISTS_ES,
+  ...SEARCH_ES,
 };
 
 const locales: Record<string, Messages> = { en, es };

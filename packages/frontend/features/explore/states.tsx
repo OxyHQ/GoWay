@@ -29,6 +29,7 @@ import { RiWifiLine } from '@oxy.so/bloom/icons/RiWifiLine';
 import { RiFocus3Line } from '@oxy.so/bloom/icons/RiFocus3Line';
 
 import type { GoWayFailureKind } from '@/lib/goway/errors';
+import { useTranslation } from '@/lib/i18n';
 import type { LocationErrorReason } from '@goway.to/maps';
 
 export interface PanelStateProps {
@@ -84,6 +85,9 @@ export function PanelState({
   );
 }
 
+/** What a failed call was fetching: it picks the noun the sentence names. */
+export type FailureSubject = 'search' | 'places' | 'place';
+
 /**
  * The copy for a failed GoWay call.
  *
@@ -93,23 +97,30 @@ export function PanelState({
  */
 export function FailureState({
   kind,
-  what,
+  subject,
   onRetry,
 }: {
   kind: GoWayFailureKind;
-  /** What was being fetched: "search", "places nearby", "this place". */
-  what: string;
+  subject: FailureSubject;
   onRetry?: () => void;
 }) {
+  const { t } = useTranslation();
+  const values = {
+    what: t(`search.subject.${subject}`),
+    What: t(`search.subject.${subject}.cap`),
+  };
+  const retry = onRetry
+    ? { actionLabel: t('search.tryAgain'), onAction: onRetry }
+    : { actionLabel: undefined, onAction: undefined };
+
   switch (kind) {
     case 'offline':
       return (
         <PanelState
           icon={RiWifiLine}
-          title="You're offline"
-          body={`GoWay can't reach ${what} right now. The map you've already loaded still works.`}
-          actionLabel={onRetry ? 'Try again' : undefined}
-          onAction={onRetry}
+          title={t('search.failure.offline.title')}
+          body={t('search.failure.offline.body', values)}
+          {...retry}
           testID="state-offline"
         />
       );
@@ -117,10 +128,9 @@ export function FailureState({
       return (
         <PanelState
           icon={RiRefreshLine}
-          title="That took too long"
-          body={`${capitalize(what)} didn't answer in time.`}
-          actionLabel={onRetry ? 'Try again' : undefined}
-          onAction={onRetry}
+          title={t('search.failure.timeout.title')}
+          body={t('search.failure.timeout.body', values)}
+          {...retry}
           testID="state-timeout"
         />
       );
@@ -129,10 +139,9 @@ export function FailureState({
       return (
         <PanelState
           icon={RiErrorWarningLine}
-          title={`${capitalize(what)} is unavailable`}
-          body="This is on our side, not yours. Browsing the map still works."
-          actionLabel={onRetry ? 'Try again' : undefined}
-          onAction={onRetry}
+          title={t('search.failure.unavailable.title', values)}
+          body={t('search.failure.unavailable.body')}
+          {...retry}
           testID="state-unavailable"
         />
       );
@@ -140,8 +149,8 @@ export function FailureState({
       return (
         <PanelState
           icon={RiMapPin2Line}
-          title="We couldn't find that place"
-          body="The link may be out of date."
+          title={t('search.failure.notFound.title')}
+          body={t('search.failure.notFound.body')}
           testID="state-not-found"
         />
       );
@@ -149,8 +158,8 @@ export function FailureState({
       return (
         <PanelState
           icon={RiMapPin2Line}
-          title="This place is no longer on GoWay"
-          body="It was removed from the map, so there is nothing left to show here."
+          title={t('search.failure.gone.title')}
+          body={t('search.failure.gone.body')}
           testID="state-gone"
         />
       );
@@ -161,8 +170,8 @@ export function FailureState({
       return (
         <PanelState
           icon={RiRefreshLine}
-          title="GoWay has been updated"
-          body={`This version of the app can't load ${what}. Reload to get the latest version.`}
+          title={t('search.failure.versionMismatch.title')}
+          body={t('search.failure.versionMismatch.body', values)}
           testID="state-version-mismatch"
         />
       );
@@ -176,8 +185,8 @@ export function FailureState({
       return (
         <PanelState
           icon={RiMap2Line}
-          title="GoWay can't answer that here"
-          body={`There is no answer GoWay can give for ${what} with these settings. Nothing is guessed.`}
+          title={t('search.failure.noAnswer.title')}
+          body={t('search.failure.noAnswer.body', values)}
           testID="state-no-answer"
         />
       );
@@ -185,10 +194,9 @@ export function FailureState({
       return (
         <PanelState
           icon={RiErrorWarningLine}
-          title="Something went wrong"
-          body={`GoWay couldn't load ${what}.`}
-          actionLabel={onRetry ? 'Try again' : undefined}
-          onAction={onRetry}
+          title={t('search.failure.unknown.title')}
+          body={t('search.failure.unknown.body', values)}
+          {...retry}
           testID="state-unknown"
         />
       );
@@ -301,12 +309,13 @@ const LOCATION_COPY: Record<LocationErrorReason | 'blocked', LocationCopy> = {
 
 /** A search that ran and matched nothing. Not an error; a fact. */
 export function NoResultsState({ query, onClear }: { query: string; onClear?: () => void }) {
+  const { t } = useTranslation();
   return (
     <PanelState
       icon={RiSearchLine}
-      title={`No results for “${query}”`}
-      body="Try a shorter search, or move the map to where you're looking."
-      actionLabel={onClear ? 'Clear search' : undefined}
+      title={t('search.noResults.title', { query })}
+      body={t('search.noResults.body')}
+      actionLabel={onClear ? t('search.clear') : undefined}
       onAction={onClear}
       testID="state-no-results"
     />
@@ -315,12 +324,13 @@ export function NoResultsState({ query, onClear }: { query: string; onClear?: ()
 
 /** The viewport is genuinely empty of anything GoWay knows about. */
 export function NothingHereState({ onSearchArea }: { onSearchArea?: () => void }) {
+  const { t } = useTranslation();
   return (
     <PanelState
       icon={RiMapPin2Line}
-      title="Nothing here yet"
-      body="GoWay has no places in this area. Move the map, or zoom out to see more."
-      actionLabel={onSearchArea ? 'Search this area' : undefined}
+      title={t('search.nothingHere.title')}
+      body={t('search.nothingHere.body')}
+      actionLabel={onSearchArea ? t('search.nothingHere.action') : undefined}
       onAction={onSearchArea}
       testID="state-nothing-here"
     />
@@ -334,16 +344,13 @@ export function NothingHereState({ onSearchArea }: { onSearchArea?: () => void }
  * broken unless it explains that it is being deliberate.
  */
 export function ZoomForMoreState({ hidden }: { hidden: number }) {
+  const { t } = useTranslation();
   return (
     <PanelState
       icon={RiFocus3Line}
-      title={`${hidden} more nearby`}
-      body="Zoom in to see smaller places like cafés and shops."
+      title={t('search.zoomMore.title', { count: hidden })}
+      body={t('search.zoomMore.body')}
       testID="state-zoom-for-more"
     />
   );
-}
-
-function capitalize(value: string): string {
-  return value.charAt(0).toUpperCase() + value.slice(1);
 }

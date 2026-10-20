@@ -52,4 +52,11 @@ export const REQUIRED_EXTENSIONS: readonly RequiredExtension[] = [
       'ST_* call. Without PostGIS the first Places migration cannot even create its ' +
       'tables.',
   },
+  {
+    name: 'pg_trgm',
+    reason:
+      'Place search matches typed text against names by prefix, substring and ' +
+      'trigram similarity (typos), served by GIN indexes with `gin_trgm_ops` on the ' +
+      'accent-folded name. Without it the search indexes cannot be created.',
+  },
 ];

@@ -38,7 +38,7 @@ import { composeDisplayName, contextFrom, put, resultId } from './normalize';
 import type { PlacesGateway } from './placesGateway';
 import { sourceRefKey } from './placesGateway';
 import type { ProviderCandidate } from './provider';
-import { fusedScore, type SpatialBias } from './ranking';
+import { fusedScore, textRelevance, type SpatialBias } from './ranking';
 
 /** One provider's answer, in the order the provider returned it. */
 export interface CandidateList {
@@ -148,8 +148,26 @@ export interface MergeRequest {
   /** A conjunction. A candidate with no reconciled place cannot satisfy one. */
   capabilities?: readonly string[];
   bias?: SpatialBias | undefined;
+  /** What the user typed, when this is a text search: scores how well names match it. */
+  text?: string | undefined;
   /** BCP 47 tag the reconciled places' names are resolved against. */
   locale?: string | undefined;
+}
+
+/**
+ * Every name the group goes by: the representative's label, GoWay's own names in
+ * every language, and what each geocoder called it. A search matches on any of
+ * them, as the database side does.
+ */
+function namesOf(group: Group, result: SearchResult): string[] {
+  const names = [result.displayName.split(', ')[0] ?? result.displayName];
+  if (group.place) {
+    names.push(group.place.name, ...(group.place.names ?? []).map((entry) => entry.name));
+  }
+  for (const member of group.members) {
+    names.push(member.candidate.result.displayName.split(', ')[0] ?? '');
+  }
+  return names.filter((name) => name !== '');
 }
 
 /**
@@ -241,6 +259,9 @@ export async function mergeCandidates(request: MergeRequest): Promise<SearchResu
           ranks: group.members.map((member) => member.rank),
           coordinate: result.coordinate,
           enriched: group.place !== undefined,
+          ...(request.text !== undefined
+            ? { text: textRelevance(request.text, namesOf(group, result)) }
+            : {}),
         },
         request.bias,
       ),

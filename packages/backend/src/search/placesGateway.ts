@@ -18,7 +18,12 @@
  */
 
 import type { Place, PlaceWithDistance } from '@goway/contracts';
-import type { BoundsQuery, NearbyQuery, SourceRefInput } from '../db/places/placesRepository';
+import type {
+  BoundsQuery,
+  NearbyQuery,
+  SourceRefInput,
+  TextQuery,
+} from '../db/places/placesRepository';
 
 /** The key a resolved source reference is returned under: `<source>:<sourceId>`. */
 export function sourceRefKey(ref: SourceRefInput): string {
@@ -40,4 +45,6 @@ export interface PlacesGateway {
   findPlacesByIds(ids: readonly string[], locale?: string): Promise<Map<string, Place>>;
   findPlacesNearby(query: NearbyQuery): Promise<PlaceWithDistance[]>;
   findPlacesInBounds(query: BoundsQuery): Promise<Place[]>;
+  /** Places answering typed text, best match first. */
+  findPlacesByText(query: TextQuery): Promise<Place[]>;
 }

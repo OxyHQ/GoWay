@@ -12,6 +12,7 @@ import type { SourceRefInput } from '../db/places/placesRepository';
 import {
   findPlaceIdBySourceRef,
   findPlacesByIds,
+  findPlacesByText,
   findPlacesInBounds,
   findPlacesNearby,
 } from '../db/places/placesRepository';
@@ -69,6 +70,10 @@ export function createPlacesGateway(options: PlacesGatewayOptions = {}): PlacesG
 
     findPlacesInBounds(query) {
       return findPlacesInBounds(getDb(), query);
+    },
+
+    findPlacesByText(query) {
+      return findPlacesByText(getDb(), query);
     },
   };
 }
