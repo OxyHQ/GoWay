@@ -41,13 +41,14 @@ import type {
   SearchResult,
   SearchSource,
 } from '@goway/contracts';
+import { foldText } from '../db/places/textFold';
 import { catalogOf, type CategoryCatalog } from '../categories/catalog';
 import type { SearchConfig } from '../config/search';
 import { BoundedCache } from './cache';
 import { mergeCandidates, type CandidateList } from './merge';
 import type { PlacesGateway } from './placesGateway';
 import type { ProviderCandidate, SearchProvider } from './provider';
-import { spatialBiasFor, type SpatialBias } from './ranking';
+import { centerOf, spatialBiasFor, type SpatialBias } from './ranking';
 import { isUpstreamError, type UpstreamError } from './upstream';
 import { ApiError } from '../http/apiError';
 
@@ -63,9 +64,16 @@ const REVERSE_PLACES_RADIUS_METERS = 150;
 /** What a search reads categories through when the taxonomy cannot be read. */
 const EMPTY_CATALOG = catalogOf([]);
 
-/** How many GoWay places to pull before the in-memory text filter narrows them. */
-const PLACES_CANDIDATE_MULTIPLIER = 4;
-const MAX_PLACES_CANDIDATES = 100;
+/**
+ * How far from the bias point a typed name may match a GoWay place.
+ *
+ * Wide on purpose: this is a NAME search, ranked by distance rather than cut off
+ * by it. The configured `placesRadiusMeters` is the "what is around me" radius;
+ * "Retiro" typed in Madrid must still find the park across the city, and
+ * "Starbucks" must find the nearest one rather than the one within walking
+ * distance.
+ */
+const TEXT_SEARCH_RADIUS_METERS = 100_000;
 
 /** Just enough of pino for this module; injected so the service stays testable. */
 export interface SearchLogger {
@@ -185,55 +193,6 @@ function worstFailure(outcomes: readonly ProviderOutcome[]): UpstreamError | und
   return failures.find((failure) => failure.kind === 'rate_limited') ?? failures[0];
 }
 
-/**
- * Normalized text, for comparing a GoWay place name against what was typed.
- *
- * Diacritics are folded (NFD, then the combining marks dropped) so that a
- * search for "cafe" finds "Café" — every user typing on a phone keyboard in
- * Spain expects that, and a plain lower-case comparison denies it.
- */
-function foldText(value: string): string {
-  return value
-    .normalize('NFD')
-    .replace(/\p{Diacritic}/gu, '')
-    .toLocaleLowerCase()
-    .trim();
-}
-
-/**
- * Whether a GoWay place answers the typed text.
- *
- * A substring match over the name, the categories and the street/city, run in
- * memory over a bounded, spatially-scoped candidate set. It is a FILTER on
- * GoWay's own rows, never a merge rule: nothing in this package decides two
- * records are the same thing because their names look alike (see `merge.ts`).
- *
- * The repository has no text index yet, which is why this is not a query. That
- * is also why the Places side only contributes when the request is anchored
- * somewhere — see `loadPlaces`.
- */
-export function placeMatchesText(place: Place, query: string, catalog: CategoryCatalog): boolean {
-  const needle = foldText(query);
-  if (needle === '') return true;
-  const haystack = [
-    place.name,
-    // EVERY language GoWay holds, not the one resolved for this request. A
-    // search box is where the user types what they know the place as, and
-    // that is routinely not the language they read the map in: "Munich" has
-    // to find München for an English speaker in Bavaria, whose locale is
-    // German and whose resolved label will still say München.
-    ...(place.names ?? []).map((name) => name.name),
-    // A category by what it is CALLED, in every label language — "cafetería"
-    // finds a `food.cafe` — and never by its key, which nobody types.
-    ...place.categories.flatMap((key) => Object.values(catalog.taxonomy.of(key)?.labels ?? {})),
-    place.address?.street,
-    place.address?.city,
-  ]
-    .filter((part): part is string => typeof part === 'string')
-    .map(foldText);
-  return haystack.some((part) => part.includes(needle));
-}
-
 export function createSearchService(options: SearchServiceOptions): SearchService {
   const logger = options.logger ?? SILENT_LOGGER;
   const cache =
@@ -316,23 +275,33 @@ export function createSearchService(options: SearchServiceOptions): SearchServic
         guard(() => gateway.findPlacesByIds(ids, locale), new Map()),
       findPlacesNearby: (query) => guard(() => gateway.findPlacesNearby(query), []),
       findPlacesInBounds: (query) => guard(() => gateway.findPlacesInBounds(query), []),
+      findPlacesByText: (query) => guard(() => gateway.findPlacesByText(query), []),
     };
   };
 
   /**
-   * GoWay's own places for a query, when the query is anchored somewhere.
+   * GoWay's own places for a query.
    *
-   * With neither a `near` nor a `viewport` there is nothing to scan around: the
-   * alternative would be a name scan of every place on Earth, truncated by a
-   * `LIMIT`, which reads to a user as missing data. An unanchored search still
-   * surfaces GoWay places — through reconciliation, when a geocoder finds the
-   * same record — it just cannot surface one the geocoders have never heard of.
+   * A name search over the database's text indexes, anchored or not. Anchoring
+   * only orders ties by distance and widens nothing: an unanchored search still
+   * finds "Farmacia López" among GoWay's own places, and the places GoWay holds
+   * that no geocoder has ever heard of are exactly the ones that make it worth
+   * searching.
+   *
+   * A typed word that NAMES a category ("farmacia") also surfaces the places in
+   * it, below the ones whose own name matched.
+   *
+   * An explicit category or capability filter IS the question, so places that
+   * satisfy it but do not match the text are appended after the matches rather
+   * than excluded.
    */
   const loadPlaces = async (
     gateway: PlacesGateway,
     query: ResolvedSearchQuery,
     catalog: CategoryCatalog,
   ): Promise<{ places: Place[]; consulted: boolean }> => {
+    const center = query.near ?? (query.viewport ? centerOf(query.viewport) : undefined);
+    const filtered = (query.categories?.length ?? 0) > 0 || (query.capabilities?.length ?? 0) > 0;
     const filters = {
       ...(query.capabilities && query.capabilities.length > 0
         ? { capabilities: [...query.capabilities] }
@@ -340,39 +309,38 @@ export function createSearchService(options: SearchServiceOptions): SearchServic
       ...(query.categories && query.categories.length > 0
         ? { categories: [...query.categories] }
         : {}),
-      limit: Math.min(MAX_PLACES_CANDIDATES, rankedDepth(query) * PLACES_CANDIDATE_MULTIPLIER),
+      limit: rankedDepth(query),
       ...(query.locale !== undefined ? { locale: query.locale } : {}),
       // Search is the one list read that publishes the full name set. It has
-      // to: `placeMatchesText` matches against every language, so a result the
-      // user got by typing "Munich" would otherwise arrive with no evidence of
-      // why it matched. The candidate set is bounded by the result limit, not
-      // by a viewport, so the payload is a handful of rows rather than a
-      // screenful of pins.
+      // to: matching is over every language, so a result the user got by typing
+      // "Munich" would otherwise arrive with no evidence of why it matched.
       includeNames: true,
     };
 
-    let found: Place[];
-    if (query.near) {
-      found = await gateway.findPlacesNearby({
-        latitude: query.near.latitude,
-        longitude: query.near.longitude,
-        radiusMeters: options.config.placesRadiusMeters,
-        ...filters,
-      });
-    } else if (query.viewport) {
-      found = await gateway.findPlacesInBounds({ ...query.viewport, ...filters });
-    } else {
-      return { places: [], consulted: false };
+    const intent = filtered ? [] : catalog.named(query.query);
+    const matches = await gateway.findPlacesByText({
+      ...filters,
+      text: query.query,
+      ...(center ? { center, radiusMeters: TEXT_SEARCH_RADIUS_METERS } : {}),
+      ...(intent.length > 0 ? { categoryIntent: intent } : {}),
+    });
+    if (!filtered || !center) {
+      return { places: matches.slice(0, rankedDepth(query)), consulted: true };
     }
 
-    // An explicit category or capability filter IS the question; the typed text
-    // then biases the order rather than excluding rows. Without one, the text is
-    // all there is to go on, so a place has to match it.
-    const filtered =
-      (query.categories?.length ?? 0) > 0 || (query.capabilities?.length ?? 0) > 0
-        ? found
-        : found.filter((place) => placeMatchesText(place, query.query, catalog));
-    return { places: filtered.slice(0, rankedDepth(query)), consulted: true };
+    const seen = new Set(matches.map((place) => place.id));
+    const around = query.near
+      ? await gateway.findPlacesNearby({
+          latitude: query.near.latitude,
+          longitude: query.near.longitude,
+          radiusMeters: options.config.placesRadiusMeters,
+          ...filters,
+        })
+      : query.viewport
+        ? await gateway.findPlacesInBounds({ ...query.viewport, ...filters })
+        : [];
+    const rest = around.filter((place) => !seen.has(place.id));
+    return { places: [...matches, ...rest].slice(0, rankedDepth(query)), consulted: true };
   };
 
   /** Assemble the response from provider outcomes plus the Places side. */
@@ -386,6 +354,7 @@ export function createSearchService(options: SearchServiceOptions): SearchServic
       window: { offset: number; limit: number };
       capabilities?: readonly string[];
       bias?: SpatialBias | undefined;
+      text?: string | undefined;
       locale?: string | undefined;
     },
   ): Promise<SearchWindow> => {
@@ -400,6 +369,7 @@ export function createSearchService(options: SearchServiceOptions): SearchServic
       limit: rankedDepth(context.window),
       ...(context.capabilities ? { capabilities: context.capabilities } : {}),
       bias: context.bias,
+      text: context.text,
       locale: context.locale,
     });
 
@@ -486,7 +456,7 @@ export function createSearchService(options: SearchServiceOptions): SearchServic
               ? [
                   mode,
                   provider.id,
-                  query.query.toLowerCase(),
+                  foldText(query.query),
                   String(rankedDepth(query)),
                   query.locale ?? '',
                   (query.categories ?? []).join(','),
@@ -506,6 +476,7 @@ export function createSearchService(options: SearchServiceOptions): SearchServic
       window: query,
       ...(query.capabilities ? { capabilities: query.capabilities } : {}),
       bias: spatialBiasFor(query),
+      text: query.query,
       locale: query.locale,
     });
   };

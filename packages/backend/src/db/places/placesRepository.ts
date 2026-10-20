@@ -85,6 +85,7 @@ import {
   placesSources,
 } from '../schema';
 import { distanceTo, withinBoundingBox, withinRadius } from './placeGeo';
+import { foldText, foldedSql } from './textFold';
 import {
   CAPABILITY_COLUMNS,
   CLAIM_COLUMNS,
@@ -838,6 +839,154 @@ export async function findPlacesInBounds(
   const view = nameViewOf(query);
   const children = await hydrate(db, rows, view);
   return rows.map((row) => toPlace(row, children.get(row.id) ?? NO_CHILDREN, view));
+}
+
+/** What {@link findPlacesByText} is asked. */
+export interface TextQuery extends PlaceListFilters {
+  /** What the user typed. Folded here; the caller passes it as typed. */
+  text: string;
+  /** Orders ties by distance and bounds the scan. Without it only text decides. */
+  center?: { latitude: number; longitude: number } | undefined;
+  /** How far from `center` a match may be. Required with `center`. */
+  radiusMeters?: number | undefined;
+  /**
+   * Taxonomy keys the typed text NAMES ("farmacia" → `health.pharmacy`).
+   * Places in them match even when their own name does not contain the text,
+   * below every name match. Needs `center`: without one it would be an
+   * arbitrary slice of a category.
+   */
+  categoryIntent?: readonly string[] | undefined;
+}
+
+/** A name match this strong or stronger beats a category-only match. */
+const CATEGORY_INTENT_SCORE = 0.55;
+/** How alike (0..1) a typed word and a name's closest word must be to count as a typo. */
+const TYPO_SIMILARITY = 0.5;
+/** Trigram similarity is only trusted from this many characters on. */
+const FUZZY_MIN_LENGTH = 4;
+/** Trigrams cannot answer fewer characters than this without a scan. */
+const TRIGRAM_MIN_LENGTH = 3;
+
+const escapeLike = (value: string): string => value.replace(/[\\%_]/g, (match) => `\\${match}`);
+
+/**
+ * GoWay places answering typed text, best match first.
+ *
+ * Matches the accent-folded name (and every name in `places_names`) by exact,
+ * prefix, word-start and substring, then by trigram similarity so a typo still
+ * finds the place. The predicate and the expression are the ones the
+ * `*_name_fold_trgm_idx` indexes are built on, so a name search is an index
+ * scan, not a pass over every place.
+ *
+ * Ordered by match quality, then by distance from `center`, then by id.
+ */
+export async function findPlacesByText(
+  db: DatabaseOrTransaction,
+  query: TextQuery,
+): Promise<Place[]> {
+  const folded = foldText(query.text);
+  if (folded === '') return [];
+  const center = query.center;
+  const intent = center ? (query.categoryIntent ?? []) : [];
+  const nameSearchable = folded.length >= TRIGRAM_MIN_LENGTH || center !== undefined;
+  if (!nameSearchable && intent.length === 0) return [];
+
+  const escaped = escapeLike(folded);
+  const fuzzy = folded.length >= FUZZY_MIN_LENGTH;
+  const nameScore = (name: SQL): SQL =>
+    sql`CASE WHEN ${name} = ${folded} THEN 1.0
+      WHEN ${name} LIKE ${`${escaped}%`} THEN 0.9
+      WHEN ${name} LIKE ${`% ${escaped}%`} THEN 0.8
+      WHEN ${name} LIKE ${`%${escaped}%`} THEN 0.6
+      ELSE ${fuzzy ? sql`word_similarity(${folded}, ${name}) * 0.5` : sql`0`} END`;
+  const nameMatch = (name: SQL): SQL =>
+    folded.length < TRIGRAM_MIN_LENGTH
+      ? sql`${name} LIKE ${`${escaped}%`}`
+      : fuzzy
+        ? sql`(${name} LIKE ${`%${escaped}%`} OR ${folded} <% ${name})`
+        : sql`${name} LIKE ${`%${escaped}%`}`;
+
+  const shared = [
+    ...(await listPredicates(db, query)),
+    ...(center && query.radiusMeters !== undefined
+      ? [withinRadius(center.longitude, center.latitude, query.radiusMeters)]
+      : []),
+  ];
+  const distance = center
+    ? sql<number>`${distanceTo(center.longitude, center.latitude)}`
+    : sql<number>`0`;
+  const pool = Math.max(query.limit * 3, 30);
+
+  type Hit = { id: string; score: number; distance: number };
+  const hits: Array<(connection: DatabaseOrTransaction) => PromiseLike<Hit[]>> = [];
+
+  if (nameSearchable) {
+    const placeName = foldedSql(sql`${places.nameNormalized}`);
+    hits.push((connection) =>
+      connection
+        .select({ id: places.id, score: sql<number>`${nameScore(placeName)}`, distance })
+        .from(places)
+        .where(and(...shared, nameMatch(placeName)))
+        .orderBy(sql`2 desc`, sql`3`, places.id)
+        .limit(pool),
+    );
+    const otherName = foldedSql(sql`${placesNames.nameNormalized}`);
+    hits.push((connection) =>
+      connection
+        .select({
+          id: places.id,
+          score: sql<number>`max(${nameScore(otherName)})`,
+          distance: sql<number>`min(${distance})`,
+        })
+        .from(placesNames)
+        .innerJoin(places, eq(places.id, placesNames.placeId))
+        .where(and(...shared, nameMatch(otherName)))
+        .groupBy(places.id)
+        .orderBy(sql`2 desc`, sql`3`, places.id)
+        .limit(pool),
+    );
+  }
+  if (intent.length > 0) {
+    const keys = (await categoryCatalog(db)).expand(intent);
+    hits.push((connection) =>
+      connection
+        .select({ id: places.id, score: sql<number>`${CATEGORY_INTENT_SCORE}::float8`, distance })
+        .from(places)
+        .where(and(...shared, arrayOverlaps(places.categories, keys)))
+        .orderBy(sql`3`, places.id)
+        .limit(pool),
+    );
+  }
+
+  const best = new Map<string, Hit>();
+  // The similarity bar `<%` applies is a session setting; `set_config(..., true)`
+  // scopes it to this transaction so no other query on the connection sees it.
+  const found = await db.transaction(async (connection) => {
+    await connection.execute(
+      sql`SELECT set_config('pg_trgm.word_similarity_threshold', ${String(TYPO_SIMILARITY)}, true)`,
+    );
+    return Promise.all(hits.map((hit) => hit(connection)));
+  });
+  for (const hit of found.flat()) {
+    const known = best.get(hit.id);
+    const score = Number(hit.score);
+    const away = Number(hit.distance);
+    if (!known || score > known.score) best.set(hit.id, { id: hit.id, score, distance: away });
+    else if (score === known.score && away < known.distance) known.distance = away;
+  }
+  const ids = [...best.values()]
+    .sort((a, b) => b.score - a.score || a.distance - b.distance || a.id.localeCompare(b.id))
+    .slice(0, query.limit)
+    .map((hit) => hit.id);
+  if (ids.length === 0) return [];
+
+  const rows = await db.select(PLACE_COLUMNS).from(places).where(inArray(places.id, ids));
+  const view = nameViewOf(query);
+  const children = await hydrate(db, rows, view);
+  const byId = new Map(
+    rows.map((row) => [row.id, toPlace(row, children.get(row.id) ?? NO_CHILDREN, view)]),
+  );
+  return ids.flatMap((id) => byId.get(id) ?? []);
 }
 
 // ── Authorization inputs ────────────────────────────────────────────────────

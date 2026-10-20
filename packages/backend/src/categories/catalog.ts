@@ -38,6 +38,7 @@ import {
   type ModerationCategoryPage,
 } from '@goway/contracts';
 import { loadCategories } from '../db/categories/categoryRepository';
+import { foldText } from '../db/places/textFold';
 import type { DatabaseOrTransaction } from '../db/postgres';
 import { ApiError } from '../http/apiError';
 
@@ -76,6 +77,12 @@ export interface CategoryCatalog extends OsmCategoryMapping {
   osmTagsUnder(keys: readonly string[]): string[];
   /** These keys and every key below them, once each — what a category filter matches. */
   expand(keys: readonly string[]): string[];
+  /**
+   * The active categories the typed text NAMES, in any label language:
+   * "farmacia", "Pharmacies" or "farmac" all name the pharmacy category.
+   * Empty when the text is just a name ("Starbucks") — the common case.
+   */
+  named(text: string): string[];
 }
 
 /** Index a loaded list. Exported for tests that build a catalog without a database. */
@@ -119,6 +126,23 @@ export function catalogOf(categories: readonly ModerationCategory[]): CategoryCa
       ...new Set(expand(keys).flatMap((key) => taxonomy.of(key)?.osmTags ?? [])),
     ],
     expand,
+    named: (text) => {
+      const typed = foldText(text);
+      if (typed.length < 3) return [];
+      // "cafes" and "cafe" name the same thing; one trailing "s" is not a word.
+      const singular = typed.length > 3 && typed.endsWith('s') ? typed.slice(0, -1) : typed;
+      return categories
+        .filter((category) => category.status === 'active')
+        .filter((category) =>
+          Object.values(category.labels).some((label) => {
+            const name = foldText(label);
+            return (
+              name === typed || name === singular || (typed.length >= 4 && name.startsWith(typed))
+            );
+          }),
+        )
+        .map((category) => category.key);
+    },
   };
 }
 

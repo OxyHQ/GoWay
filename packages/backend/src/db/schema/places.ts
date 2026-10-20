@@ -75,6 +75,7 @@
  */
 
 import { sql } from 'drizzle-orm';
+import { foldedSql } from '../places/textFold';
 import {
   boolean,
   check,
@@ -331,6 +332,16 @@ export const places = pgTable(
     index('places_status_idx').on(table.status),
     /** Duplicate-candidate detection reads this beside the spatial index. */
     index('places_name_normalized_idx').on(table.nameNormalized),
+    /**
+     * Search by name: prefix, substring and typo-tolerant matches over the
+     * accent-folded name (`db/places/textFold.ts`). The expression here and the
+     * one `findPlacesByText` queries are the same `foldedSql` call, which is
+     * what lets the planner use the index.
+     */
+    index('places_name_fold_trgm_idx').using(
+      'gin',
+      sql`${foldedSql(sql`${table.nameNormalized}`)} gin_trgm_ops`,
+    ),
     /** What a merge reads to re-point the places already merged into the one it absorbs. */
     index('places_merged_into_idx').on(table.mergedIntoPlaceId),
   ],
@@ -426,11 +437,15 @@ export const placesNames = pgTable(
     /**
      * Cross-language duplicate detection reads this, and a future free-text
      * search over GoWay's own names reads it for exact and prefix matches. A
-     * trigram index for fuzzy matching is the search issue's decision, not
-     * this one's — it needs `pg_trgm` in `REQUIRED_EXTENSIONS`, and an
-     * extension added speculatively is one nobody can remove.
+     * trigram index for fuzzy matching is `places_names_name_fold_trgm_idx`
+     * below, added with the search work that reads it.
      */
     index('places_names_name_normalized_idx').on(table.nameNormalized),
+    /** The same fold-and-trigram index as `places`, for names in other languages. */
+    index('places_names_name_fold_trgm_idx').using(
+      'gin',
+      sql`${foldedSql(sql`${table.nameNormalized}`)} gin_trgm_ops`,
+    ),
     check(
       'places_names_language_tag_check',
       sql`${table.language} ~ '${sql.raw(LANGUAGE_TAG_SQL_PATTERN)}'`,

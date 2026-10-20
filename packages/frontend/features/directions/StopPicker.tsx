@@ -223,7 +223,7 @@ function SearchResults({
   slotName: string;
   onPickResult: (result: SearchResult) => void;
 }) {
-  if (failure) return <FailureState kind={failure} what="search" />;
+  if (failure) return <FailureState kind={failure} subject="search" />;
   if (busy && results.length === 0) {
     return (
       <View className="flex-row items-center gap-space-8 px-space-16 py-space-16">

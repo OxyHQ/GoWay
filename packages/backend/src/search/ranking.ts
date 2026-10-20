@@ -25,6 +25,7 @@
  */
 
 import type { GeoBoundingBox, GeoCoordinate } from '@goway/contracts';
+import { foldText } from '../db/places/textFold';
 
 /**
  * Reciprocal-rank-fusion damping. 60 is the value from the original TREC work
@@ -34,7 +35,17 @@ import type { GeoBoundingBox, GeoCoordinate } from '@goway/contracts';
 const RRF_K = 60;
 
 /** How much a perfect proximity match may multiply a fused score. */
-const PROXIMITY_BIAS = 0.5;
+const PROXIMITY_BIAS = 0.8;
+
+/**
+ * How much a perfect text match may multiply a fused score.
+ *
+ * Large on purpose: position in a provider's list says little about how well a
+ * NAME matched what was typed, and a user who types "Café Central" expects the
+ * place called that above a nearer one that merely contains "central". Rank
+ * fusion still decides among equally good matches.
+ */
+const TEXT_BIAS = 3;
 
 /**
  * How much reconciling to a GoWay-owned place may multiply a fused score.
@@ -46,7 +57,7 @@ const PROXIMITY_BIAS = 0.5;
 const ENRICHMENT_BIAS = 0.2;
 
 /** The distance at which a `near` bias has decayed to 1/e of its strength. */
-const NEAR_DECAY_METERS = 2_000;
+const NEAR_DECAY_METERS = 8_000;
 
 /** Mean Earth radius (IUGG), metres. */
 const EARTH_RADIUS_METERS = 6_371_008.8;
@@ -109,11 +120,58 @@ export function spatialBiasFor(query: {
   return undefined;
 }
 
+const trigrams = (value: string): Set<string> => {
+  const padded = `  ${value} `;
+  const grams = new Set<string>();
+  for (let index = 0; index + 3 <= padded.length; index += 1)
+    grams.add(padded.slice(index, index + 3));
+  return grams;
+};
+
+/** Sørensen–Dice similarity of two strings' trigrams: 1 for equal, 0 for disjoint. */
+function trigramSimilarity(left: string, right: string): number {
+  const a = trigrams(left);
+  const b = trigrams(right);
+  let shared = 0;
+  for (const gram of a) if (b.has(gram)) shared += 1;
+  return (2 * shared) / (a.size + b.size);
+}
+
+/**
+ * How well the best of `names` answers the typed text, from 0 to 1.
+ *
+ * Exact beats prefix beats word-start beats substring beats a near miss, all
+ * on the accent- and case-folded text, so "cafe" is an exact match for "Café".
+ * The same ladder `findPlacesByText` scores GoWay's own rows with, so a place
+ * found by the database and one found by a geocoder are ranked alike.
+ */
+export function textRelevance(typed: string, names: readonly string[]): number {
+  const needle = foldText(typed);
+  if (needle === '') return 0;
+  let best = 0;
+  for (const name of names) {
+    const folded = foldText(name);
+    let score = 0;
+    if (folded === needle) score = 1;
+    else if (folded.startsWith(needle)) score = 0.9;
+    else if (folded.includes(` ${needle}`)) score = 0.8;
+    else if (folded.includes(needle)) score = 0.6;
+    else if (needle.length >= 4) {
+      const similarity = trigramSimilarity(needle, folded);
+      if (similarity >= 0.45) score = similarity * 0.5;
+    }
+    if (score > best) best = score;
+  }
+  return best;
+}
+
 /** A candidate's position in one provider's list, zero-based. */
 export interface FusionInput {
   ranks: readonly number[];
   coordinate: GeoCoordinate;
   enriched: boolean;
+  /** {@link textRelevance} of the candidate's names, when a text was typed. */
+  text?: number;
 }
 
 /** The blended score. Higher is better; comparable only within one response. */
@@ -123,5 +181,10 @@ export function fusedScore(input: FusionInput, bias: SpatialBias | undefined): n
     bias === undefined
       ? 0
       : Math.exp(-distanceMeters(bias.center, input.coordinate) / bias.decayMeters);
-  return base * (1 + PROXIMITY_BIAS * proximity) * (1 + (input.enriched ? ENRICHMENT_BIAS : 0));
+  return (
+    base *
+    (1 + PROXIMITY_BIAS * proximity) *
+    (1 + (input.enriched ? ENRICHMENT_BIAS : 0)) *
+    (1 + TEXT_BIAS * (input.text ?? 0))
+  );
 }
