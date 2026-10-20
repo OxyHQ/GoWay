@@ -8,6 +8,15 @@ Biome (root `biome.jsonc`) lints and formats every package: `bun run lint`, `bun
 
 An env variable is only what differs per deployment (secrets, origins, buckets, queues, ids). No feature on/off variable: shipped means on, infrastructure-backed means on when configured; tuning is a constant in code.
 
+## Where the rules live
+
+Rules sit beside the code and load when you work there; read the one for your area before changing it.
+
+- `packages/backend/AGENTS.md`: database, migrations, GoWay Live, Street 3D privacy and the worker.
+- `packages/backend/src/places/AGENTS.md`: Places, categories, capabilities, claims, revisions, search.
+- `packages/frontend/AGENTS.md`: map, 3D, imagery, camera, styles, features, Mercaria.
+- `packages/maps/AGENTS.md`: the map mark, data credit and logo.
+
 ## Oxy SDK (do not deviate)
 
 - ONE `OxyProvider` from `@oxy.so/services/ui/client` (not the root; web + native) with the registered `clientId` (`EXPO_PUBLIC_OXY_CLIENT_ID`); sign-in is the in-app `OxyAccountDialog`, never a redirect to an IdP.
@@ -15,16 +24,6 @@ An env variable is only what differs per deployment (secrets, origins, buckets, 
 - Theming is NativeWind via `BloomThemeProvider`; never hardcode brand colors and never restate a token `@oxy.so/bloom/design-tokens/theme.css` already defines.
 - Gate private API calls on `useAuth().canUsePrivateApi`; the root `Stack` alone swaps route groups.
 - Backend auth is `@oxy.so/core/server` only (`createOxyAuthMiddleware`, `createOxyCors`, `createOxyRateLimit`, `OxyServer#middleware.socket()`); no app-local auth, bearer parsing or CORS. Call your own API via `oxyServices.createLinkedClient({ baseURL })`.
-
-## Database (drizzle)
-
-- `src/db/schema/index.ts` is the single source of truth; a table missing there gets no migration and no typed query.
-- Never hand-write a migration: edit the schema, `bun run db:generate`, then add `-- oxy:deploy-phase=pre|post` to the `.sql`.
-- `bun run db:migrate --target-database=<name>` is the only way to apply one, dry runs included; never `drizzle-kit migrate`.
-- Declare columns camelCase; `DATABASE_CASING` names them in SQL. Never spell snake_case by hand or use `column.name`: use `sqlColumnName()` from `@oxy.so/db`.
-- `oxyUserId` carries no foreign key and there is no `users` table; Oxy owns identity.
-- Extensions go in `REQUIRED_EXTENSIONS` in `src/db/migrate.ts`, not in a migration — **PostGIS included**.
-- A phase is ONE transaction: never rewrite a big table in a migration (batch it first with an operator command that reads the migration's own SQL, like `places:convert-legacy`), put lock-taking DDL last, and add a CHECK to a big table `NOT VALID`.
 
 ## Packages
 
@@ -40,43 +39,10 @@ An env variable is only what differs per deployment (secrets, origins, buckets, 
 - API shape follows `~/Oxy/docs/api-conventions.md`: lists are `{ items, nextCursor }` with fingerprinted cursors (`http/cursor.ts`), errors use the contract's closed codes.
 - Never publish an internal Drizzle/PostGIS row shape as an SDK contract, and never let a Python worker implementation detail become one.
 - MapLibre, OpenFreeMap, Photon, Nominatim, Valhalla, COLMAP and gsplat are replaceable adapters behind GoWay interfaces. Feature code imports the GoWay abstraction, never the provider.
-- Mercaria is read through `packages/frontend/lib/mercaria` over `@mercaria.co/sdk`; feature code never imports the SDK, and GoWay stores none of Mercaria's data. A place's `commerce.mercaria.store` only decides whether to ask; render only what Mercaria returns.
-- Every map carries the GoWay mark bottom-left and the data credit bottom-right, drawn by `@goway.to/maps`'s `MapView` with no prop to disable — the embed included; the credit is OSMF-compact (`packages/maps/src/compactCredit.ts`).
-- 3D city tiles (`lib/map/cityTiles.ts`) are an internal format and an ODbL Derivative Database: draw only what OSM or a licence-reviewed official model records (storeys only from `building:levels`, roofs only from `roof:shape` or the model), credit a model while drawn, and publish the archive + receipt before serving them. Served per region by manifest (`map-service/src/city.js`); archive keys are dated, never overwritten. Notes: `docs/MAP_3D_CITY.md`, `docs/MAP_3D_SOURCES.md`, `docs/MAP_CITY_PLANET.md`.
 - A route is only ever a routing engine's answer: no fixture, fallback or client draws one, and no engine is an error state. `check:routing` proves every mode.
-- Imagery is only a source in `lib/map/imagerySources.ts` (licence allows hosting, re-serving, commercial display; never Google, Apple, Bing, Esri, Mapbox, Maxar, NC or scraped), served from GoWay's R2, credited while on screen. Note: `docs/MAP_SATELLITE.md`.
-- Every 3D vehicle and vessel drawn comes from the model library (`engine/vehicles/`, CC0 only); never a second model set. Note: `docs/MODEL_LIBRARY.md`.
-- Road rules: `resolveRoadAccess`, `decideAccess` only. Note: `docs/ROAD_RULES.md`.
-- City life is SIMULATED traffic: labelled whenever drawn, never read by routing, ETAs or any feature (`cityLifeIsolation.test.ts`). Note: `docs/MAP_CITY_LIFE.md`.
-- A basemap style is one `MAP_STYLES` entry (`lib/map/style/catalogue.ts`) and its recipe in `themes.ts`, drawn by the one layer list; never a hand-written style JSON or a second layer list. Note: `docs/MAP_STYLES.md`.
-- An optional map feature is one `MAP_FEATURES` entry (`lib/map/mapFeatures.ts`), labelled in `mapFeatureLabels.ts`, read via `useMapFeature`; never a build variable or `lib/config.ts` flag (unserved yet: `offer: 'development'`). Its choice stays on the device. Note: `docs/MAP_FEATURES.md`.
-- A map layer's budgets come from the `QualityProfile` (`lib/map/quality/profile.ts`) and it animates only through the map's animation clock; a new cost is a profile knob, never a budget of its own. Note: `docs/MAP_PERFORMANCE.md`.
-- The map's eye never enters a building or the ground: every camera change goes through `engine/camera/clearance.ts` (eye raised, centre and bearing kept); never a second camera rule. Note: `docs/MAP_CAMERA_CLEARANCE.md`.
-- The logo is geometry (`packages/maps/src/brand/artwork.ts`), drawn and never fetched; `public/brand/*` is generated from it and gated by `brand:check`. Its blue is ink (`--color-brand-goway`), never Bloom's `--primary`.
-- Every GoWay-enriched place gets a stable GoWay Place ID independent of provider IDs; deep links use it (`https://goway.to/place/<placeId>`). Preserve source provenance and never destructively overwrite a source fact.
-- The OpenStreetMap import writes only `openstreetmap`-sourced rows, never deletes a place, and changes a `places` column only while it still holds what that source last said.
-- The category taxonomy is data (`place_categories`, labels, OSM tags), edited via `/moderation/categories`; never put a copy in code. `places.categories` holds active keys (trigger-enforced), never an ancestor beside its child; keys are immutable. Note: `docs/PLACE_DATA.md`.
-- A place attribute is a registered key in `CAPABILITY_DEFINITIONS` (value kind, labels, group, OSM tags) over `places_capabilities`, never a new column or table; every write goes through its key's schema.
 - An in-code vocabulary label carries every `LABEL_LANGUAGES` language; read labels only via `localizedLabel`/`matchLanguageTag` with the whole locale, never `locale.startsWith`. Note: `docs/LABEL_TRANSLATIONS.md`.
-- `places.timezone` is derived from the position (`places/timezone.ts`), never taken from a caller; evaluate hours only with the contract's `openingStatusAt`.
-- Hours exceptions follow the capability authority rules: derived tier, rewrite at your own tier, claimant-only withdrawal.
-- `PATCH /places` is a merge patch: absent leaves a field (or address/contact part) alone, `null` clears; the import refills a cleared column only once OSM's value changes.
-- Approving a claim re-tiers only the claimant's own (or its filer's) community statements made since filing (`retierClaimantStatements`); never re-tier on a membership GoWay did not check with Oxy.
-- The import's owned columns are declared once in `import/osm/fields.ts`; `source_data` is `{v:2, tags, normalized}` with every raw tag, and OSM attributes are `external_source` capabilities tied to the element's source row.
-- `places.name` is the DEFAULT (local-language) name and never moves with a locale; every tagged name is a `places_names` row keyed `(place, language, source)`, resolved server-side and rendered via `placeDisplayName`. Design note: `docs/PLACE_NAMES.md`.
-- A business is an Oxy organization: a claim stores its `oxyAccountId` and Oxy decides who acts for it (`places/claimAuthority`, asked with the caller's bearer). Never keep a member list or brand id; fail closed with 503 when Oxy cannot answer. Design note: `docs/BUSINESS_OWNERSHIP.md`.
-- Every place write records exactly one `place_revisions` row through `recordRevision`, inside the write's transaction. The public history never names an account or person; classify a new action in `PLACE_REVISION_VISIBILITY`.
-- Claim decisions, `oxy_verified`, removal and merges are moderation acts behind `MODERATION_OPERATOR_OXY_USER_IDS` (matched on the person); no public route may produce them.
-- A place image is an Oxy file id: checked (owner, public, image) on the caller's bearer, referenced via `oxy/placeFiles` by GoWay's service token, not a session; no bytes kept. Design note: `docs/PLACE_MEDIA_REVIEWS.md`.
-- A review is by the person, never an org session or anyone with any role in an approved claimant; `place_review_aggregates` is recomputed in every review write, never incremented.
-- No revision holds an Oxy file id or a review's words.
 
 ## Privacy
 
 - The map opens without an account. Browsing, search and routing must work signed out; require Oxy auth only for identity-bound features (saves, edits, lists, contributions).
 - Location permission is requested only when the user invokes a location-dependent action, never to open the app. Precise coordinates are transient request data; do not persist them as history, and keep user location out of Places tables.
-- GoWay Live re-serves only feeds whose licence allows public, commercial redistribution (`live/catalogue.ts`), credits each while drawn, never persists a position and never stores or logs a viewport. Note: `docs/MAP_LIVE.md`.
-- A place photo is re-encoded on the device before upload (`features/explore/placePhoto.ts`), so its EXIF location is never published.
-- A capture's `motion` is gravity only (no position, heading or acceleration), sampled only while recording, kept no longer than its raw media and never published. Design note: `docs/STREET3D_MOTION_PRIORS.md`.
-- A licensed Street 3D import publishes only with a privacy attestation (served as `privacyBasis`) and claims no privacy pipeline version; it is never clustered, rebuilt or retracted. Note: `docs/STREET3D_PIPELINE.md`.
-- A capture's declared projection is a claim: the privacy worker verifies 360° media against its own metadata and 2:1 pixels and fails closed; panoramas are processed only as views, nadir masked. Design note: `docs/STREET3D_PIPELINE.md`.

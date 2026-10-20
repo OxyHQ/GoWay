@@ -61,10 +61,10 @@ import { fileURLToPath } from 'node:url';
 const KIB = 1024;
 
 /** The root file is loaded on every task in the repo. */
-export const ROOT_BUDGET_BYTES = 12 * KIB;
+export const ROOT_BUDGET_BYTES = 6 * KIB;
 
 /** A nested file carries only its own delta on top of the root and the parents. */
-export const NESTED_BUDGET_BYTES = 8 * KIB;
+export const NESTED_BUDGET_BYTES = 5 * KIB;
 
 /** A heading that names an issue. Body prose naming one is fine. */
 const ISSUE_HEADING = /^#{1,6} .*#\d{2,4}\b/;

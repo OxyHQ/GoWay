@@ -99,7 +99,7 @@ console.log('check-agents-md-size self-test\n');
   const { result } = await runAgainst({ 'AGENTS.md': `${'#'.repeat(20 * 1024)}\n` });
   report(
     'an over-budget root AGENTS.md fails, naming the budget',
-    result?.failures.length === 1 && /over its 12 KB budget/.test(result.failures[0]),
+    result?.failures.length === 1 && /over its 6 KB budget/.test(result.failures[0]),
     result ? result.failures.join('; ') : 'threw',
   );
 }
@@ -109,24 +109,24 @@ console.log('check-agents-md-size self-test\n');
   // that used the root budget everywhere would pass this.
   const { result } = await runAgainst({
     'AGENTS.md': withinBudget,
-    'packages/backend/AGENTS.md': `${'x'.repeat(10 * 1024)}\n`,
+    'packages/backend/AGENTS.md': `${'x'.repeat(Math.round(5.5 * 1024))}\n`,
   });
   report(
     'a nested AGENTS.md is held to the SMALLER budget',
     result?.failures.length === 1 &&
       /packages\/backend\/AGENTS\.md/.test(result.failures[0]) &&
-      /over its 8 KB budget/.test(result.failures[0]),
+      /over its 5 KB budget/.test(result.failures[0]),
     result ? result.failures.join('; ') : 'threw',
   );
 }
 
 {
   // Same bytes, root path: proves the previous case failed on the BUDGET rather
-  // than on the size alone. 10 KB sits strictly between the two budgets, which
+  // than on the size alone. 5.5 KB sits strictly between the two budgets, which
   // is what makes the pair a discriminator at all.
-  const { result } = await runAgainst({ 'AGENTS.md': `${'x'.repeat(10 * 1024)}\n` });
+  const { result } = await runAgainst({ 'AGENTS.md': `${'x'.repeat(Math.round(5.5 * 1024))}\n` });
   report(
-    'control: the same 10 KB passes at the ROOT path',
+    'control: the same 5.5 KB passes at the ROOT path',
     result?.failures.length === 0,
     result ? result.failures.join('; ') : 'threw',
   );
