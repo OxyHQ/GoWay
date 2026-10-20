@@ -145,6 +145,9 @@ export interface SearchOptions {
 /** The shortest query worth sending. One character matches half a city. */
 export const MIN_SEARCH_LENGTH = 2;
 
+/** How long a search box waits for typing to stop, so every box feels the same. */
+export const SEARCH_DEBOUNCE_MS = 250;
+
 /**
  * Free-text search across GoWay Places and the active geocoders.
  *

@@ -30,16 +30,13 @@ import { RiMap2Line } from '@oxy.so/bloom/icons/RiMap2Line';
 
 import type { GeoBoundingBox } from '@/components/map';
 import { classifyGoWayError, type GoWayFailureKind } from '@/lib/goway/errors';
-import { MIN_SEARCH_LENGTH, useSearch } from '@/lib/goway/queries';
+import { MIN_SEARCH_LENGTH, SEARCH_DEBOUNCE_MS, useSearch } from '@/lib/goway/queries';
 import type { LocationErrorReason } from '@goway.to/maps';
 import { distanceMeters } from '@goway.to/sdk/geo';
 import { useDebouncedValue } from '@/lib/useDebouncedValue';
 
 import { FailureState, LocationFailureState, NoResultsState } from '../explore/states';
 import { PlaceRow, SearchResultRow } from '../explore/ResultRows';
-
-/** Matches the map's own search box, so the two feel like one field. */
-const SEARCH_DEBOUNCE_MS = 250;
 
 /** How many nearby places to offer before anything is typed. */
 const NEARBY_LIMIT = 8;

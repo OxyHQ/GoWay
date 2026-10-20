@@ -50,6 +50,7 @@ import { classifyGoWayError, type GoWayFailureKind } from '@/lib/goway/errors';
 import { buildMarkers } from '@/lib/goway/markers';
 import {
   MIN_SEARCH_LENGTH,
+  SEARCH_DEBOUNCE_MS,
   useCategoryTaxonomy,
   usePlace,
   usePlacesInBounds,
@@ -78,9 +79,6 @@ export type ExploreSelection =
    * `place` selection in place.
    */
   | { kind: 'label'; label: MapLabelFeature };
-
-/** How long the search box waits for typing to stop. */
-const SEARCH_DEBOUNCE_MS = 250;
 
 /** Nothing reported yet. A stable identity, so it is not a new array per render. */
 const NO_LABELS: readonly MapLabelFeature[] = [];
