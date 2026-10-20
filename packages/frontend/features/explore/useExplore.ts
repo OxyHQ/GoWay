@@ -114,6 +114,9 @@ export interface ExploreController {
   searchStale: boolean;
   /** Enter: open the best result, or at least put the keyboard away. */
   submitSearch: () => void;
+  /** The result the arrow keys are on, or -1. Enter opens it. */
+  activeResultIndex: number;
+  moveActiveResult: (delta: 1 | -1) => void;
   retrySearch: () => void;
   /** Searches run lately on this device, newest first. */
   recentSearches: readonly string[];
@@ -257,12 +260,20 @@ export function useExplore(
   const placesQuery = usePlacesInBounds(committed?.bounds ?? null, { categories });
   const places = useMemo(() => placesQuery.data?.items ?? [], [placesQuery.data]);
 
+  /**
+   * Where the camera is looking when a search is typed, not where the user last
+   * pressed "Search this area": panning to another city and typing a name must
+   * find that city's places. Read once per keystroke (the debounce means it has
+   * landed before the request) and only stored when it moved.
+   */
+  const [lookingAt, setLookingAt] = useState<GeoBoundingBox | null>(null);
+
   const searchQuery = useSearch(debouncedQuery, {
     // `near` (the user's own position) outranks `viewport`; the SDK ignores the
     // second when the first is present, so passing both is harmless and lets
     // the bias improve the moment they press "My location".
     near: location.coordinate,
-    viewport: committed?.bounds ?? null,
+    viewport: lookingAt ?? committed?.bounds ?? null,
     categories,
   });
 
@@ -273,6 +284,23 @@ export function useExplore(
   const searchStale = searching && (typingAhead || searchQuery.isPlaceholderData);
   const recents = useRecentSearches();
   const results = useMemo(() => searchQuery.data?.items ?? [], [searchQuery.data]);
+
+  /**
+   * The row the arrow keys are on, by result id so a refreshed list does not
+   * leave it pointing at a stranger. `null` means none: Enter then opens the
+   * best match, as before.
+   */
+  const [activeResultId, setActiveResultId] = useState<string | null>(null);
+  const activeIndex = results.findIndex((result) => result.id === activeResultId);
+  const moveActiveResult = useCallback(
+    (delta: 1 | -1) => {
+      if (results.length === 0) return;
+      const from = results.findIndex((result) => result.id === activeResultId);
+      const next = from < 0 ? (delta === 1 ? 0 : results.length - 1) : from + delta;
+      setActiveResultId(results[(next + results.length) % results.length]?.id ?? null);
+    },
+    [activeResultId, results],
+  );
 
   const selectedPlaceId = selection?.kind === 'place' ? selection.placeId : null;
   const placeQuery = usePlace(
@@ -461,14 +489,14 @@ export function useExplore(
   );
 
   const submitSearch = useCallback(() => {
-    const best = searching && !searchStale ? results[0] : undefined;
+    const best = searching && !searchStale ? (results[activeIndex] ?? results[0]) : undefined;
     if (best) {
       selectResult(best);
       return;
     }
     Keyboard.dismiss();
     if (searching) recents.add(query);
-  }, [query, recents.add, results, searchStale, searching, selectResult]);
+  }, [activeIndex, query, recents.add, results, searchStale, searching, selectResult]);
 
   const clearSelection = useCallback(() => setSelection(null), []);
 
@@ -541,14 +569,24 @@ export function useExplore(
     if (held) setCommitted((current) => current ?? held);
   }, [opening, openingPlaceGone]);
 
-  const setQuery = useCallback((value: string) => {
-    setQueryState(value);
-    // Typing is a new question; the open place is the answer to the old one.
-    setSelection(null);
-  }, []);
+  const setQuery = useCallback(
+    (value: string) => {
+      setQueryState(value);
+      setActiveResultId(null);
+      if (value.trim().length >= MIN_SEARCH_LENGTH) {
+        void mapRef.current?.getBounds().then((bounds) => {
+          if (bounds) setLookingAt((current) => (sameBox(current, bounds) ? current : bounds));
+        });
+      }
+      // Typing is a new question; the open place is the answer to the old one.
+      setSelection(null);
+    },
+    [mapRef],
+  );
 
   const clearQuery = useCallback(() => {
     setQueryState('');
+    setActiveResultId(null);
     setSelection(null);
   }, []);
 
@@ -681,6 +719,13 @@ export function useExplore(
     [directions, places, results, searching, selectPlace, selectResult],
   );
 
+  // `refetch` is stable, so these are too: a memoised child that takes them
+  // does not re-render on every keystroke.
+  const refetchSearch = searchQuery.refetch;
+  const refetchPlaces = placesQuery.refetch;
+  const retrySearch = useCallback(() => void refetchSearch(), [refetchSearch]);
+  const retryPlaces = useCallback(() => void refetchPlaces(), [refetchPlaces]);
+
   return {
     mode,
 
@@ -690,7 +735,9 @@ export function useExplore(
     searchBusy: searchQuery.isFetching || (searching && typingAhead),
     searchStale,
     submitSearch,
-    retrySearch: () => void searchQuery.refetch(),
+    activeResultIndex: activeIndex,
+    moveActiveResult,
+    retrySearch,
     recentSearches: recents.recent,
     runRecentSearch: setQuery,
     clearRecentSearches: recents.clear,
@@ -706,7 +753,7 @@ export function useExplore(
     // yet" about an area nobody has looked at.
     placesBusy: committed == null || (placesQuery.isPending && placesQuery.fetchStatus !== 'idle'),
     placesFailure: failureOf(placesQuery.error),
-    retryPlaces: () => void placesQuery.refetch(),
+    retryPlaces,
     hiddenByZoom: built.hiddenByZoom,
 
     shortcutId,
@@ -754,6 +801,16 @@ function failureOf(error: unknown): GoWayFailureKind | null {
   if (!error) return null;
   const { kind } = classifyGoWayError(error);
   return kind === 'aborted' ? null : kind;
+}
+
+function sameBox(a: GeoBoundingBox | null, b: GeoBoundingBox): boolean {
+  return (
+    a != null &&
+    a.west === b.west &&
+    a.south === b.south &&
+    a.east === b.east &&
+    a.north === b.north
+  );
 }
 
 /** What fits in a marker pill. Longer than this and the pill is the map. */

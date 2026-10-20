@@ -66,6 +66,7 @@ export function ExploreHeader({ explore }: { explore: ExploreController }) {
         onChangeText={explore.setQuery}
         onClear={explore.clearQuery}
         onSubmit={explore.submitSearch}
+        onNavigate={explore.moveActiveResult}
         busy={explore.searchBusy}
         onBack={inSelection ? explore.clearSelection : undefined}
         backLabel={explore.query ? t('search.back.results') : t('search.back.nearby')}
@@ -219,11 +220,11 @@ function SearchBody({ explore }: { explore: ExploreController }) {
         style={{ opacity: explore.searchStale ? 0.55 : 1 }}
         pointerEvents={explore.searchStale ? 'none' : 'auto'}
       >
-        {explore.results.map((result) => (
+        {explore.results.map((result, index) => (
           <SearchResultRow
             key={result.id}
             result={result}
-            selected={false}
+            selected={index === explore.activeResultIndex}
             onPress={() => explore.selectResult(result)}
             testID={`result-row-${result.id}`}
           />

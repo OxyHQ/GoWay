@@ -20,6 +20,8 @@ export interface SearchFieldProps {
   onChangeText: (value: string) => void;
   onClear: () => void;
   onSubmit?: () => void;
+  /** ArrowDown / ArrowUp, for moving through the results without leaving the field. */
+  onNavigate?: (delta: 1 | -1) => void;
   /** Shows a spinner while a query is in flight. */
   busy?: boolean;
   /** Renders a back button before the field. Present once something is open. */
@@ -32,7 +34,18 @@ export interface SearchFieldProps {
 export const SearchField: ForwardRefExoticComponent<
   SearchFieldProps & RefAttributes<TextInputInstance>
 > = forwardRef<TextInputInstance, SearchFieldProps>(function SearchField(
-  { value, onChangeText, onClear, onSubmit, busy = false, onBack, backLabel, placeholder, testID },
+  {
+    value,
+    onChangeText,
+    onClear,
+    onSubmit,
+    onNavigate,
+    busy = false,
+    onBack,
+    backLabel,
+    placeholder,
+    testID,
+  },
   ref,
 ) {
   const { t } = useTranslation();
@@ -57,7 +70,12 @@ export const SearchField: ForwardRefExoticComponent<
           onSubmitEditing={onSubmit}
           // Escape is the web's way out of a search: first clear it, then leave the field.
           onKeyPress={(event) => {
-            if (event.nativeEvent.key !== 'Escape') return;
+            const { key } = event.nativeEvent;
+            if (key === 'ArrowDown' || key === 'ArrowUp') {
+              onNavigate?.(key === 'ArrowDown' ? 1 : -1);
+              return;
+            }
+            if (key !== 'Escape') return;
             if (value.length > 0) onClear();
             else (event.target as { blur?: () => void } | null)?.blur?.();
           }}
