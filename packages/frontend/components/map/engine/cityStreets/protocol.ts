@@ -21,7 +21,6 @@ export type StreetWorkerRequest =
       /** Absolute glyph template of the map's style (`{fontstack}`, `{range}`), or `null`: no words. */
       glyphs: string | null;
       fontstack: string;
-      /** Squares a side of the terrain mesh on the tile, to cut the meshes to (`groundLattice.ts`). */
       groundMeshCells: number;
     }
   | { type: 'cancel'; id: number };

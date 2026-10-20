@@ -22,6 +22,15 @@
 import { closeSync, openSync } from 'node:fs';
 
 import {
+  accessLevel,
+  accessOverrides,
+  allowsMotorTraffic,
+  defaultRoadAccess,
+  formatAccessOverrides,
+  resolveRoadAccess,
+} from '@goway.to/sdk/road-access';
+
+import {
   CITY_RESTRICTION_LAYER,
   CITY_ROAD_LAYER,
   CITY_ROAD_NODE_LAYER,
@@ -33,6 +42,7 @@ import {
 import { CITY_TILE_EXTENT } from '../../lib/map/cityTiles';
 import { collectGarbage, rssMb } from './memory';
 import { type EncodedFeature, type EncodedLayer, encodeLines, encodePoint } from './mvtEncode';
+import { type ParkAreas, scanParkAreas } from './parkAreas';
 import { type BlobRef, MEMBER_NODE, MEMBER_WAY, readBlob, readBlock, scanBlobs } from './osmPbf';
 import {
   type Refusals,
@@ -53,6 +63,16 @@ const KEPT_WAY_KEYS = new Set([
   'motor_vehicle',
   'motorcar',
   'foot',
+  'bus',
+  'psv',
+  'taxi',
+  'goods',
+  'delivery',
+  'hgv',
+  'motorcycle',
+  'moped',
+  'bicycle',
+  'emergency',
   'service',
   'oneway',
   'junction',
@@ -74,24 +94,6 @@ const KEPT_WAY_KEYS = new Set([
 
 const CLASSES = new Set<string>(ROAD_CLASSES);
 
-const CAR_CLASSES = new Set<string>([
-  'motorway',
-  'motorway_link',
-  'trunk',
-  'trunk_link',
-  'primary',
-  'primary_link',
-  'secondary',
-  'secondary_link',
-  'tertiary',
-  'tertiary_link',
-  'unclassified',
-  'residential',
-  'living_street',
-  'service',
-  'road',
-]);
-
 const FOOT_CLASSES = new Set<string>([
   'pedestrian',
   'footway',
@@ -101,17 +103,15 @@ const FOOT_CLASSES = new Set<string>([
   'track',
 ]);
 
-/** `service=*` values that are not through roads a simulated car should use. */
-const PRIVATE_SERVICE = new Set(['parking_aisle', 'driveway', 'drive-through', 'emergency_access']);
-
-const NO = new Set(['no', 'private', 'false']);
-const YES = new Set(['yes', 'designated', 'permissive', 'destination', 'true', '1']);
-
 /** The properties a `road` feature carries; absent = OSM does not record it. */
 export type RoadProperties = StreetProperties & {
   highway: RoadClass;
   car: boolean;
   foot: boolean;
+  /** Per-user access that differs from the class default (`formatAccessOverrides`). */
+  access?: string;
+  /** A service road inside a park-like area (`parkAreas.ts`); set per piece, not per way. */
+  park?: boolean;
   cycle?: boolean;
   oneway?: 1 | -1;
   lanes?: number;
@@ -174,26 +174,26 @@ export function roadProperties(tags: Tags): RoadProperties | null {
   if (!highway || !CLASSES.has(highway)) return null;
   if (tags.area === 'yes' || tags.indoor === 'yes') return null;
 
-  const access = tags.access;
-  const motor = tags.motorcar ?? tags.motor_vehicle ?? tags.vehicle;
-  let car = CAR_CLASSES.has(highway);
-  if (car && access !== undefined && NO.has(access) && !(motor && YES.has(motor))) car = false;
-  if (car && motor !== undefined && NO.has(motor)) car = false;
-  if (car && highway === 'service' && PRIVATE_SERVICE.has(tags.service ?? '')) car = false;
-
-  let foot = FOOT_CLASSES.has(highway) || (highway === 'cycleway' && YES.has(tags.foot ?? ''));
-  if (foot && tags.foot !== undefined && NO.has(tags.foot)) foot = false;
-  if (foot && access === 'no' && !(tags.foot && YES.has(tags.foot))) foot = false;
+  const access = resolveRoadAccess(highway, tags);
+  // The class decides whether a car's road is ever possible (a footway tagged
+  // `motor_vehicle=yes` is still a footway); the tags decide who is let on it.
+  const car =
+    accessLevel(defaultRoadAccess(highway).car) !== 'none' && accessLevel(access.car) !== 'none';
+  const foot =
+    (FOOT_CLASSES.has(highway) || highway === 'cycleway') && accessLevel(access.foot) !== 'none';
   // A separate cycle track is kept for the street detail even where it is
-  // neither a car's nor a person's (`ROAD_PROPS.cycle`).
+  // neither a car's nor a person's (`ROAD_PROPS.cycle`); a road only buses or
+  // taxis may use is kept for them.
   const cycle = highway === 'cycleway';
-  if (!car && !foot && !cycle) return null;
+  if (!car && !foot && !cycle && !allowsMotorTraffic(access)) return null;
 
   const props: RoadProperties = { highway: highway as RoadClass, car, foot };
+  const overrides = formatAccessOverrides(accessOverrides(highway, access));
+  if (overrides !== undefined) props.access = overrides;
   if (cycle) props.cycle = true;
   const roundabout = tags.junction === 'roundabout' || tags.junction === 'circular';
   if (roundabout) props.roundabout = true;
-  if (car) {
+  if (car || allowsMotorTraffic(access)) {
     const oneway = tags.oneway;
     if (oneway === '-1' || oneway === 'reverse') props.oneway = -1;
     else if (oneway === 'yes' || oneway === 'true' || oneway === '1') props.oneway = 1;
@@ -279,6 +279,8 @@ export interface RoadCoverage {
   restrictions: number;
   restrictionsSkipped: number;
   missingNodes: number;
+  /** Service road pieces flagged as inside a park-like area. */
+  parkPieces: number;
   /** Street detail (`streetTags.ts`): car ways recording each, and values refused by key. */
   street: {
     named: number;
@@ -312,6 +314,8 @@ export interface RoadCompileOptions {
   bbox?: [number, number, number, number];
   /** Keep only the tiles this returns true for: a region's owned tiles (`ownership.ts`). */
   keepTile?: (x: number, y: number) => boolean;
+  /** Park-like areas, when the caller already has them; otherwise scanned from `pbf`. */
+  parkAreas?: ParkAreas;
   log?: (line: string) => void;
 }
 
@@ -550,6 +554,10 @@ export function compileRoads(options: RoadCompileOptions): RoadCompileResult {
   collectGarbage();
   lap('nodes');
 
+  // ── Park areas: which service roads run through a park ──────────────────
+  const parks = options.parkAreas ?? scanParkAreas(options.pbf, log);
+  lap('parks');
+
   // ── Split, tile, encode ─────────────────────────────────────────────────
   const span = 2 ** options.zoom;
   const unit = span * CITY_TILE_EXTENT;
@@ -595,6 +603,7 @@ export function compileRoads(options: RoadCompileOptions): RoadCompileResult {
     restrictions: 0,
     restrictionsSkipped,
     missingNodes: 0,
+    parkPieces: 0,
     street: {
       named: 0,
       width: 0,
@@ -633,7 +642,19 @@ export function compileRoads(options: RoadCompileOptions): RoadCompileResult {
           const oy = piece.ty * CITY_TILE_EXTENT;
           const geometry = encodeLines([piece.points.map(([x, y]) => [x - ox, y - oy] as const)]);
           if (geometry.length === 0) continue;
-          tileFor(piece.tx, piece.ty).roads.push({ id, type: 2, geometry, properties });
+          // Only a service road: a park polygon mapped over the street beside it
+          // must not quiet a real street. Decided per piece, so a lane that
+          // leaves the park is not flagged beyond it.
+          const inPark =
+            props.highway === 'service' &&
+            parks.contains((p[0] + q[0]) / 2 / unit, (p[1] + q[1]) / 2 / unit);
+          if (inPark) coverage.parkPieces++;
+          tileFor(piece.tx, piece.ty).roads.push({
+            id,
+            type: 2,
+            geometry,
+            properties: inPark ? { ...properties, park: true } : properties,
+          });
           coverage.pieces++;
           anyPiece = true;
         }

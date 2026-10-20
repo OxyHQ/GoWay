@@ -112,6 +112,7 @@ import type { CityLifeStats } from './engine/cityLife/lifeRenderer';
 import type { CityStreetsStats } from './engine/cityStreets/streetRenderer';
 import { type CityLifeLabel, cityLifeReporter } from './cityLifeLabel';
 import { type StreetNameBlockers, mountStreetNameBlockers } from './streetNameBlockers.web';
+import { mountStreetOwnership } from './streetOwnership.web';
 import type { AnimationClock } from './perf/animationClock';
 import { reportMapDefect } from './shared';
 
@@ -540,9 +541,8 @@ export async function attachCity3d(
     reportMapDefect('city3d:source', 'city3d: the style has no tiled vector source; not attached.');
     return null;
   }
-  const { coverageCovers, createCityEngine, createCityLife, createCityStreets } = await import(
-    '@/components/engine3d/lazyChunk'
-  );
+  const { coverageCovers, createCityEngine, createCityLife, createCityStreets, StreetSurface } =
+    await import('@/components/engine3d/lazyChunk');
   // City tiles replace the BUILDINGS' source; a models-only engine (the city
   // flag off) draws no buildings, so it never asks.
   const cityTiles = buildings && options.cityTiles === true;
@@ -709,6 +709,9 @@ export async function attachCity3d(
   let nameBlockers: StreetNameBlockers | null = null;
   let pendingNames: readonly (readonly [number, number])[] | null = null;
   let namesTimer: ReturnType<typeof setTimeout> | null = null;
+  let streetOwnership: ReturnType<typeof mountStreetOwnership> | null = null;
+  let coverageTimer: ReturnType<typeof setTimeout> | null = null;
+  let pendingCoverage: { x: number; y: number }[] = [];
 
   // The light as MapLibre would apply it to `building-3d` this frame: the
   // given spec (or the style's own), at the current bearing — which matters
@@ -729,16 +732,31 @@ export async function attachCity3d(
     life.end();
     nameBlockers?.remove();
     nameBlockers = null;
+    if (coverageTimer) clearTimeout(coverageTimer);
+    streetOwnership?.remove();
+    streetOwnership = null;
   };
   const ensureEngine = (host: MapLibreMap, gl: WebGLRenderingContext | WebGL2RenderingContext) => {
     liveLayers++;
     if (engine) return engine;
     applied = currentLight();
     const overlays: CityOverlay[] = [];
+    const streetSurface = new StreetSurface();
     if (streets && roadsPublished) {
       // First, so the streets are in the scene under everything else.
       overlays.push(
         createCityStreets({
+          surface: streetSurface,
+          onCoverage: (tiles) => {
+            pendingCoverage = tiles;
+            if (coverageTimer) return;
+            coverageTimer = setTimeout(() => {
+              coverageTimer = null;
+              if (detached) return;
+              streetOwnership ??= mountStreetOwnership(host);
+              streetOwnership.set(pendingCoverage);
+            }, 0);
+          },
           roadTileTemplate: `${origin}${CITY_ROAD_TILE_PATH}`,
           roadCoverage,
           glyphTemplate: absoluteGlyphs(host.getStyle()?.glyphs, origin),
@@ -768,6 +786,7 @@ export async function attachCity3d(
       // Labelled for exactly as long as anything simulated is drawn.
       overlays.push(
         createCityLife({
+          surface: streets && roadsPublished ? streetSurface : undefined,
           roadTileTemplate: `${origin}${CITY_ROAD_TILE_PATH}`,
           roadCoverage,
           // Worldwide: where no road archive tile exists, the basemap's own roads.
@@ -1111,6 +1130,9 @@ export async function attachCity3d(
       life.end();
       nameBlockers?.remove();
       nameBlockers = null;
+      if (coverageTimer) clearTimeout(coverageTimer);
+      streetOwnership?.remove();
+      streetOwnership = null;
       if (drawnLandmarks.size > 0) options.onLandmarkCredits?.([]);
       landmarkModule?.offerLandmarks([]);
     },

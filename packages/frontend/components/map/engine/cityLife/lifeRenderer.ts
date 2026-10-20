@@ -34,7 +34,9 @@ import * as THREE from 'three';
 import type { AnimationClock } from '../../perf/animationClock';
 import type { CityLight } from '../city3d/occlusion';
 import type { CityOverlay, CityOverlayFrame } from '../city3d/overlay';
-import { type Ground, gridAt } from '../city3d/terrainGround';
+import type { Ground } from '../city3d/terrainGround';
+import type { StreetSurface } from '../cityStreets/streetSurface';
+import { groundPose } from './groundPose';
 import { metresPerPixel } from '../city3d/lod';
 import {
   centeredProjection,
@@ -74,6 +76,7 @@ export const CITY_LIFE_MIN_ZOOM = 15.5;
 const STEP_S = 0.05;
 
 export interface CityLifeOptions {
+  surface?: StreetSurface;
   /** Absolute `{z}/{x}/{y}` template of the road tiles. */
   roadTileTemplate: string;
   /**
@@ -149,6 +152,10 @@ interface Batch {
   curr: THREE.InstancedBufferAttribute;
   style: THREE.InstancedBufferAttribute;
   ground: THREE.InstancedBufferAttribute;
+  prevGround: THREE.InstancedBufferAttribute;
+  person: boolean;
+  maxLength: number;
+  width: number;
 }
 
 export function createCityLife(options: CityLifeOptions): CityOverlay {
@@ -201,8 +208,10 @@ export function createCityLife(options: CityLifeOptions): CityOverlay {
     const prev = empty();
     const curr = empty();
     const style = new THREE.InstancedBufferAttribute(new Uint8Array(4), 4, true);
-    const ground = new THREE.InstancedBufferAttribute(new Float32Array(1), 1);
-    for (const attribute of [prev, curr, style, ground]) attribute.setUsage(THREE.DynamicDrawUsage);
+    const ground = new THREE.InstancedBufferAttribute(new Float32Array(4), 4);
+    const prevGround = new THREE.InstancedBufferAttribute(new Float32Array(4), 4);
+    for (const attribute of [prev, curr, style, ground, prevGround])
+      attribute.setUsage(THREE.DynamicDrawUsage);
     const nearSize = isPerson ? 2.6 : length;
     const lifeModel: LifeModel = {
       person: isPerson,
@@ -227,6 +236,7 @@ export function createCityLife(options: CityLifeOptions): CityOverlay {
       geometry.setAttribute('aCurr', curr);
       geometry.setAttribute('aStyle', style);
       geometry.setAttribute('aGround', ground);
+      geometry.setAttribute('aPrevGround', prevGround);
       geometry.instanceCount = 0;
       const mesh = new THREE.Mesh(geometry, material);
       // The engine writes the group's matrix; instances move in the shader,
@@ -248,7 +258,20 @@ export function createCityLife(options: CityLifeOptions): CityOverlay {
     // The contact shadow, after the opaque city (three draws transparent
     // last), depth-tested so a building in front hides it.
     add(shadowQuad(), lifeShadowMaterial(frame, lifeModel), -1);
-    return { geometries, meshes, materials, nearSize, prev, curr, style, ground };
+    return {
+      geometries,
+      meshes,
+      materials,
+      nearSize,
+      prev,
+      curr,
+      style,
+      ground,
+      prevGround,
+      person: isPerson,
+      maxLength: model.maxLength,
+      width,
+    };
   };
 
   // People are city life's own (`people.ts`); vehicles come from the library.
@@ -413,52 +436,64 @@ export function createCityLife(options: CityLifeOptions): CityOverlay {
     ticket.setAnimating(next);
   };
 
-  // ── Terrain: each agent stands on the ground the buildings and trees do ──
-  //
-  // The engine's ONE ground (`terrainGround.ts` → `Ground`): the grids the
-  // buildings and trees stand on — the same cache, so a z15 city tile's grid is
-  // sampled once for both — read bilinearly, so an agent agrees with the kerb
-  // beside it.
+  // Contact comes from the drawn street mesh. Outside detailed coverage it
+  // uses the rendered terrain directly, never the buildings' coarse grid.
   let ground: Ground | null = null;
-  /** Grids not yet sampled that one upload may sample; the rest read the raw sampler meanwhile. */
-  const GRIDS_PER_UPLOAD = 4;
-  let gridBudget = 0;
-  const groundAt = (
+  let surfaceVersion = -1;
+  const groundFor = (
+    batch: Batch,
     origin: { x: number; y: number },
-    tileM: number,
-    x: number,
-    y: number,
-  ): number => {
-    if (!ground) return 0;
-    const fx = origin.x + x / tileM;
-    const fy = origin.y - y / tileM;
-    const tile = { z: 15, x: Math.floor(fx), y: Math.floor(fy) };
-    if (ground.hasGrid(tile) || gridBudget-- > 0) {
-      return gridAt(ground.grid(tile), fx - tile.x, fy - tile.y);
-    }
-    const n = 2 ** 15;
-    const value = ground.sample((fx / n) * 360 - 180, latFromMercatorY(fy / n));
-    return Number.isFinite(value) ? value : 0;
-  };
-  const groundFor = (batch: Batch, curr: Float32Array, origin: { x: number; y: number }) => {
-    const count = curr.length / 4;
-    let values = batch.ground.array as Float32Array;
-    if (values.length !== count) {
-      values = new Float32Array(count);
-      batch.ground = new THREE.InstancedBufferAttribute(values, 1);
-      batch.ground.setUsage(THREE.DynamicDrawUsage);
-      for (const geometry of batch.geometries) geometry.setAttribute('aGround', batch.ground);
-    }
-    if (!ground) {
-      if (values[0] !== 0 || values[count - 1] !== 0) values.fill(0);
-    } else {
-      // Metres per z15 tile at the origin: once per batch, not per agent.
-      const tileM = 4096 * simFrame(origin.x, origin.y).metresPerUnit;
-      for (let i = 0; i < count; i++) {
-        values[i] = curr[i * 4 + 3] > 0 ? groundAt(origin, tileM, curr[i * 4], curr[i * 4 + 1]) : 0;
+    previousBridges: Uint8Array,
+    currentBridges: Uint8Array,
+    from = 0,
+  ) => {
+    const tileM = 4096 * simFrame(origin.x, origin.y).metresPerUnit;
+    let bridge = false;
+    const sample = (x: number, y: number) => {
+      const lng = ((origin.x + x / tileM) / 2 ** 15) * 360 - 180;
+      const lat = latFromMercatorY((origin.y - y / tileM) / 2 ** 15);
+      const contact = options.surface?.sample(lng, lat, bridge);
+      if (bridge && options.surface && contact == null) return null;
+      const height = contact ?? ground?.sample(lng, lat) ?? 0;
+      return Number.isFinite(height) ? height : 0;
+    };
+    for (const [name, positions, attribute] of [
+      ['aGround', batch.curr.array, 'ground'],
+      ['aPrevGround', batch.prev.array, 'prevGround'],
+    ] as const) {
+      const count = positions.length / 4;
+      if (batch[attribute].array.length !== count * 4) {
+        batch[attribute] = new THREE.InstancedBufferAttribute(new Float32Array(count * 4), 4);
+        batch[attribute].setUsage(THREE.DynamicDrawUsage);
+        for (const geometry of batch.geometries) geometry.setAttribute(name, batch[attribute]);
       }
+      const values = batch[attribute].array as Float32Array;
+      for (let i = 0; i < count; i++) {
+        if (positions[i * 4 + 3] <= 0) {
+          values.fill(0, i * 4, i * 4 + 4);
+          continue;
+        }
+        bridge = Boolean((attribute === 'ground' ? currentBridges : previousBridges)[from + i]);
+        const x = positions[i * 4],
+          y = positions[i * 4 + 1];
+        const length = (batch.style.array[i * 4 + 3] / 255) * batch.maxLength;
+        const pointHeight = batch.person ? sample(x, y) : null;
+        const pose = batch.person
+          ? pointHeight === null
+            ? null
+            : [pointHeight, 0, 0]
+          : groundPose(
+              sample,
+              x,
+              y,
+              positions[i * 4 + 2],
+              Math.max(0.5, length * 0.4),
+              batch.width * 0.4,
+            );
+        values.set(pose ? [...pose, 1] : [0, 0, 0, 0], i * 4);
+      }
+      batch[attribute].needsUpdate = true;
     }
-    batch.ground.needsUpdate = true;
   };
 
   const upload = (
@@ -554,18 +589,23 @@ export function createCityLife(options: CityLifeOptions): CityOverlay {
           options.onLabel({ simulated, live });
         }
       }
-      if (!uploaded || uploaded.a !== a || uploaded.b !== b) {
+      if (
+        !uploaded ||
+        uploaded.a !== a ||
+        uploaded.b !== b ||
+        surfaceVersion !== (options.surface?.version ?? -1)
+      ) {
+        surfaceVersion = options.surface?.version ?? -1;
         uploaded = { a, b };
         // The DEM sharpens as its tiles load: re-sample now and then.
         // New terrain arrives through `setGround`, which drops the grids.
-        gridBudget = GRIDS_PER_UPLOAD;
         for (const model of CAR_MODELS) {
           const [from, to] = b.ranges[model];
           upload(carBatches[model], a.cars, b.cars, b.carStyle, from, to);
-          groundFor(carBatches[model], b.cars.subarray(from * 4, to * 4), b.origin);
+          groundFor(carBatches[model], b.origin, a.carBridges, b.carBridges, from);
         }
         upload(peopleBatch, a.people, b.people, b.peopleStyle, 0, b.people.length / 4);
-        groundFor(peopleBatch, b.people, b.origin);
+        groundFor(peopleBatch, b.origin, a.peopleBridges, b.peopleBridges);
       }
       const span = b.time - a.time;
       shared.uAlpha.value = span > 0 ? Math.max(0, Math.min(1, (renderTime - a.time) / span)) : 1;

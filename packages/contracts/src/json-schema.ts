@@ -112,6 +112,7 @@ import {
   liveSubscriptionStateSchema,
 } from './live';
 import { liveShapeSchema, liveSourcePageSchema, liveSourceSchema } from './live-source';
+import { nearbyTransitSchema } from './transit';
 import {
   roadAccessDecisionSchema,
   roadAccessInputSchema,
@@ -121,6 +122,19 @@ import {
   roadZonePageSchema,
   roadZoneSchema,
 } from './road-rules';
+import {
+  savedDefaultListInputSchema,
+  savedListInputSchema,
+  savedListItemInputSchema,
+  savedListItemOrderInputSchema,
+  savedListItemPageSchema,
+  savedListItemSchema,
+  savedListItemUpdateInputSchema,
+  savedListPageSchema,
+  savedListSchema,
+  savedListUpdateInputSchema,
+  savedPlacesSchema,
+} from './saved-list';
 import { searchResultSchema, searchResultsSchema } from './search';
 import {
   streetCoverageSchema,
@@ -180,6 +194,17 @@ export const CONTRACT_SCHEMA_NAMES = [
   'PlaceReviewWithStatusPage',
   'PlaceReviewInput',
   'PlaceReviewReplyInput',
+  'SavedList',
+  'SavedListPage',
+  'SavedListItem',
+  'SavedListItemPage',
+  'SavedPlaces',
+  'SavedListInput',
+  'SavedDefaultListInput',
+  'SavedListUpdateInput',
+  'SavedListItemInput',
+  'SavedListItemUpdateInput',
+  'SavedListItemOrderInput',
   'ContentReportInput',
   'ModerationPlaceMedia',
   'ModerationPlaceMediaPage',
@@ -234,6 +259,7 @@ export const CONTRACT_SCHEMA_NAMES = [
   'RoadRules',
   'RoadAccessInput',
   'RoadAccessDecision',
+  'NearbyTransit',
 ] as const;
 
 export type ContractSchemaName = (typeof CONTRACT_SCHEMA_NAMES)[number];
@@ -288,6 +314,17 @@ export const CONTRACT_SCHEMAS: Readonly<Record<ContractSchemaName, ContractSchem
   PlaceReviewWithStatusPage: response(placeReviewWithStatusPageSchema),
   PlaceReviewInput: request(placeReviewInputSchema),
   PlaceReviewReplyInput: request(placeReviewReplyInputSchema),
+  SavedList: response(savedListSchema),
+  SavedListPage: response(savedListPageSchema),
+  SavedListItem: response(savedListItemSchema),
+  SavedListItemPage: response(savedListItemPageSchema),
+  SavedPlaces: response(savedPlacesSchema),
+  SavedListInput: request(savedListInputSchema),
+  SavedDefaultListInput: request(savedDefaultListInputSchema),
+  SavedListUpdateInput: request(savedListUpdateInputSchema),
+  SavedListItemInput: request(savedListItemInputSchema),
+  SavedListItemUpdateInput: request(savedListItemUpdateInputSchema),
+  SavedListItemOrderInput: request(savedListItemOrderInputSchema),
   ContentReportInput: request(contentReportInputSchema),
   ModerationPlaceMedia: response(moderationPlaceMediaSchema),
   ModerationPlaceMediaPage: response(moderationPlaceMediaPageSchema),
@@ -344,6 +381,7 @@ export const CONTRACT_SCHEMAS: Readonly<Record<ContractSchemaName, ContractSchem
   RoadRules: response(roadRulesSchema),
   RoadAccessInput: request(roadAccessInputSchema),
   RoadAccessDecision: response(roadAccessDecisionSchema),
+  NearbyTransit: response(nearbyTransitSchema),
 };
 
 /** JSON Schema draft 2020-12 — the dialect OpenAPI 3.1 speaks. */

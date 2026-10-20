@@ -149,10 +149,10 @@ async function mesh(request: Extract<StreetWorkerRequest, { type: 'mesh' }>): Pr
     const lat = latFromMercatorY((y + 0.5) / n);
     const result = meshStreetTile({
       tile: { x, y },
+      groundMeshCells: request.groundMeshCells,
       tiles: around,
       rules: paintRulesAt(lng, lat, drivingSideAt(lng, lat)),
       atlas,
-      groundMeshCells: request.groundMeshCells,
     });
     const meshMs = performance.now() - started;
     const patches = atlas.takePatches();

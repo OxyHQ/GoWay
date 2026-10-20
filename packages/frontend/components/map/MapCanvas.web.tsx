@@ -50,7 +50,6 @@ import type {
   StyleSpecification,
 } from 'maplibre-gl';
 import 'maplibre-gl/dist/maplibre-gl.css';
-import * as Location from 'expo-location';
 import { useTheme } from '@oxy.so/bloom/theme';
 import { parseModelPlacement, type ModelPlacement } from '@goway.to/sdk';
 
@@ -95,6 +94,10 @@ import {
 } from './labels';
 import { MapAttribution, type MapCreditDisclosure } from './MapAttribution';
 import { MapBrand } from './MapBrand';
+import { MapScale } from './MapScale';
+import { useUserFix } from '@/lib/map/useUserFix';
+import { useMapCameraFeed } from './cameraFeed';
+import { UserPuck } from './UserPuck';
 import { MapErrorState } from './MapErrorState';
 import { initialMapRelief, useMapRelief } from './reliefFlags';
 import type { ReliefHandle } from './reliefLayer.web';
@@ -223,6 +226,7 @@ export const MapCanvas = forwardRef<MapApi, MapCanvasProps>(function MapCanvas(
     onTimeOfDayClose,
     onSkyActiveChange,
     showUserLocation = false,
+    onUserFix,
     interaction,
     onViewportChange,
     onPress,
@@ -349,11 +353,13 @@ export const MapCanvas = forwardRef<MapApi, MapCanvasProps>(function MapCanvas(
   );
   const settleSunLight = sunLight.settle;
 
+  const cameraFeed = useMapCameraFeed(onViewportChange);
+
   // Callbacks are read through refs inside the engine's own listeners so that
   // re-creating the map is driven ONLY by the style/reload key — a new inline
   // `onPress` from a parent render must not tear down and rebuild the canvas.
   const handlers = useRef({
-    onViewportChange,
+    onViewportChange: cameraFeed.forward,
     onPress,
     onLabelsChange,
     onReady,
@@ -362,7 +368,7 @@ export const MapCanvas = forwardRef<MapApi, MapCanvasProps>(function MapCanvas(
     live,
   });
   handlers.current = {
-    onViewportChange,
+    onViewportChange: cameraFeed.forward,
     onPress,
     onLabelsChange,
     onReady,
@@ -550,6 +556,9 @@ export const MapCanvas = forwardRef<MapApi, MapCanvasProps>(function MapCanvas(
           if (!reliefCancelled) {
             reliefHandle = attachRelief(map, {
               flags: relief,
+              addProtocol: maplibregl.addProtocol,
+              removeProtocol: maplibregl.removeProtocol,
+              demCacheTiles: qualityRef.current.relief.demCacheTiles,
               appearance: resolvedAppearance,
               terrain3d: qualityRef.current.relief.terrain3d,
               terrainTextureScale: qualityRef.current.relief.terrainTextureScale,
@@ -1296,6 +1305,7 @@ export const MapCanvas = forwardRef<MapApi, MapCanvasProps>(function MapCanvas(
     runtime?.handle?.setQuality(quality);
     reliefRef.current?.setTerrain3d(quality.relief.terrain3d);
     reliefRef.current?.setTerrainTextureScale(quality.relief.terrainTextureScale);
+    reliefRef.current?.setDemCacheTiles(quality.relief.demCacheTiles);
     reliefRef.current?.setGlobeNight(quality.relief.globeNight);
   }, [quality, runtime]);
 
@@ -1378,73 +1388,38 @@ export const MapCanvas = forwardRef<MapApi, MapCanvasProps>(function MapCanvas(
 
   // --- User location ------------------------------------------------------
 
+  // The position the device reports while the map follows it. It reads the
+  // permission and never requests it (`useUserFix`); the puck is Bloom's
+  // `LocationPuck`, portalled into a marker's element (`UserPuck`).
+  const userFix = useUserFix(showUserLocation && ready);
+  const reportUserFix = useRef(onUserFix);
+  reportUserFix.current = onUserFix;
+  useEffect(() => {
+    reportUserFix.current?.(userFix);
+  }, [userFix]);
+  const [puckHost] = useState<HTMLDivElement | null>(() =>
+    typeof document === 'undefined' ? null : document.createElement('div'),
+  );
+
   useEffect(() => {
     const map = mapRef.current;
-    if (!map || !ready) return;
-
-    if (!showUserLocation) {
+    if (!map || !ready || !puckHost || !userFix) {
       userMarkerRef.current?.remove();
       userMarkerRef.current = null;
       return;
     }
-
-    let cancelled = false;
-    let watcher: Location.LocationSubscription | null = null;
-
-    (async () => {
-      // READ the permission; never request it. Opening the map must not be
-      // able to prompt (GoWay AGENTS.md → Privacy). `useUserLocation()` is the
-      // only thing allowed to ask, and only on a user action.
-      const permission = await Location.getForegroundPermissionsAsync();
-      if (cancelled || !permission.granted) return;
-
-      watcher = await Location.watchPositionAsync(
-        { accuracy: Location.Accuracy.Balanced, distanceInterval: 10 },
-        (position) => {
-          if (cancelled || !mapRef.current) return;
-          const fix = {
-            latitude: position.coords.latitude,
-            longitude: position.coords.longitude,
-          };
-          // A fix with no usable position is "no dot", not "no app".
-          if (!isDrawableCoordinate(fix)) {
-            reportMapDefect(
-              'userLocation',
-              'Skipped a location fix with a non-drawable coordinate.',
-            );
-            return;
-          }
-          const lngLat: [number, number] = [fix.longitude, fix.latitude];
-          if (userMarkerRef.current) {
-            userMarkerRef.current.setLngLat(lngLat);
-            return;
-          }
-          const element = document.createElement('div');
-          element.setAttribute('aria-label', 'Your location');
-          Object.assign(element.style, {
-            width: '16px',
-            height: '16px',
-            borderRadius: '9999px',
-            background: theme.colors.primary,
-            border: '2px solid #ffffff',
-            boxShadow: '0 0 0 4px rgba(0,0,0,0.08)',
-          } satisfies Partial<CSSStyleDeclaration>);
-          userMarkerRef.current = new maplibregl.Marker({ element })
-            .setLngLat(lngLat)
-            .addTo(mapRef.current);
-        },
-      );
-    })().catch(() => {
-      // No fix available is not a map failure; the dot simply does not appear.
-    });
-
-    return () => {
-      cancelled = true;
-      watcher?.remove();
-      userMarkerRef.current?.remove();
-      userMarkerRef.current = null;
-    };
-  }, [showUserLocation, ready, theme.colors.primary]);
+    const lngLat: [number, number] = [userFix.longitude, userFix.latitude];
+    if (userMarkerRef.current) {
+      userMarkerRef.current.setLngLat(lngLat);
+      return;
+    }
+    // The puck is where you are, not something you press: it must not take a
+    // drag or a tap from the map underneath it.
+    puckHost.style.pointerEvents = 'none';
+    userMarkerRef.current = new maplibregl.Marker({ element: puckHost })
+      .setLngLat(lngLat)
+      .addTo(map);
+  }, [userFix, ready, puckHost]);
 
   // --- Imperative handle --------------------------------------------------
 
@@ -1718,6 +1693,10 @@ export const MapCanvas = forwardRef<MapApi, MapCanvasProps>(function MapCanvas(
           in somebody else's page. See MapBrand.tsx. `extra` only ADDS the
           credits of data the city-3D layer is drawing right now. */}
       <MapBrand />
+      <MapScale camera={cameraFeed.store} />
+      {puckHost && userFix
+        ? createPortal(<UserPuck fix={userFix} camera={cameraFeed.store} />, puckHost)
+        : null}
       <MapAttribution
         elevation={styleDrawsRelief}
         extra={credits}

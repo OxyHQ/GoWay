@@ -10,6 +10,12 @@
  * piece with a nonsense lane count gets the simulation's default, never the
  * nonsense, and one with a garbled `turn_lanes` gets no arrows, never wrong ones.
  */
+import {
+  allowsMotorTraffic,
+  parseAccessOverrides,
+  type RoadAccess,
+  roadAccessOf,
+} from '@goway.to/sdk/road-access';
 import { VectorTile } from '@mapbox/vector-tile';
 import { PbfReader } from 'pbf';
 
@@ -36,6 +42,12 @@ export interface RoadPiece {
   highway: RoadClass;
   car: boolean;
   foot: boolean;
+  /** Schema 4: who may use it where that differs from the class (`roadAccessOf`). */
+  access?: Partial<RoadAccess>;
+  /** Schema 4: a service road inside a park, garden or cemetery. */
+  park?: boolean;
+  /** Schema 4: a road only other motor traffic (buses, taxis) may use — a carriageway, but not a car's. */
+  motorOnly?: boolean;
   /** `1`/`-1` one-way for cars (against the drawn direction when `-1`); absent: both. */
   oneway?: 1 | -1;
   lanes?: number;
@@ -237,7 +249,9 @@ export function decodeRoadTile(
       const foot = p.foot === true;
       // Schema 3: a separate cycle track, kept for the street detail only.
       const cycle = p.cycle === true;
-      if (!car && !foot && !cycle) continue;
+      const access = typeof p.access === 'string' ? parseAccessOverrides(p.access) : undefined;
+      const motorOnly = !car && allowsMotorTraffic(roadAccessOf(highway, access));
+      if (!car && !foot && !cycle && !motorOnly) continue;
       const way = int(p.way, 0, Number.MAX_SAFE_INTEGER) ?? 0;
       const street = streetFields(p);
       for (const line of feature.loadGeometry()) {
@@ -248,6 +262,9 @@ export function decodeRoadTile(
           car,
           foot,
           ...(cycle ? { cycle } : {}),
+          ...(motorOnly ? { motorOnly } : {}),
+          ...(p.park === true ? { park: true } : {}),
+          ...(access && Object.keys(access).length > 0 ? { access } : {}),
           roundabout: p.roundabout === true,
           tunnel: p.tunnel === true,
           points: line.map((point) => [ox + point.x * scale, oy + point.y * scale]),

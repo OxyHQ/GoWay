@@ -37,3 +37,4 @@ export { createCityLife } from '../map/engine/cityLife/lifeRenderer';
 export { createLivePass } from '../map/engine/live3d/livePass';
 // Street detail: an overlay of the city engine, so the same chunk.
 export { createCityStreets } from '../map/engine/cityStreets/streetRenderer';
+export { StreetSurface } from '../map/engine/cityStreets/streetSurface';

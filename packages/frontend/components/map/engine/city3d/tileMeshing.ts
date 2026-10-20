@@ -19,6 +19,7 @@ import { meshBuildingsLod } from './lodMesher';
 import { meshBuildings } from './mesher';
 import { meshOsmBuildings } from './osmMesher';
 import { decodeCityTile } from './osmTiles';
+import { buildingSources } from './buildingSources';
 import { type PackedMesh, packMesh } from './packing';
 import type { Footprint } from './workerTrees';
 
@@ -91,17 +92,16 @@ export function meshCityTile(
   // trees off the ground the landmark stands on.
   const footprints = { list: decoded?.buildings ?? [], extent };
   const options = { extent, tileSizeMetres: size };
+  const owners = buildingSources(decoded?.buildings ?? [], surfaces);
   const buildings = withoutHidden(
-    surfaces.length > 0
-      ? (decoded?.buildings ?? []).filter((b) => !b.drawnBy)
-      : (decoded?.buildings ?? []),
+    surfaces.length > 0 ? owners.buildings : (decoded?.buildings ?? []),
     hidden,
   );
   const hiddenIds = new Set(hidden ?? []);
   const shown =
     hiddenIds.size > 0
-      ? surfaces.filter((s) => s.osmId === undefined || !hiddenIds.has(s.osmId))
-      : surfaces;
+      ? owners.surfaces.filter((s) => s.osmId === undefined || !hiddenIds.has(s.osmId))
+      : owners.surfaces;
   const osm = buildings.length > 0 ? meshOsmBuildings(buildings, options) : null;
   const lod2 = shown.length > 0 ? meshLod2Surfaces(shown, options, decoded?.buildings) : null;
   const mesh = concatTileMeshes(osm, lod2);

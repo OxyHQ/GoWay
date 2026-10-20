@@ -179,7 +179,7 @@ function MapAttributionComponent({
   }, []);
 
   return (
-    <CreditBox
+    <LiftedBox
       lift={chromeLift}
       style={{
         // A claim already folds in the safe area of the surface holding the
@@ -249,44 +249,49 @@ function MapAttributionComponent({
           </Pressable>
         </View>
       </View>
-    </CreditBox>
+    </LiftedBox>
   );
 }
 
 /**
  * The positioning box: laid out against Bloom's bottom edge, and — when the
  * screen hands down a live lift — riding the sheet's current top edge on the
- * UI thread. Absent a lift it is the plain box it always was.
+ * UI thread. Absent a lift it is the plain box it always was. The scale bar
+ * (`MapScale`) uses it for the other corner.
  */
-function CreditBox({
+export function LiftedBox({
   lift,
   style,
+  className = 'absolute right-space-8 items-end',
   children,
 }: {
   lift: MapChromeLift | null;
   style: StyleProp<ViewStyle>;
+  className?: string;
   children: React.ReactNode;
 }) {
   if (!lift) {
     return (
-      <View pointerEvents="box-none" className="absolute right-space-8 items-end" style={style}>
+      <View pointerEvents="box-none" className={className} style={style}>
         {children}
       </View>
     );
   }
   return (
-    <LiftedCreditBox lift={lift} style={style}>
+    <AnimatedLift lift={lift} className={className} style={style}>
       {children}
-    </LiftedCreditBox>
+    </AnimatedLift>
   );
 }
 
-function LiftedCreditBox({
+function AnimatedLift({
   lift,
+  className,
   style,
   children,
 }: {
   lift: MapChromeLift;
+  className: string;
   style: StyleProp<ViewStyle>;
   children: React.ReactNode;
 }) {
@@ -296,11 +301,7 @@ function LiftedCreditBox({
     [rise, opacity],
   );
   return (
-    <Animated.View
-      pointerEvents="box-none"
-      className="absolute right-space-8 items-end"
-      style={[style, animated]}
-    >
+    <Animated.View pointerEvents="box-none" className={className} style={[style, animated]}>
       {children}
     </Animated.View>
   );

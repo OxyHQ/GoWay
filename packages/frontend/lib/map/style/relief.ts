@@ -56,19 +56,14 @@ export const isReliefSourceId = isReliefId;
 /**
  * The DEM tiles, as Mapterhorn publishes them: Terrarium-encoded WebP, 512 px.
  *
- * `maxzoom` 12 on purpose. Mapterhorn is global to z12 (Copernicus GLO-30) and
- * finer only where a national model exists; elsewhere z13+ is a 404, which
- * MapLibre answers by walking up one zoom at a time — several failed requests
- * per tile across most of the planet. At 12 the source is complete everywhere
- * and MapLibre over-zooms it (≈15 m/px at Barcelona's latitude, from 30 m
- * data). The production archive GoWay would host (`planet.pmtiles`) is z0–12
- * for the same reason.
+ * Regional data is retained through z16; MapLibre walks to the available
+ * parent in regions served only by the global z12 source.
  */
 export const RELIEF_DEM = {
   encoding: 'terrarium',
   tileSize: 512,
   minzoom: 0,
-  maxzoom: 12,
+  maxzoom: 16,
 } as const;
 
 /** A `raster-dem` source over the given `{z}/{x}/{y}` template. */

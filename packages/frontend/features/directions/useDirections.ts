@@ -152,6 +152,11 @@ export interface DirectionsController {
   /** Ask the device where it is, for this slot. The only thing that prompts. */
   setStopFromDevice: (index: number) => void;
   /**
+   * Re-plan from a position the device has ALREADY reported (a traveller who
+   * left the route): the origin becomes that fix, without asking again.
+   */
+  rerouteFrom: (coordinate: GeoCoordinate) => void;
+  /**
    * Use the centre of the browsed area for this slot, as an EXPLICIT choice.
    * `null` when there is nothing sane to offer, so no UI can render a control
    * that would invent a starting point.
@@ -375,6 +380,11 @@ export function useDirections(options: DirectionsOptions): DirectionsController 
       });
     },
     [location, setStopAt],
+  );
+
+  const rerouteFrom = useCallback(
+    (coordinate: GeoCoordinate) => setStopAt(0, stopFromDevice(coordinate)),
+    [setStopAt],
   );
 
   const retryLocation = useCallback(() => {
@@ -731,6 +741,7 @@ export function useDirections(options: DirectionsOptions): DirectionsController 
     setStopFromResult,
     clearStop,
     setStopFromDevice,
+    rerouteFrom,
     setStopFromMapCentre: mapCentreOffer ? setStopFromMapCentre : null,
 
     swap,

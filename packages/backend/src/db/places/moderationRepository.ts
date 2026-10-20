@@ -56,6 +56,7 @@ import {
 } from '../schema';
 import { moveMediaToSurvivor } from './mediaRepository';
 import { moveReviewsToSurvivor } from './reviewsRepository';
+import { moveSavedItemsToSurvivor } from './savedPlacesRepository';
 import {
   CAPABILITY_COLUMNS,
   CLAIM_COLUMNS,
@@ -765,7 +766,8 @@ function movable<T extends { id: string }>(
  *    show the same Oxy file. Reviews all move, and where one person reviewed
  *    both places the older review is set aside as `hidden`; both ratings are
  *    recomputed. Reviews are not itemized in the public `place_absorbed`
- *    revision, as claims are not.
+ *    revision, as claims are not. People's saved lists are not either: their
+ *    saves of the absorbed place follow it to the survivor, silently.
  *  - The survivor's own columns — name, location and the timezone derived
  *    from it, categories, address, contact, weekly hours — are its statement
  *    and are never rewritten by a merge, exactly as its children win every
@@ -970,6 +972,8 @@ async function mergePlaces(
   // they wrote one on each. Neither re-links an Oxy file (`oxy/placeFiles`).
   received.push(...(await moveMediaToSurvivor(tx, survivorId, absorbedId)));
   await moveReviewsToSurvivor(tx, survivorId, absorbedId, author);
+  // Saved lists are personal and not part of the place's history: the saves just follow the place.
+  await moveSavedItemsToSurvivor(tx, survivorId, absorbedId);
 
   // Everything already merged INTO the absorbed place now points at the survivor.
   const repointed = await tx

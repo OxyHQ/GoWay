@@ -391,9 +391,11 @@ city engine), `sky` (shadow map size, PCF taps — the sky), `life` (agents —
 city life), `live` (entities — the live layer: drawn at most, nearest the
 centre first, `liveLayer.web.ts` → `nearestLivePoints`), `landmarks` (models
 held — the adapter), `streets` (street-detail tiles and triangles drawn — the
-street renderer, farthest tiles simplified then dropped past the budget), `camera` (the bytes and footprint
+street renderer, farthest tiles simplified then dropped past the budget;
+`groundErrorM`, `groundMinEdgeM` and `groundsPerFrame` bound terrain refinement), `camera` (the bytes and footprint
 corners of each tile's building volumes — the mesh worker, `MAP_CAMERA_CLEARANCE.md`), `relief` (3D terrain and its textures' scale — the
-relief adapter, live).
+relief adapter, live; `demCacheTiles` bounds both raw and prepared elevation
+caches). Grounded decals are included in street draw and upload accounting.
 
 Who animates through the clock today: city life (`'cityLife'`, its worker
 paused with the clock), GoWay Live (`'live'`: its source is re-set in the

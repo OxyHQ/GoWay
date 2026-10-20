@@ -51,11 +51,11 @@ describe('style fragments', () => {
     });
   }
 
-  test('the DEM is Mapterhorn-shaped and stops at z12, where it is complete', () => {
+  test('the DEM is Mapterhorn-shaped and retains available regional elevation through z16', () => {
     const source = reliefDemSource(TILES);
     expect(source).toMatchObject({ type: 'raster-dem', encoding: 'terrarium', tileSize: 512 });
-    expect(source.maxzoom).toBe(12);
-    expect(RELIEF_DEM.maxzoom).toBe(12);
+    expect(source.maxzoom).toBe(16);
+    expect(RELIEF_DEM.maxzoom).toBe(16);
     expect(source.tiles).toEqual([TILES]);
     expect(source.attribution).toContain('https://mapterhorn.com/attribution');
   });

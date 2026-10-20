@@ -21,6 +21,7 @@ import type { StyleProp, ViewStyle } from 'react-native';
 import type { ModelPlacementInput } from '@goway.to/sdk';
 
 import type { MapAppearance } from '@/lib/map/provider';
+import type { UserFix } from '@/lib/map/userPuck';
 import type { MapLightPreset, MapStyleId } from '@/lib/map/style/catalogue';
 
 export type { MapAppearance };
@@ -520,6 +521,13 @@ export interface MapCanvasProps {
    * moment the user invokes a location-dependent action.
    */
   showUserLocation?: boolean;
+  /**
+   * The position the canvas is drawing, whenever it changes (`null` when it
+   * stops). The canvas is the ONE observer of the device's position, so a
+   * screen that needs it (guided navigation) reads it here instead of starting
+   * a second watcher. Transient: do not store it (AGENTS.md → Privacy).
+   */
+  onUserFix?: (fix: UserFix | null) => void;
   interaction?: MapInteractionOptions;
   /**
    * The camera: live while it moves, `isFinal` when it settles — including

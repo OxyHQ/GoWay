@@ -431,8 +431,8 @@ describe('serveTerrain, proxied', () => {
     expect(response.headers.get('server')).toBeNull();
   });
 
-  test('refuses a zoom past z12 and a coordinate outside the world, without asking upstream', async () => {
-    expect((await serve('/map/terrain/13/0/0.webp')).status).toBe(404);
+  test('refuses a zoom past z16 and a coordinate outside the world, without asking upstream', async () => {
+    expect((await serve('/map/terrain/17/0/0.webp')).status).toBe(404);
     expect((await serve('/map/terrain/2/4/0.webp')).status).toBe(404);
     expect(fetched).toEqual([]);
   });

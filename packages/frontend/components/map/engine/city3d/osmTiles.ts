@@ -27,6 +27,7 @@ import {
   type RoofMaterial,
   type RoofShape,
   UNKNOWN_HEIGHT_M,
+  METRES_PER_LEVEL,
   WALL_MATERIALS,
   type WallMaterial,
 } from '@/lib/map/cityTiles';
@@ -77,6 +78,10 @@ export interface OsmBuilding {
   drawnBy?: string;
   /** Who set `top` when an official dataset did (`height_source`: `lod2` or `cadastre`). */
   heightSource?: string;
+  /** Original OSM facts retained when a roof-only model cannot represent a part's underside. */
+  osmTop?: number;
+  osmLevels?: number;
+  part?: boolean;
 }
 
 export interface DecodedCityTile {
@@ -124,6 +129,15 @@ export function buildingFromProperties(
     metres(properties[CITY_PROPS.height], false) !== undefined ||
     levels !== undefined;
   const building: OsmBuilding = { id, rings, top, base, heightRecorded };
+  if (properties[CITY_PROPS.part] === true) building.part = true;
+  const osmLevels = count(properties[CITY_PROPS.levels]);
+  const osmTop =
+    metres(properties[CITY_PROPS.height], false) ??
+    (osmLevels
+      ? osmLevels * METRES_PER_LEVEL + (metres(properties[CITY_PROPS.roofHeight], true) ?? 0)
+      : undefined);
+  if (osmLevels !== undefined) building.osmLevels = osmLevels;
+  if (osmTop !== undefined) building.osmTop = osmTop;
 
   if (levels !== undefined) building.levels = levels;
   const minLevel = count(properties[CITY_PROPS.minLevel]);

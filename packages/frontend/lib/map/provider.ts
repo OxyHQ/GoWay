@@ -616,7 +616,7 @@ export function resolveMapAttribution(options?: { terrain?: boolean }): MapAttri
 export function resolveTerrainTileUrl(): string {
   const configured = process.env.EXPO_PUBLIC_MAP_TERRAIN_TILES;
   if (configured) return configured;
-  return `${GOWAY_ORIGIN}${GOWAY_MAP_PATHS.terrain}`;
+  return absoluteStyleUrl(GOWAY_MAP_PATHS.terrain);
 }
 
 /**

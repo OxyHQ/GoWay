@@ -37,11 +37,13 @@ import { healthRouter } from './routes/health';
 import { createCaptureRouter } from './routes/capture';
 import { createCategoriesRouter } from './routes/categories';
 import { createLiveRouter } from './routes/live';
+import { createTransitRouter } from './routes/transit';
 import { createModerationRouter } from './routes/moderation';
 import { createOpenApiRouter } from './routes/openapi';
 import { createPlaceMediaRouter } from './routes/placeMedia';
 import { createPlaceReviewsRouter } from './routes/placeReviews';
 import { createPlacesRouter } from './routes/places';
+import { createSavedListsRouter } from './routes/savedLists';
 import { createRoutesRouter } from './routes/directions';
 import { createRoadRulesRouter } from './routes/roadRules';
 import { createSearchRouter } from './routes/search';
@@ -156,6 +158,8 @@ export function createApp(options: CreateAppOptions = {}): Express {
   v1.use(
     createPlaceReviewsRouter({ requireAuth, accountRoles, reportRateLimit, contributionRateLimit }),
   );
+  /** A person's private saved lists. Identity-bound, and the caller's own. */
+  v1.use(createSavedListsRouter({ requireAuth }));
   /**
    * Moderation: claim decisions, Oxy verification, duplicate merges and the
    * report queue — every route behind `requireAuth` and the operator allow-list
@@ -189,6 +193,8 @@ export function createApp(options: CreateAppOptions = {}): Express {
    * (503) unless `server.ts` built a live service. Positions are on Socket.IO.
    */
   v1.use(createLiveRouter(options.live ?? null, liveShapeRateLimit));
+  /** Stops near a point and their next departures, from the live layer's licensed operators. */
+  v1.use(createTransitRouter(options.live ?? null));
   /** Road rules: country rule sets, zones and "may this vehicle enter", signed out. */
   v1.use(createRoadRulesRouter());
   api.use('/v1', v1);

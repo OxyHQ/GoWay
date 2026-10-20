@@ -184,6 +184,7 @@ export function StopPicker({
                 key={place.id}
                 place={place}
                 onPress={() => onPickPlace(place)}
+                saveable={false}
                 testID={`stop-nearby-${place.id}`}
               />
             ))}
@@ -243,6 +244,7 @@ function SearchResults({
           key={result.id}
           result={result}
           onPress={() => onPickResult(result)}
+          saveable={false}
           testID={`stop-result-${result.id}`}
         />
       ))}

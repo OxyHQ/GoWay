@@ -14,10 +14,13 @@ import { type LiveBus, ValkeyLiveBus } from './cluster';
 import { packLivePayload } from './pack';
 import { LiveHub, type LiveHubLogger, type LiveHubSource } from './hub';
 import { attachLiveNamespace, liveRoomName } from './socket';
+import { TransitService } from './transit/service';
 import type { LiveFetch } from './types';
 
 export interface LiveService {
   hub: LiveHub;
+  /** Stops and departures of the licensed operators among its sources (`transit/`). */
+  transit: TransitService;
   /** Attach `/live` to a Socket.IO server. Once. */
   attach(io: SocketIOServer): Namespace;
   start(): void;
@@ -136,8 +139,15 @@ export function createLiveService(options: CreateLiveServiceOptions): LiveServic
     },
     'Live layer configured',
   );
+  const transit = new TransitService({
+    sources,
+    fetch: options.fetch ?? (globalThis.fetch as unknown as LiveFetch),
+    ...(options.now ? { now: options.now } : {}),
+    logger,
+  });
   return {
     hub,
+    transit,
     attach(io) {
       namespace = attachLiveNamespace(io, {
         hub,
@@ -146,7 +156,13 @@ export function createLiveService(options: CreateLiveServiceOptions): LiveServic
       });
       return namespace;
     },
-    start: () => hub.start(),
-    stop: () => hub.stop(),
+    start: () => {
+      hub.start();
+      transit.start();
+    },
+    stop: () => {
+      hub.stop();
+      transit.stop();
+    },
   };
 }

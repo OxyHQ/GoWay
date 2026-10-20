@@ -12,6 +12,7 @@
  * list) for a place with nothing to say.
  */
 import { openingStatusAt, type OpeningStatus, type Place, type TimeRange } from '@goway.to/sdk';
+import type { PlaceHoursDay } from '@oxy.so/bloom/place-details';
 
 /** The app's chrome is English; Monday first, as a week is read in Europe. */
 const DAY_NAMES = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'] as const;
@@ -111,6 +112,45 @@ export function weeklySchedule(place: Pick<Place, 'openingHours'>): ScheduleRow[
     const ranges = intervals.filter((interval) => interval.day === day);
     return { day: DAY_NAMES[day], text: ranges.length > 0 ? rangesText(ranges) : 'Closed' };
   });
+}
+
+const FULL_DAY_NAMES = [
+  'Sunday',
+  'Monday',
+  'Tuesday',
+  'Wednesday',
+  'Thursday',
+  'Friday',
+  'Saturday',
+] as const;
+
+/**
+ * The ordinary week as Bloom's `PlaceHours` takes it, Monday first, with
+ * today marked in the PLACE's own timezone (the status evaluation's local
+ * date), or `null` when GoWay holds no readable schedule. A whole day reads as
+ * `00:00 – 24:00`.
+ */
+export function weeklyHours(
+  place: Pick<Place, 'openingHours' | 'timezone' | 'hoursExceptions'>,
+  now: Date = new Date(),
+): PlaceHoursDay[] | null {
+  const intervals = place.openingHours?.intervals ?? [];
+  if (intervals.length === 0) return null;
+  const status = openingStatusAt(place, now);
+  const today =
+    status.state === 'unknown' ? null : new Date(`${status.localDate}T00:00:00Z`).getUTCDay();
+  return WEEK_ORDER.map((day) => ({
+    id: String(day),
+    label: FULL_DAY_NAMES[day],
+    today: day === today,
+    intervals: intervals
+      .filter((interval) => interval.day === day)
+      .map((range) =>
+        range.opens === range.closes
+          ? { open: '00:00', close: '24:00' }
+          : { open: range.opens, close: range.closes },
+      ),
+  }));
 }
 
 export interface ExceptionRow {

@@ -34,13 +34,11 @@ import {
   Map as MapLibreMap,
   Marker,
   RasterDEMSource,
-  UserLocation,
   type CameraRef,
   type MapRef,
   type PressEvent,
   type ViewStateChangeEvent,
 } from '@maplibre/maplibre-react-native';
-import * as Location from 'expo-location';
 import { useTheme } from '@oxy.so/bloom/theme';
 import { parseModelPlacement, type ModelPlacement } from '@goway.to/sdk';
 
@@ -75,6 +73,10 @@ import { MapAttribution } from './MapAttribution';
 import { useCompactCredit } from './useCompactCredit';
 import { useImageryCredits } from './useImageryCredits';
 import { MapBrand } from './MapBrand';
+import { MapScale } from './MapScale';
+import { useUserFix } from '@/lib/map/useUserFix';
+import { useMapCameraFeed } from './cameraFeed';
+import { UserPuck } from './UserPuck';
 import { MapErrorState } from './MapErrorState';
 import { drawableModels, modelFallbackMarker, modelIdOfMarker } from './models';
 import { createNativeCameraReports, type NativeCameraReports } from './nativeCameraReports';
@@ -126,6 +128,7 @@ export const MapCanvas = forwardRef<MapApi, MapCanvasProps>(function MapCanvas(
     renderMarker,
     overlays,
     showUserLocation = false,
+    onUserFix,
     interaction,
     onViewportChange,
     onPress,
@@ -173,8 +176,9 @@ export const MapCanvas = forwardRef<MapApi, MapCanvasProps>(function MapCanvas(
   // `retry` remounts the engine and gives it a new one, so nothing the old
   // engine was doing (a move it never finished) stops the new one reporting
   // the camera it opens at.
-  const viewportListener = useRef(onViewportChange);
-  viewportListener.current = onViewportChange;
+  const cameraFeed = useMapCameraFeed(onViewportChange);
+  const viewportListener = useRef(cameraFeed.forward);
+  viewportListener.current = cameraFeed.forward;
   const cameraReports = useRef<NativeCameraReports | null>(null);
   cameraReports.current ??= createNativeCameraReports(() => viewportListener.current);
 
@@ -243,29 +247,17 @@ export const MapCanvas = forwardRef<MapApi, MapCanvasProps>(function MapCanvas(
   const sunLight = useSunLight(resolvedAppearance, String(reloadKey), start);
 
   /**
-   * The location dot is drawn only against a permission that is ALREADY
-   * granted. `getForegroundPermissionsAsync` reads; it never prompts. So a
-   * screen that passes `showUserLocation` before the user has opted in gets
-   * nothing rather than a prompt, and opening the map still cannot ask.
+   * Where the device is, while the map follows it. Drawn only against a
+   * permission that is ALREADY granted: `useUserFix` reads it and never
+   * prompts, so a screen that passes `showUserLocation` before the user has
+   * opted in gets nothing, and opening the map still cannot ask.
    */
-  const [locationGranted, setLocationGranted] = useState(false);
+  const userFix = useUserFix(showUserLocation);
+  const reportUserFix = useRef(onUserFix);
+  reportUserFix.current = onUserFix;
   useEffect(() => {
-    if (!showUserLocation) {
-      setLocationGranted(false);
-      return;
-    }
-    let cancelled = false;
-    Location.getForegroundPermissionsAsync()
-      .then((permission) => {
-        if (!cancelled) setLocationGranted(permission.granted);
-      })
-      .catch(() => {
-        if (!cancelled) setLocationGranted(false);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [showUserLocation]);
+    reportUserFix.current?.(userFix);
+  }, [userFix]);
 
   // --- Camera -------------------------------------------------------------
 
@@ -639,7 +631,13 @@ export const MapCanvas = forwardRef<MapApi, MapCanvasProps>(function MapCanvas(
           }}
         />
 
-        {showUserLocation && locationGranted ? <UserLocation animated /> : null}
+        {userFix ? (
+          <Marker id="user-location" lngLat={[userFix.longitude, userFix.latitude]} anchor="center">
+            <View pointerEvents="none">
+              <UserPuck fix={userFix} camera={cameraFeed.store} />
+            </View>
+          </Marker>
+        ) : null}
 
         {hillshade ? (
           <RasterDEMSource
@@ -751,6 +749,7 @@ export const MapCanvas = forwardRef<MapApi, MapCanvasProps>(function MapCanvas(
           credit must be on every map GoWay draws, including the embed in
           somebody else's page. See MapBrand.tsx. */}
       <MapBrand />
+      <MapScale camera={cameraFeed.store} />
       <MapAttribution
         extra={imageryCredits}
         elevation={styleDrawsRelief}

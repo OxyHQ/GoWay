@@ -27,6 +27,7 @@ import type {
   CategoryTaxonomy,
   GeoBoundingBox,
   GeoCoordinate,
+  NearbyTransit,
   Place,
   PlaceId,
   PlaceMedia,
@@ -223,6 +224,53 @@ export function usePlace(placeId: PlaceId | null, initialData?: Place): UseQuery
     retry: shouldRetryGoWay,
     ...(initialData && initialData.id === placeId ? { initialData } : {}),
     queryFn: async ({ signal }) => gowayClient.places.get(placeId as PlaceId, { signal }),
+  });
+}
+
+// ── Public transport ────────────────────────────────────────────────────────
+
+/** How long an answer is fresh, and how often a visible one is asked again. */
+const TRANSIT_STALE_MS = 20_000;
+const TRANSIT_REFRESH_MS = 30_000;
+/** While an operator reads its timetable for the first time. */
+const TRANSIT_PREPARING_REFRESH_MS = 8_000;
+
+/**
+ * The stops around a place and what leaves them next.
+ *
+ * The position is the PLACE's (public data), never the reader's, and the key
+ * rounds it to ~11 m so two reads of one place are one cache entry. Refreshed
+ * every 30 s while the place is on screen (live predictions move), and every
+ * 8 s while an operator is still preparing its timetable — React Query stops
+ * both when the view is gone or the tab hidden.
+ *
+ * An error is not an empty state: the caller draws nothing for either, because
+ * "no transit here" and "transit could not be read" must both leave the place
+ * looking like a place.
+ */
+export function useNearbyTransit(location: GeoCoordinate | null): UseQueryResult<NearbyTransit> {
+  const latitude = location ? Math.round(location.latitude * 1e4) / 1e4 : null;
+  const longitude = location ? Math.round(location.longitude * 1e4) / 1e4 : null;
+  return useQuery<NearbyTransit>({
+    queryKey: ['goway', 'transit', latitude, longitude],
+    enabled: latitude != null && longitude != null,
+    retry: shouldRetryGoWay,
+    staleTime: TRANSIT_STALE_MS,
+    refetchInterval: (query) =>
+      query.state.data?.operators.some((operator) => operator.availability === 'preparing')
+        ? TRANSIT_PREPARING_REFRESH_MS
+        : TRANSIT_REFRESH_MS,
+    queryFn: async ({ signal }) =>
+      gowayClient.transit.nearby(
+        {
+          latitude: latitude as number,
+          longitude: longitude as number,
+          radiusMeters: 400,
+          maxStops: 4,
+          maxDepartures: 3,
+        },
+        { signal },
+      ),
   });
 }
 

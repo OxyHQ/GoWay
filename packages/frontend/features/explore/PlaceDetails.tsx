@@ -19,36 +19,40 @@
  * its reviews with the business's replies — each a section that is absent when
  * there is nothing in it.
  */
-import { type ReactNode, useCallback, useState } from 'react';
+import { type ReactNode, useCallback, useMemo } from 'react';
 import { Linking, Platform, View } from 'react-native';
 import { placeDisplayName } from '@goway.to/sdk';
 import type { Place } from '@goway.to/sdk';
 import * as WebBrowser from 'expo-web-browser';
-import { Avatar } from '@oxy.so/bloom/avatar';
+import { PlaceCard, type PlaceAction } from '@oxy.so/bloom/place-card';
 import { Button } from '@oxy.so/bloom/button';
 import { Divider } from '@oxy.so/bloom/divider';
-import { Item } from '@oxy.so/bloom/item';
+import { PlaceHours, PlaceInfoList, type PlaceInfoItem } from '@oxy.so/bloom/place-details';
 import { Text } from '@oxy.so/bloom/typography';
 import { useTheme } from '@oxy.so/bloom/theme';
+import { RiBookmarkFill } from '@oxy.so/bloom/icons/RiBookmarkFill';
 import { RiBookmarkLine } from '@oxy.so/bloom/icons/RiBookmarkLine';
 import { RiEditLine } from '@oxy.so/bloom/icons/RiEditLine';
 import { RiGlobalLine } from '@oxy.so/bloom/icons/RiGlobalLine';
 import { RiMapPin2Line } from '@oxy.so/bloom/icons/RiMapPin2Line';
 import { RiPhoneLine } from '@oxy.so/bloom/icons/RiPhoneLine';
 import { RiRouteLine } from '@oxy.so/bloom/icons/RiRouteLine';
-import { RiTimeLine } from '@oxy.so/bloom/icons/RiTimeLine';
 import { RiVerifiedBadgeLine } from '@oxy.so/bloom/icons/RiVerifiedBadgeLine';
 
 import { useAuthGate } from '@/lib/authGate';
 import { resolveCategory } from '@/lib/goway/categories';
 import { formatAddress, formatWebsite, websiteUrl } from '@/lib/goway/format';
-import { openingSummary, upcomingExceptions, weeklySchedule } from '@/lib/goway/hours';
+import { openingSummary, upcomingExceptions, weeklyHours } from '@/lib/goway/hours';
 import { useCategoryTaxonomy } from '@/lib/goway/queries';
+import { useTranslation } from '@/lib/i18n';
+
+import { useSaveControl } from '@/features/saved/useSaveControl';
 
 import { CapabilityList } from './CapabilityList';
 import { PlaceGallery } from './PlaceGallery';
 import { PlaceProducts } from './PlaceProducts';
 import { PlaceReviews } from './PlaceReviews';
+import { PlaceTransitSection } from './PlaceTransitSection';
 
 /** How GoWay describes its own confidence in a record. Words, never a colour. */
 const VERIFICATION_WORDS: Record<Place['verification']['state'], string | null> = {
@@ -77,14 +81,14 @@ export interface PlaceDetailsProps {
 export function PlaceDetails({ place, onDirections, actions, testID }: PlaceDetailsProps) {
   const theme = useTheme();
   const gate = useAuthGate();
+  const { t } = useTranslation();
 
   const taxonomy = useCategoryTaxonomy();
   const category = resolveCategory(place.categories, taxonomy);
   const address = formatAddress(place.address);
   const opening = openingSummary(place);
-  const schedule = weeklySchedule(place);
+  const week = weeklyHours(place);
   const exceptions = upcomingExceptions(place);
-  const [showWeek, setShowWeek] = useState(false);
   const website = formatWebsite(place.contact?.website);
   const phone = place.contact?.phone;
   const verification = VERIFICATION_WORDS[place.verification.state];
@@ -98,7 +102,7 @@ export function PlaceDetails({ place, onDirections, actions, testID }: PlaceDeta
       phone ||
       website ||
       opening ||
-      schedule ||
+      week ||
       exceptions.length > 0 ||
       place.capabilities.length > 0 ||
       description,
@@ -115,14 +119,83 @@ export function PlaceDetails({ place, onDirections, actions, testID }: PlaceDeta
     void Linking.openURL(`tel:${phone.replace(/\s+/g, '')}`);
   }, [phone]);
 
-  /** Identity-bound: the gate opens the Oxy dialog when there is no session. */
-  const save = useCallback(() => {
-    gate.run(() => {
-      // The saved-places store is issue #9's; the gate is what issue #7 owes.
-    });
-  }, [gate]);
-
   const displayName = placeDisplayName(place);
+
+  /** Save opens the list picker; signed out, the auth gate opens the Oxy dialog instead. */
+  const saving = useSaveControl({ id: place.id, name: displayName });
+
+  const onInfoPress = useCallback(
+    (id: string) => {
+      if (id === 'phone') callPhone();
+      else if (id === 'website') openWebsite();
+    },
+    [callPhone, openWebsite],
+  );
+  const info = useMemo<PlaceInfoItem[]>(
+    () => [
+      ...(address
+        ? [{ id: 'address', value: address, label: 'Address', icon: RiMapPin2Line }]
+        : []),
+      ...(phone
+        ? [
+            {
+              id: 'phone',
+              value: phone,
+              label: 'Phone',
+              icon: RiPhoneLine,
+              action: 'call' as const,
+              onPress: onInfoPress,
+              accessibilityLabel: `Call ${displayName} on ${phone}`,
+            },
+          ]
+        : []),
+      ...(website
+        ? [
+            {
+              id: 'website',
+              value: website,
+              label: 'Website',
+              icon: RiGlobalLine,
+              action: 'open' as const,
+              onPress: onInfoPress,
+              accessibilityLabel: `Open the website for ${displayName}${Platform.OS === 'web' ? '' : ' in a browser'}`,
+            },
+          ]
+        : []),
+    ],
+    [address, phone, website, displayName, onInfoPress],
+  );
+
+  const badge = verification ? (
+    <View className="flex-row items-center gap-space-4">
+      <RiVerifiedBadgeLine width={14} height={14} fill={theme.colors.primary} />
+      <Text className="text-caption text-muted-foreground">{verification}</Text>
+    </View>
+  ) : undefined;
+
+  const cardActions = useMemo<PlaceAction[]>(
+    () => [
+      {
+        id: 'directions',
+        label: 'Directions',
+        icon: RiRouteLine,
+        onPress: onDirections,
+        accessibilityLabel: `Directions to ${displayName}`,
+      },
+      {
+        id: 'save',
+        label: saving.saved ? t('saved.action.saved') : t('saved.action.save'),
+        icon: saving.saved ? RiBookmarkFill : RiBookmarkLine,
+        onPress: saving.openPicker,
+        accessibilityLabel: !gate.canUsePrivateApi
+          ? t('saved.action.signInLabel')
+          : saving.saved
+            ? t('saved.action.editLabel')
+            : t('saved.action.saveLabel'),
+      },
+    ],
+    [onDirections, saving.openPicker, saving.saved, displayName, gate.canUsePrivateApi, t],
+  );
 
   const suggestEdit = useCallback(() => {
     gate.run(() => {
@@ -133,99 +206,42 @@ export function PlaceDetails({ place, onDirections, actions, testID }: PlaceDeta
 
   return (
     <View className="gap-space-16 px-space-16 pb-space-16" testID={testID}>
-      <View className="gap-space-4">
-        {/* The resolved name for the reader's locale, falling back to the
-            place's default. `placeDisplayName` is the SDK's own one-liner, so
-            the sheet, the marker pill and the result row cannot disagree. */}
-        <View className="flex-row items-center gap-space-8">
-          {place.logoFileId ? (
-            // An Oxy file id, resolved by Bloom's image resolver like every other.
-            <Avatar source={place.logoFileId} variant="thumb" name={displayName} size="md" />
-          ) : null}
-          <Text className="flex-1 text-sectionTitle text-foreground">{displayName}</Text>
-        </View>
-        <View className="flex-row flex-wrap items-center gap-space-8">
-          <Text className="text-bodySmall text-muted-foreground">{category.label}</Text>
-          {place.status === 'closed' ? (
-            <Text className="text-bodySmall" style={{ color: theme.colors.errorSubtleForeground }}>
-              Permanently closed
-            </Text>
-          ) : null}
-          {verification ? (
-            <View className="flex-row items-center gap-space-4">
-              <RiVerifiedBadgeLine width={14} height={14} fill={theme.colors.primary} />
-              <Text className="text-caption text-muted-foreground">{verification}</Text>
-            </View>
-          ) : null}
-        </View>
-      </View>
+      <PlaceCard
+        density="detail"
+        name={displayName}
+        category={category.label}
+        photo={place.coverFileId}
+        rating={place.rating?.average}
+        reviewCount={place.rating?.count}
+        badge={badge}
+        openState={place.status === 'closed' ? 'closed' : opening?.state}
+        openLabel={place.status === 'closed' ? 'Permanently closed' : undefined}
+        hours={place.status === 'closed' ? undefined : opening?.text}
+        address={address ?? undefined}
+        actions={cardActions}
+        testID="place-card"
+      />
+      {saving.dialog}
 
-      <View className="flex-row flex-wrap items-center gap-space-8">
-        <Button
-          size="sm"
-          leadingIcon={RiRouteLine}
-          onPress={onDirections}
-          accessibilityLabel={`Directions to ${displayName}`}
-          tone="accent"
-          appearance="solid"
-        >
-          Directions
-        </Button>
-        <Button
-          size="sm"
-          leadingIcon={RiBookmarkLine}
-          onPress={save}
-          accessibilityLabel={
-            gate.canUsePrivateApi ? 'Save this place' : 'Sign in to save this place'
-          }
-          tone="neutral"
-          appearance="outline"
-        >
-          Save
-        </Button>
-        {actions}
-      </View>
+      {actions ? (
+        <View className="flex-row flex-wrap items-center gap-space-8">{actions}</View>
+      ) : null}
 
       {hasDetail ? <Divider /> : null}
 
-      {address ? (
-        <Item
-          density="compact"
-          leading={<RiMapPin2Line width={18} height={18} fill={theme.colors.textSecondary} />}
-          title={address}
-          accessibilityLabel={`Address: ${address}`}
+      {opening || week ? (
+        <PlaceHours
+          // A schedule GoWay can read but not evaluate (no zone) still shows
+          // its week; it just makes no claim about right now.
+          days={week ?? []}
+          state={opening?.state}
+          summary={opening?.text ?? 'Opening hours'}
+          testID="place-hours"
         />
       ) : null}
 
-      {opening || schedule ? (
-        <View className="gap-space-4">
-          <Item
-            density="compact"
-            leading={<RiTimeLine width={18} height={18} fill={theme.colors.textSecondary} />}
-            // A schedule GoWay can read but not evaluate (no zone) still shows
-            // its week; it just makes no claim about right now.
-            title={opening?.text ?? 'Opening hours'}
-            onPress={schedule ? () => setShowWeek((shown) => !shown) : undefined}
-            accessibilityLabel={`${opening?.spoken ?? 'Opening hours'}.${schedule ? (showWeek ? ' Hide the week.' : ' Show the week.') : ''}`}
-          />
-          {showWeek && schedule ? (
-            <View className="gap-space-2 pl-space-32">
-              {schedule.map((row) => (
-                <View key={row.day} className="flex-row gap-space-12">
-                  <Text className="w-space-40 text-bodySmall text-muted-foreground">{row.day}</Text>
-                  <Text className="flex-1 text-bodySmall text-foreground">{row.text}</Text>
-                </View>
-              ))}
-            </View>
-          ) : null}
-        </View>
-      ) : null}
-
       {exceptions.length > 0 ? (
-        <View
-          className="gap-space-4 pl-space-32"
-          accessibilityLabel="Upcoming changes to the usual hours"
-        >
+        <View className="gap-space-4" accessibilityLabel="Upcoming changes to the usual hours">
           {exceptions.map((exception) => (
             <Text key={exception.id} className="text-bodySmall text-muted-foreground">
               {`${exception.dates} · ${exception.text}${exception.note ? ` · ${exception.note}` : ''}`}
@@ -234,27 +250,11 @@ export function PlaceDetails({ place, onDirections, actions, testID }: PlaceDeta
         </View>
       ) : null}
 
-      {phone ? (
-        <Item
-          density="compact"
-          onPress={callPhone}
-          leading={<RiPhoneLine width={18} height={18} fill={theme.colors.textSecondary} />}
-          title={phone}
-          accessibilityLabel={`Call ${displayName} on ${phone}`}
-        />
-      ) : null}
-
-      {website ? (
-        <Item
-          density="compact"
-          onPress={openWebsite}
-          leading={<RiGlobalLine width={18} height={18} fill={theme.colors.textSecondary} />}
-          title={website}
-          accessibilityLabel={`Open the website for ${displayName}${Platform.OS === 'web' ? '' : ' in a browser'}`}
-        />
-      ) : null}
+      {info.length > 0 ? <PlaceInfoList items={info} testID="place-info" /> : null}
 
       <CapabilityList capabilities={place.capabilities} />
+
+      <PlaceTransitSection place={place} />
 
       <PlaceGallery placeId={place.id} placeName={displayName} />
 

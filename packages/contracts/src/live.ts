@@ -74,7 +74,7 @@ export const liveEntityIdSchema = z.string().min(3).max(160);
 // ---------------------------------------------------------------------------
 
 /** `#RRGGBB`. */
-const hexColorSchema = z.string().regex(/^#[0-9A-F]{6}$/, 'must be #RRGGBB');
+export const hexColorSchema = z.string().regex(/^#[0-9A-F]{6}$/, 'must be #RRGGBB');
 
 /** Degrees clockwise from true north, `[0, 360)`. */
 const headingSchema = z.number().min(0).lt(360);

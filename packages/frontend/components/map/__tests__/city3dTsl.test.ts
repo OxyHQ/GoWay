@@ -9,7 +9,7 @@
  * uniforms as the GLSL one, so one uniform set drives both renderers.
  */
 import { describe, expect, test } from 'bun:test';
-import { BackSide, FrontSide, Vector3 } from 'three/webgpu';
+import { BackSide, FrontSide, Vector3, DataTexture } from 'three/webgpu';
 
 import { tileSizeMetres } from '@/components/map/engine/city3d/tileMath';
 import { meshCityTile } from '@/components/map/engine/city3d/tileMeshing';
@@ -24,15 +24,10 @@ import { decodeRoadTile } from '@/components/map/engine/roads/roadTiles';
 import { meshStreetTile } from '@/components/map/engine/cityStreets/streetMesher';
 import { StreetAtlas } from '@/components/map/engine/cityStreets/streetAtlas';
 import { createStreetMaterials } from '@/components/map/engine/cityStreets/streetMaterials';
-import { createGroundAtlas } from '@/components/map/engine/cityStreets/groundAtlas';
 import {
   lifeBodyMaterial,
   lifeShadowMaterial,
 } from '@/components/map/engine/cityLife/lifeMaterials';
-import {
-  STREET_GROUND_MARGIN,
-  TERRAIN_LATTICE,
-} from '@/components/map/engine/city3d/terrainGround';
 import { mercatorXFromLng, mercatorYFromLat } from '@/components/map/engine/city3d/tileMath';
 
 const TILE = { z: 15, x: 16580, y: 12236 };
@@ -188,9 +183,7 @@ describe('the TSL building material', () => {
 
 describe('the TSL street materials', () => {
   const inputs = () => ({
-    groundAtlas: createGroundAtlas(4, 133).texture,
-    groundMeshCells: 128,
-    sdfAtlas: createGroundAtlas(1, 66).texture,
+    sdfAtlas: new DataTexture(new Uint8Array(66 * 66 * 4), 66, 66),
     surfaceDay: [new Vector3(), new Vector3(), new Vector3(), new Vector3()],
     surfaceNight: [new Vector3(), new Vector3(), new Vector3(), new Vector3()],
     paintDay: Array.from({ length: 5 }, () => new Vector3()),
@@ -210,34 +203,6 @@ describe('the TSL street materials', () => {
     expect(markings.transparent).toBe(true);
     expect(markings.depthWrite).toBe(false);
     materials.dispose();
-  });
-
-  test('the ground atlas: a slot per tile, each grid at its own rows', () => {
-    // A z15 street tile: MapLibre's 128-square mesh, its corners and two more each side.
-    const cellsAcross = TERRAIN_LATTICE.meshCells;
-    const size = cellsAcross + 1 + 2 * STREET_GROUND_MARGIN;
-    expect(size).toBe(133);
-    const atlas = createGroundAtlas(3, size);
-    const a = atlas.claim();
-    const b = atlas.claim();
-    expect(a).not.toBe(b);
-    const cells = size * size;
-    atlas.write(b ?? 0, { values: new Float32Array(cells).fill(7), cells: cellsAcross, size });
-    const data = atlas.texture.image.data as Float32Array;
-    expect(data[(b ?? 0) * cells]).toBe(7);
-    expect(data[(a ?? 0) * cells]).toBe(0);
-    expect([
-      atlas.texture.image.width,
-      atlas.texture.image.height,
-      atlas.texture.image.depth,
-    ]).toEqual([size, size, 3]);
-    // Writing a slot uploads its layer alone.
-    expect([...atlas.texture.layerUpdates]).toEqual([b ?? 0]);
-    expect(() => atlas.write(a ?? 0, { values: new Float32Array(9), cells: 1, size: 3 })).toThrow();
-    atlas.claim();
-    expect(atlas.claim()).toBeNull();
-    atlas.release(a ?? 0);
-    expect(atlas.claim()).toBe(a);
   });
 });
 

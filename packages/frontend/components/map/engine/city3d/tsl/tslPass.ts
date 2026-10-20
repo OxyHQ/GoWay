@@ -154,6 +154,20 @@ interface ResettableBackend {
   resetState?: () => void;
 }
 
+/** Decals must not bias the host's terrain on the next frame. */
+export function withPolygonOffsetState<T>(gl: WebGL2RenderingContext, draw: () => T): T {
+  const enabled = gl.isEnabled(gl.POLYGON_OFFSET_FILL);
+  const factor = gl.getParameter(gl.POLYGON_OFFSET_FACTOR) as number;
+  const units = gl.getParameter(gl.POLYGON_OFFSET_UNITS) as number;
+  try {
+    return draw();
+  } finally {
+    gl.polygonOffset(factor, units);
+    if (enabled) gl.enable(gl.POLYGON_OFFSET_FILL);
+    else gl.disable(gl.POLYGON_OFFSET_FILL);
+  }
+}
+
 export function createTslPass(options: {
   gl: WebGL2RenderingContext;
   canvas: HTMLCanvasElement;
@@ -247,8 +261,10 @@ export function createTslPass(options: {
   /** `false`: nothing drawn (the backend is not up, failed, or is gone). */
   const drawScene = (target: Scene, camera: Camera): boolean => {
     if (!ready || disposed) return false;
-    prepare();
-    renderer.render(target, camera);
+    withPolygonOffsetState(options.gl, () => {
+      prepare();
+      renderer.render(target, camera);
+    });
     return true;
   };
 
@@ -266,15 +282,20 @@ export function createTslPass(options: {
     drawScene,
     drawOffscreen(target, camera, renderTarget, override) {
       if (!ready || disposed) return false;
-      prepare();
-      renderer.setRenderTarget(renderTarget);
-      renderer.setClearColor(0xffffff, 1);
-      renderer.clear(true, true, false);
-      const previous = target.overrideMaterial;
-      target.overrideMaterial = override;
-      renderer.render(target, camera);
-      target.overrideMaterial = previous;
-      renderer.setRenderTarget(null);
+      withPolygonOffsetState(options.gl, () => {
+        prepare();
+        renderer.setRenderTarget(renderTarget);
+        renderer.setClearColor(0xffffff, 1);
+        renderer.clear(true, true, false);
+        const previous = target.overrideMaterial;
+        target.overrideMaterial = override;
+        try {
+          renderer.render(target, camera);
+        } finally {
+          target.overrideMaterial = previous;
+          renderer.setRenderTarget(null);
+        }
+      });
       return true;
     },
     warm(target, camera) {

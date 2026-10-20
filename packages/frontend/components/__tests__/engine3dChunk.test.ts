@@ -104,8 +104,6 @@ const ENGINE_PARTS: Record<string, string> = {
   // The street detail's TSL materials and ground atlas, parts of its renderer.
   'components/map/engine/cityStreets/streetMaterials.ts':
     'components/map/engine/cityStreets/streetRenderer.ts',
-  'components/map/engine/cityStreets/groundAtlas.ts':
-    'components/map/engine/cityStreets/streetRenderer.ts',
   // Still, untextured models as one or two draws (`docs/MAP_NATIVE_3D.md`).
   'components/map/engine/city3d/modelBatch.ts': 'components/map/engine/city3d/models.ts',
   // City life's TSL materials, and the library's nodes they read.

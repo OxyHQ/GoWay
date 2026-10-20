@@ -134,6 +134,17 @@ export interface LiveSourceDefinition {
    * watched, refreshed daily. Must be under the same licence as the feed.
    */
   staticGtfs?: StaticGtfsLocation;
+  /**
+   * Also serve this operator's STOPS and next DEPARTURES (`transit/`,
+   * `docs/TRANSIT_NEARBY.md`). Needs a `staticGtfs` that is a whole archive
+   * (`zip` without `only`, or `zips`), because departures are read from its
+   * `stop_times.txt`; enrolled only after its size was measured. `realtimeUrls`
+   * names the operator's `TripUpdates` feeds when they join its static trip
+   * ids (keyless ones only); without them every departure is `scheduled`.
+   */
+  departures?: {
+    realtimeUrls?: (settings: LiveAdapterSettings) => readonly string[];
+  };
   create(settings: LiveAdapterSettings): LiveAdapter;
 }
 

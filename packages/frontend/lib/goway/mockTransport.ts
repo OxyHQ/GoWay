@@ -72,6 +72,7 @@ import {
   FIXTURE_REVIEWS,
   FIXTURE_WITHDRAWN_PLACE_IDS,
 } from './fixtures';
+import { resetSavedFixtures, serveSavedFixture } from './savedFixtures';
 import { fixtureCoverage, fixtureSceneResponse } from './street3dFixtures';
 
 /** The fixture taxonomy, indexed once: what filters expand through and search labels come from. */
@@ -169,6 +170,7 @@ let mediaByPlace = new Map<string, PlaceMedia[]>();
 let reviewsByPlace = new Map<string, PlaceReview[]>();
 
 function resetContent(): void {
+  resetSavedFixtures();
   mediaByPlace = new Map([...FIXTURE_MEDIA].map(([placeId, items]) => [placeId, [...items]]));
   reviewsByPlace = new Map([...FIXTURE_REVIEWS].map(([placeId, items]) => [placeId, [...items]]));
 }
@@ -820,6 +822,9 @@ export function createFixtureFetch(
 
     const served = content(path, params, init);
     if (served) return served;
+
+    const saved = serveSavedFixture(path, params, init);
+    if (saved) return respond(saved.status, saved.body);
 
     // Every other fixture route is a read.
     const placeId = /^\/places\/([^/]+)$/.exec(path)?.[1];

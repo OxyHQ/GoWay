@@ -141,7 +141,7 @@ function columns(header: string[], names: readonly string[]): number[] {
 }
 
 const HEX = /^[0-9A-Fa-f]{6}$/;
-const color = (value: string | undefined) =>
+export const gtfsColor = (value: string | undefined) =>
   value && HEX.test(value) ? `#${value.toUpperCase()}` : null;
 
 export function buildStaticGtfs(files: {
@@ -167,8 +167,8 @@ export function buildStaticGtfs(files: {
       routes.set(routeId, {
         shortName: row[short] || null,
         longName: row[long] || null,
-        color: color(row[rc]),
-        textColor: color(row[tc]),
+        color: gtfsColor(row[rc]),
+        textColor: gtfsColor(row[tc]),
         mode: rt >= 0 ? modeOfRouteType(row[rt]) : null,
       });
     }

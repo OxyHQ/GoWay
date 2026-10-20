@@ -3,11 +3,9 @@
  * archive, so the city-3D layer's second source mode can be looked at before
  * any of it is hosted.
  *
- * Off unless `GOWAY_CITY_TILES_ARCHIVE` names one or more (comma-separated)
- * `.pmtiles` files built by `scripts/build-city-tiles.ts` — the first that has
- * a tile answers, so two cities can be looked at in one session. With it
- * unset `metro.config.js` gets its config back untouched, which is the case
- * for every export and every CI run.
+ * `GOWAY_CITY_TILES_ARCHIVE` can name local `.pmtiles` files. Without local
+ * archives, the same routes read GoWay's published city data, so one Metro
+ * origin serves the complete map without a second development proxy.
  * It only ever runs inside the Metro dev server — an `expo export` serves
  * nothing — so it cannot reach production.
  *
@@ -42,9 +40,50 @@ const TILE_PATH = /^\/map\/(city|city-roads)\/(\d{1,2})\/(\d{1,9})\/(\d{1,9})\.p
 /** `CITY_COVERAGE_PATH` in `lib/map/cityTiles.ts` (this file is plain JS for Metro). */
 const COVERAGE_PATH = '/map/city/coverage.json';
 
+/** Public data only: fixed origin, strict paths, no browser credentials forwarded. */
+function withPublishedCityTiles(config) {
+  const previous = config.server?.enhanceMiddleware;
+  return {
+    ...config,
+    server: {
+      ...config.server,
+      enhanceMiddleware(middleware, server) {
+        const inner = previous ? previous(middleware, server) : middleware;
+        return (request, response, next) => {
+          const url = (request.url || '').split('?')[0];
+          if (url !== COVERAGE_PATH && !TILE_PATH.test(url)) return inner(request, response, next);
+          if (request.method !== 'GET' && request.method !== 'HEAD') {
+            response.writeHead(405, { allow: 'GET, HEAD' });
+            response.end();
+            return;
+          }
+          fetch(`https://goway.to${url}`, {
+            method: request.method,
+            signal: AbortSignal.timeout(15_000),
+          })
+            .then(async (upstream) => {
+              // Fetch decompresses gzip. Never forward its compressed length/encoding.
+              const body = Buffer.from(await upstream.arrayBuffer());
+              response.writeHead(upstream.status, {
+                'content-type': upstream.headers.get('content-type') || 'application/octet-stream',
+                'cache-control': upstream.headers.get('cache-control') || 'no-cache',
+                'access-control-allow-origin': '*',
+              });
+              response.end(body);
+            })
+            .catch(() => {
+              response.writeHead(502, { 'content-type': 'text/plain' });
+              response.end('Published city data unavailable');
+            });
+        };
+      },
+    },
+  };
+}
+
 function withDevCityTiles(config) {
   const archivePath = process.env.GOWAY_CITY_TILES_ARCHIVE;
-  if (!archivePath) return config;
+  if (!archivePath) return withPublishedCityTiles(config);
   const paths = archivePath.split(',').map((item) => path.resolve(item.trim()));
 
   let archivesPromise = null;

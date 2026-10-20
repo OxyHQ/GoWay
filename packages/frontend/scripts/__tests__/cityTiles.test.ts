@@ -20,7 +20,8 @@ import { decodeCityTile } from '../../components/map/engine/city3d/osmTiles';
 import { decodeMappedTrees } from '../../components/map/engine/city3d/treeSources';
 import { CITY_TILE_EXTENT, CITY_TILE_ZOOM, CITY_TREE_LAYER } from '../../lib/map/cityTiles';
 import { PMTiles, zxyToTileId } from '../../worker/pmtiles.js';
-import { assembleRings, compile, representativePoint } from '../citygen/compile';
+import { compile, representativePoint } from '../citygen/compile';
+import { assembleRings } from '../citygen/rings';
 import {
   encodeCityTile,
   encodePolygons,

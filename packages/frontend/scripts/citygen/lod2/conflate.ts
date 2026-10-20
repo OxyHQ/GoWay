@@ -64,13 +64,8 @@ import type { CityTileFeature, TilePolygon } from '../mvtEncode';
 import { CITY_PROPS, CITY_TILE_EXTENT } from '../../../lib/map/cityTiles';
 import { heightForStoreys, STOREY_MODELS, storeysForHeight } from '../storeys';
 import { CITY_LOD2_PROPS, CITY_OFFICIAL_PROPS } from '../../../lib/map/cityOfficial';
-import {
-  fitPlane,
-  insideRing2,
-  metresPerMercator,
-  type PreparedBuilding,
-  type RoofSurface,
-} from './prepare';
+import { insideRing } from '../rings';
+import { fitPlane, metresPerMercator, type PreparedBuilding, type RoofSurface } from './prepare';
 import { LOD2_SOURCES, type Lod2SourceInfo } from './sources';
 
 export const CONFIRM_SHARE = 0.5;
@@ -169,7 +164,7 @@ function insidePolygonSet(
   y: number,
 ): boolean {
   for (const { outer, holes } of rings) {
-    if (insideRing2(outer, x, y) && !holes.some((hole) => insideRing2(hole, x, y))) return true;
+    if (insideRing(outer, x, y) && !holes.some((hole) => insideRing(hole, x, y))) return true;
   }
   return false;
 }
@@ -179,8 +174,8 @@ function roofHeightAt(roofs: readonly RoofSurface[], x: number, y: number): numb
   let best: number | null = null;
   for (const roof of roofs) {
     const outer = roof.rings[0];
-    if (!insideRing2(outer, x, y)) continue;
-    if (roof.rings.slice(1).some((hole) => insideRing2(hole, x, y))) continue;
+    if (!insideRing(outer, x, y)) continue;
+    if (roof.rings.slice(1).some((hole) => insideRing(hole, x, y))) continue;
     const h = roof.heights[0];
     // A flat roof (every cadastral part, 95% of NYC's) is its height.
     if (h[0] === h[h.length - 1] && h.every((v) => v === h[0])) {
@@ -466,6 +461,20 @@ export function conflate(
       continue;
     }
     const overlaps = sampled.overlaps;
+    // This format stores roof surfaces and raises walls to the ground. It
+    // cannot represent a recorded open space under an elevated building part,
+    // even when its roof is richer. Keep that building's volumetric OSM parts.
+    if (
+      overlaps.some(
+        ({ entry, heights }) =>
+          entry.part &&
+          Number(entry.feature.properties[CITY_PROPS.renderMinHeight]) > 0 &&
+          heights.length >= 4,
+      )
+    ) {
+      stats.osmRicher++;
+      continue;
+    }
     if (building.slopedAreaM2 < MIN_SLOPED_M2) {
       let mapped = 0;
       let total = 0;

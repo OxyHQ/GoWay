@@ -356,6 +356,8 @@ function post(): void {
       time: nextStep - STEP_S * 1000,
       origin: { x: frame.originX, y: frame.originY },
       cars: snapshot.cars,
+      carBridges: snapshot.carBridges,
+      peopleBridges: snapshot.peopleBridges,
       carStyle: snapshot.carStyle,
       ranges: sim.cars.ranges,
       taxiDoors: sim.taxiLivery?.doors ?? null,
@@ -365,6 +367,8 @@ function post(): void {
     },
     [
       snapshot.cars.buffer as ArrayBuffer,
+      snapshot.carBridges.buffer as ArrayBuffer,
+      snapshot.peopleBridges.buffer as ArrayBuffer,
       snapshot.carStyle.buffer as ArrayBuffer,
       snapshot.people.buffer as ArrayBuffer,
       snapshot.peopleStyle.buffer as ArrayBuffer,

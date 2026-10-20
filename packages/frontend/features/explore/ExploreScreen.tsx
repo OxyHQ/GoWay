@@ -51,12 +51,9 @@ import Animated, {
 } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Button } from '@oxy.so/bloom/button';
-import { Fab } from '@oxy.so/bloom/fab';
 import { Text } from '@oxy.so/bloom/typography';
 import { MapSearchAreaButton } from '@oxy.so/bloom/map-marker';
 import { useBottomEdgeInset, useTopEdgeInset, windowEdgeGap } from '@oxy.so/bloom/layout';
-import { RiCompass3Line } from '@oxy.so/bloom/icons/RiCompass3Line';
-import { RiFocus3Line } from '@oxy.so/bloom/icons/RiFocus3Line';
 
 import { BrandedChromeProvider } from '@/components/brand';
 import { type MapChromeLift, MapChromeLiftContext } from '@/components/map/chromeLift';
@@ -90,13 +87,17 @@ import { useMapFeature } from '@/lib/map/useMapFeatures';
 import { useTranslation } from '@/lib/i18n';
 import type { LocationErrorReason } from '@/lib/map/useUserLocation';
 
+import { GuidanceBanner } from '@/features/directions/GuidanceBanner';
 import { slotName } from '@/features/directions/stops';
+import { useGuidance } from '@/features/directions/useGuidance';
+import type { UserFix } from '@/lib/map/userPuck';
 import { takeReturnBounds } from '@/features/street3d/handoff';
 import { useStreet3dLayer } from '@/features/street3d/useStreet3dLayer';
 
 import { ExploreBody, ExploreHeader, type RenderPlaceActions } from './ExploreContent';
 import { ExploreMarker } from './ExploreMarker';
 import { clampFitPadding } from './mapPadding';
+import { CameraReadout, ExploreMapControls } from './ExploreMapControls';
 import { MapSettingsButton } from './MapSettingsButton';
 import { MapStyleButton } from './MapStyleButton';
 import { MapTopBar } from './MapTopBar';
@@ -106,8 +107,6 @@ import { useExplore } from './useExplore';
 /** Zoom the camera settles at when the user asks to be found. */
 const MY_LOCATION_ZOOM = 15;
 
-/** Below this the compass is effectively north and the reset control is noise. */
-const BEARING_EPSILON = 1;
 /** The settings modal's "3D": the steepest tilt the shipped map allows. */
 const TILTED_PITCH = 60;
 /** At or above this the camera reads as 3D in the settings modal. */
@@ -347,7 +346,7 @@ export default function ExploreScreen({
   // 10 Hz, and storing the angle re-rendered this whole screen on every report
   // of an orbit (measured: ~11% of the main thread on a throttled laptop,
   // `docs/MAP_PERFORMANCE.md`). React skips a set to the same value.
-  const [rotated, setRotated] = useState(false);
+  const [cameraReadout] = useState(() => new CameraReadout());
   const [tilted, setTilted] = useState(false);
   // The style picker (`MapStyleButton`), opened from its button or from
   // Settings → Map → Style.
@@ -405,6 +404,27 @@ export default function ExploreScreen({
   // canvas refuses to draw the dot without a granted permission anyway; not
   // arming it until then keeps the two rules independent of each other.
   const [followingLocation, setFollowingLocation] = useState(false);
+  // The position the canvas is drawing, for guided navigation. The canvas is
+  // the one observer of the device; transient, never stored.
+  const [userFix, setUserFix] = useState<UserFix | null>(null);
+  // The camera follows the traveller until they move the map themselves.
+  const [followGuide, setFollowGuide] = useState(true);
+  const guidance = useGuidance({
+    route: directions.route,
+    steps: directions.steps,
+    fix: userFix,
+    routeBusy: directions.routeBusy,
+    rerouteFrom: directions.rerouteFrom,
+  });
+  const guiding = guidance.guiding;
+  useEffect(() => subscribeUserMove(() => setFollowGuide(false)), [subscribeUserMove]);
+  useEffect(() => {
+    if (!guiding || !followGuide || !userFix) return;
+    mapRef.current?.moveTo(
+      { latitude: userFix.latitude, longitude: userFix.longitude },
+      { duration: 600 },
+    );
+  }, [guiding, followGuide, userFix]);
 
   const sheetProgress = useSharedValue(0);
   // The sheet's live on-screen height (`MapSheet`'s `animatedHeight`).
@@ -421,7 +441,7 @@ export default function ExploreScreen({
 
   const handleViewportChange = useCallback(
     (change: MapViewportChange) => {
-      setRotated(Math.abs(change.viewport.bearing) > BEARING_EPSILON);
+      cameraReadout.report(change.viewport.bearing);
       setTilted(change.viewport.pitch >= TILTED_EPSILON);
       if (change.source === 'user') for (const listener of userMoveListeners.current) listener();
       if (change.isFinal) {
@@ -433,21 +453,31 @@ export default function ExploreScreen({
       explore.onViewportChange(change);
       street3d.onViewportChange(change);
     },
-    [explore, street3d],
+    [cameraReadout, explore, street3d],
   );
 
   const handleLocate = useCallback(async () => {
+    if (location.isLocating) return null;
     const coordinate = await location.locate();
     // A `null` is not nothing: `location.error` now carries which of the four
     // reasons it was, and the notice below says it out loud.
-    if (!coordinate) return;
+    if (!coordinate) return null;
     setFollowingLocation(true);
     mapRef.current?.moveTo(coordinate, { zoom: MY_LOCATION_ZOOM });
+    return coordinate;
   }, [location]);
 
-  const handleResetNorth = useCallback(() => {
-    mapRef.current?.resetNorth();
-  }, []);
+  /**
+   * Guided navigation. Starting is the user action that asks for the location
+   * (the only place a prompt can come from); a refusal leaves the route as it
+   * was, with the notice saying why.
+   */
+  const handleStartGuidance = useCallback(async () => {
+    const coordinate = await handleLocate();
+    if (!coordinate) return;
+    setFollowGuide(true);
+    guidance.start();
+  }, [handleLocate, guidance.start]);
 
   /** The settings modal's 2D/3D: tilt or level the camera where it already is. */
   const handleTiltChange = useCallback((tilted: boolean) => {
@@ -544,6 +574,7 @@ export default function ExploreScreen({
     <ExploreBody
       explore={explore}
       renderPlaceActions={landmarks ? renderPlaceActions : undefined}
+      onStartGuidance={() => void handleStartGuidance()}
     />
   );
 
@@ -573,6 +604,7 @@ export default function ExploreScreen({
               // second chip over it. See `lib/goway/basemapLabels.ts`.
               onLabelsChange={explore.onLabelsChange}
               showUserLocation={followingLocation}
+              onUserFix={setUserFix}
               onViewportChange={handleViewportChange}
               onError={setMapError}
               models={flyoverModels}
@@ -645,6 +677,28 @@ export default function ExploreScreen({
                     {`Tap the map to set the ${slotName(directions.picking, directions.stops.length).toLowerCase()}`}
                   </Text>
                 </View>
+              </View>
+            ) : null}
+
+            {guiding && guidance.guidance && !mapError && !immersive ? (
+              <View
+                pointerEvents="box-none"
+                className="absolute"
+                style={{
+                  top: areaTop,
+                  left:
+                    layout === 'panel'
+                      ? windowEdgeGap(insets.left, 0) + PANEL_WIDTH + FIT_GAP_PX
+                      : windowEdgeGap(insets.left, 0),
+                  right: sideGap + CONTROLS_COLUMN_WIDTH,
+                }}
+              >
+                <GuidanceBanner
+                  guidance={guidance.guidance}
+                  state={guidance.state}
+                  onEnd={guidance.end}
+                  testID="guidance"
+                />
               </View>
             ) : null}
 
@@ -743,26 +797,13 @@ export default function ExploreScreen({
                   chromeStyle,
                 ]}
               >
-                {rotated ? (
-                  <Fab
-                    size="xs"
-                    icon={RiCompass3Line}
-                    iconSize={20}
-                    accessibilityLabel={t('map.resetNorth')}
-                    onPress={handleResetNorth}
-                    appearance="subtle"
-                    tone="neutral"
-                  />
-                ) : null}
-                <Fab
-                  icon={RiFocus3Line}
-                  iconSize={22}
-                  accessibilityLabel={t('map.myLocation')}
-                  accessibilityHint={t('map.myLocationHint')}
-                  disabled={location.isLocating}
-                  onPress={() => void handleLocate()}
-                  appearance="subtle"
-                  tone="neutral"
+                <ExploreMapControls
+                  mapRef={mapRef}
+                  readout={cameraReadout}
+                  tilted={tilted}
+                  onTiltChange={handleTiltChange}
+                  onLocate={() => void handleLocate()}
+                  following={followingLocation}
                 />
               </Animated.View>
             )}

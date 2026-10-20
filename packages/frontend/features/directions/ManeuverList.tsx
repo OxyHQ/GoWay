@@ -1,34 +1,26 @@
 /**
- * The turn-by-turn list.
+ * The turn-by-turn list: GoWay's route steps in Bloom's `DirectionsSteps`.
  *
- * `RouteLeg.maneuvers` has been populated by the backend since routing landed
- * and was rendered nowhere, so a user could see that a walk was 14 minutes and
- * not one word about which way to go.
- *
- * Selecting a step is not decoration: it drives the map, through the
- * `geometryIndex` the contract carries on every maneuver (see `maneuvers.ts`).
- * The selection is therefore a real, single-choice list — one row selected at a
- * time, `role="option"` so the web announces it as one, and the selected row
- * says "selected" in its accessible name rather than relying on the tinted
- * background Bloom gives it. Colour is never the only signal; neither is the
- * glyph, which only ever repeats what the instruction text already says.
+ * `RouteLeg.maneuvers` has been populated by the backend since routing landed;
+ * this is where they are read. Selecting a step is not decoration: it drives
+ * the map, through the `geometryIndex` the contract carries on every maneuver
+ * (see `maneuvers.ts`). The selection is a single choice, marked on screen and
+ * named in the row's announcement by Bloom (`currentStepId`), and pressing the
+ * selected step again clears it — a toggle, not a trap.
  *
  * With waypoints a route has several legs, and a leg heading is the only thing
- * that tells the user which stop the next dozen turns are about.
+ * that tells the user which stop the next dozen turns are about; a single leg
+ * gets no heading.
  */
-import { View } from 'react-native';
-import { Item } from '@oxy.so/bloom/item';
+import { useMemo } from 'react';
+import type { TravelMode } from '@goway.to/sdk';
+import {
+  type DirectionsLeg,
+  type DirectionsManeuver,
+  type DirectionsMode,
+  DirectionsSteps,
+} from '@oxy.so/bloom/directions';
 import { Text } from '@oxy.so/bloom/typography';
-import { useTheme } from '@oxy.so/bloom/theme';
-import type { BloomIconComponent } from '@oxy.so/bloom/icons';
-import { RiArrowLeftLine } from '@oxy.so/bloom/icons/RiArrowLeftLine';
-import { RiArrowRightLine } from '@oxy.so/bloom/icons/RiArrowRightLine';
-import { RiArrowUpLine } from '@oxy.so/bloom/icons/RiArrowUpLine';
-import { RiCornerUpLeftLine } from '@oxy.so/bloom/icons/RiCornerUpLeftLine';
-import { RiFlagLine } from '@oxy.so/bloom/icons/RiFlagLine';
-import { RiFocus3Line } from '@oxy.so/bloom/icons/RiFocus3Line';
-import { RiGuideLine } from '@oxy.so/bloom/icons/RiGuideLine';
-import { RiRefreshLine } from '@oxy.so/bloom/icons/RiRefreshLine';
 
 import { formatDistance, formatDuration } from '@/lib/goway/format';
 
@@ -36,105 +28,111 @@ import type { RouteStep } from './maneuvers';
 import type { DirectionsStop } from './stops';
 
 /**
- * The glyph for a maneuver type.
- *
- * Redundant emphasis only: every step renders its `instruction` text, and the
- * accessible name is built from the words, never from the glyph. `ManeuverType`
- * is an OPEN union — a router may emit a type this version has never heard
- * of — so the default is a plain "carry on" arrow rather than a blank.
+ * `ManeuverType` is an OPEN union — a router may emit a type this version has
+ * never heard of — so anything unknown is a plain "carry on".
  */
-function maneuverIcon(type: string): BloomIconComponent {
-  if (type === 'depart') return RiFocus3Line;
-  if (type === 'arrive') return RiFlagLine;
-  if (type === 'uturn') return RiCornerUpLeftLine;
-  if (type.startsWith('roundabout')) return RiRefreshLine;
-  if (type === 'ferry') return RiGuideLine;
-  if (type.endsWith('-left')) return RiArrowLeftLine;
-  if (type.endsWith('-right')) return RiArrowRightLine;
-  return RiArrowUpLine;
+const MANEUVER: Readonly<Record<string, DirectionsManeuver>> = {
+  depart: 'depart',
+  continue: 'straight',
+  'turn-left': 'left',
+  'turn-right': 'right',
+  'turn-slight-left': 'slight-left',
+  'turn-slight-right': 'slight-right',
+  'turn-sharp-left': 'sharp-left',
+  'turn-sharp-right': 'sharp-right',
+  uturn: 'uturn',
+  merge: 'merge',
+  fork: 'straight',
+  'roundabout-enter': 'roundabout',
+  'roundabout-exit': 'roundabout',
+  ferry: 'transfer',
+  arrive: 'arrive',
+};
+
+const MODE: Readonly<Record<TravelMode, DirectionsMode>> = {
+  drive: 'drive',
+  walk: 'walk',
+  bike: 'cycle',
+};
+
+export function maneuverOf(type: string): DirectionsManeuver {
+  return MANEUVER[type] ?? 'straight';
 }
 
 export interface ManeuverListProps {
   steps: readonly RouteStep[];
   /** The itinerary, so a leg can be headed with the stop it ends at. */
   stops: readonly (DirectionsStop | null)[];
+  mode: TravelMode;
   selected: number | null;
   /** Pressing the selected step again clears it — a toggle, not a trap. */
   onSelect: (index: number | null) => void;
   testID?: string;
 }
 
-export function ManeuverList({ steps, stops, selected, onSelect, testID }: ManeuverListProps) {
-  const theme = useTheme();
+export function ManeuverList({
+  steps,
+  stops,
+  mode,
+  selected,
+  onSelect,
+  testID,
+}: ManeuverListProps) {
+  const legs = useMemo<DirectionsLeg[]>(() => {
+    /** Leg headings only earn their space once there is more than one leg. */
+    const multiLeg = steps.some((step) => step.legIndex > 0);
+    const byLeg = new Map<number, DirectionsLeg['steps'][number][]>();
+    for (const step of steps) {
+      const { maneuver } = step;
+      const detail = [
+        maneuver.streetName,
+        maneuver.durationSeconds > 0 ? formatDuration(maneuver.durationSeconds) : null,
+      ]
+        .filter(Boolean)
+        .join(' · ');
+      const entry = {
+        id: String(step.index),
+        instruction: maneuver.instruction,
+        maneuver: maneuverOf(maneuver.type),
+        distance: maneuver.distanceMeters > 0 ? formatDistance(maneuver.distanceMeters) : undefined,
+        detail: detail || undefined,
+        // Said out loud rather than implied: without a geometry index the map
+        // can only mark the point, not the stretch.
+        accessibilityLabel: [
+          `Step ${step.index + 1} of ${steps.length}`,
+          maneuver.instruction,
+          detail || null,
+          selected === step.index ? 'selected, shown on the map' : null,
+          selected === step.index && !step.exact ? 'approximate position on the route' : null,
+        ]
+          .filter(Boolean)
+          .join(', '),
+      };
+      byLeg.set(step.legIndex, [...(byLeg.get(step.legIndex) ?? []), entry]);
+    }
+    return [...byLeg.entries()].map(([legIndex, legSteps]) => ({
+      id: String(legIndex),
+      title: multiLeg ? legHeading(legIndex, stops) : undefined,
+      mode: MODE[mode],
+      steps: legSteps,
+    }));
+  }, [steps, stops, mode, selected]);
 
   if (steps.length === 0) return null;
 
-  /** Leg headings only earn their space once there is more than one leg. */
-  const multiLeg = steps.some((step) => step.legIndex > 0);
-
   return (
-    <View testID={testID}>
+    <>
       <Text className="px-space-16 pt-space-8 pb-space-4 text-caption text-muted-foreground">
         {`${steps.length} ${steps.length === 1 ? 'step' : 'steps'}`}
       </Text>
-
-      <View
-        accessibilityRole="list"
-        // One option selected at a time, and the selection moves the map.
-        // `Item` spells the matching ARIA for `role="option"`.
+      <DirectionsSteps
+        legs={legs}
+        currentStepId={selected === null ? undefined : String(selected)}
+        onPressStep={(id) => onSelect(selected === Number(id) ? null : Number(id))}
         accessibilityLabel="Directions, step by step"
-      >
-        {steps.map((step) => {
-          const Icon = maneuverIcon(step.maneuver.type);
-          const isSelected = selected === step.index;
-          const detail = [
-            step.maneuver.streetName,
-            step.maneuver.distanceMeters > 0 ? formatDistance(step.maneuver.distanceMeters) : null,
-            step.maneuver.durationSeconds > 0
-              ? formatDuration(step.maneuver.durationSeconds)
-              : null,
-          ]
-            .filter(Boolean)
-            .join(' · ');
-
-          return (
-            <View key={`${step.legIndex}-${step.index}`}>
-              {step.firstOfLeg && multiLeg ? (
-                <Text className="px-space-16 pt-space-12 pb-space-4 text-caption text-muted-foreground">
-                  {legHeading(step.legIndex, stops)}
-                </Text>
-              ) : null}
-
-              <Item
-                role="option"
-                selected={isSelected}
-                density="compact"
-                onPress={() => onSelect(isSelected ? null : step.index)}
-                leading={
-                  <View className="h-8 w-8 items-center justify-center rounded-radius-max bg-muted">
-                    <Icon width={16} height={16} fill={theme.colors.textSecondary} />
-                  </View>
-                }
-                title={step.maneuver.instruction}
-                subtitle={detail || undefined}
-                accessibilityLabel={[
-                  `Step ${step.index + 1} of ${steps.length}`,
-                  step.maneuver.instruction,
-                  detail || null,
-                  isSelected ? 'selected, shown on the map' : null,
-                  // Said out loud rather than implied: without a geometry index
-                  // the map can only mark the point, not the stretch.
-                  isSelected && !step.exact ? 'approximate position on the route' : null,
-                ]
-                  .filter(Boolean)
-                  .join(', ')}
-                testID={`maneuver-${step.index}`}
-              />
-            </View>
-          );
-        })}
-      </View>
-    </View>
+        testID={testID}
+      />
+    </>
   );
 }
 

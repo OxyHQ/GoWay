@@ -85,9 +85,11 @@ export type RenderPlaceActions = (place: Place) => ReactNode;
 export function ExploreBody({
   explore,
   renderPlaceActions,
+  onStartGuidance,
 }: {
   explore: ExploreController;
   renderPlaceActions?: RenderPlaceActions;
+  onStartGuidance?: () => void;
 }) {
   if (explore.directions.active) {
     return (
@@ -99,6 +101,7 @@ export function ExploreBody({
         // Only ever a position the user has already asked for in this session;
         // nothing here requests one.
         near={explore.location.coordinate}
+        onStartGuidance={onStartGuidance}
         testID="directions-body"
       />
     );

@@ -70,6 +70,7 @@ export default function RootLayout() {
       <GestureHandlerRootView style={{ flex: 1 }}>
         <KeyboardProvider>
           <BloomProvider
+            colorPreset="blue"
             persistKey={THEME_PERSIST_KEY}
             storage={themeStorage}
             imageResolver={(id, variant) => oxyServices.assets.publicUrl(id, variant ?? 'thumb')}

@@ -1,65 +1,18 @@
 /**
- * Everything we draw on the ground, standing on the SAME surface MapLibre's 3D
- * terrain draws — not at sea level, and not on a coarser copy of it.
+ * Common absolute terrain elevations for city geometry. The host samples the
+ * same DEM source as MapLibre, including exaggeration and the source's finest
+ * available zoom (plus MapLibre's terrain-to-DEM zoom delta).
  *
- * With 3D terrain on, MapLibre's custom-layer matrix places `z` at ABSOLUTE
- * elevation — the camera rides `elevation` metres up — so a mesh built from
- * the ground (`z = 0`) is drawn at sea level: under the hillside in Barcelona's
- * Gràcia, hundreds of metres under it in Andorra. This module works out how far
- * up to lift everything: each building, each tree, each street vertex, city
- * life and the models. Pure: no renderer, no map engine; `cityEngine.ts`
- * uploads the result as one float per vertex and the materials add it
- * (`tsl/common.ts` → `terrainLift`), and the street detail reads the grids in
- * its vertex shader (`cityStreets/groundAtlas.ts`).
+ * Buildings and trees use a bounded, cached grid. Where a regional DEM exceeds
+ * that grid's resolution, interpolation is approximate; it is not a second DEM.
+ * Streets sample the host directly and refine their triangles against it in
+ * cityStreets/groundMesh. Their markings and traffic contact use those actual
+ * triangles rather than an independently sampled height in a vertex shader.
  *
- * ## The surface MapLibre draws, exactly
- *
- * MapLibre draws each terrain tile as a 128-cell grid whose vertices read the
- * DEM bilinearly between pixel CENTRES (`get_elevation` in its vertex prelude;
- * `Terrain.getElevationSampler` on the CPU, the same arithmetic), with the
- * exaggeration applied — and a terrain tile at zoom `z` reads the DEM tile at
- * `z − deltaZoom` (its `TerrainTileManager`, `deltaZoom` 1), clamped to the
- * source's max zoom. Everything here reproduces that surface:
- *
- * - **The same DEM tile.** The host samples at `maxzoom + deltaZoom`, which is
- *   the DEM's finest tile, the one every terrain tile at street level draws
- *   (`city3dGround.web.ts`). Asking for `maxzoom` itself — what this module was
- *   given until the Mallorca–Marina report — reads the tile ONE zoom coarser
- *   (Barcelona: 29 m pixels instead of 14 m), a different surface: up to 10 m
- *   off around the Sagrada Família, metres on any slope.
- * - **The same resolution.** Each tile's grid ({@link GroundGrid}) is sampled
- *   at the DEM's own pixel centres, plus one pixel round the edge, so a
- *   bilinear read of the grid IS MapLibre's bilinear read of the DEM, to float
- *   rounding — at every point, not only at the samples. The grid used to be
- *   33 × 33 per tile whatever the DEM (29 m cells over 14 m pixels); between
- *   its samples the drawn terrain rose up to 1.2 m above it, and 16% of a
- *   Barcelona street tile was under the terrain even with the right DEM.
- * - **The same exaggeration** (the sampler's own).
- *
- * What remains is MapLibre's mesh against its own bilinear surface: a terrain
- * tile at `z ≥ 15` has two or more vertices per DEM pixel ON the pixel centres'
- * lines, so the two differ only by the bilinear twist inside a pixel —
- * measured at most 1.4 mm on z18 terrain tiles, 9 mm on z17, 16 cm on z16 and
- * only beside the Sagrada Família's 31 m DEM spike (`docs/MAP_TERRAIN_GLOBE.md`
- * → "Everything on the drawn ground"). Far terrain tiles (z ≤ 12 terrain tiles,
- * kilometres out) are drawn from a COARSER DEM than this; nothing GoWay draws
- * on the ground is drawn there.
- *
- * ## How a building is placed — MapLibre's rule, made a little better
- *
- * MapLibre's own `fill-extrusion` on terrain lifts a whole building by the
- * ground at its CENTROID (a flat roof, as in the data), and sinks the base of
- * every ground-standing building 10 m so that a wall does not hang over a
- * slope. Same here — one elevation per building, roofs stay flat — but the sink
- * is measured rather than fixed: the drop from the centre to the lowest corner
- * of the footprint's box, plus a margin, never less than {@link GROUND.minSinkM}.
- * A building on flat ground buries 2 m of wall instead of 10; one across a
- * steep street reaches all the way down on the low side. Only vertices at the
- * building's FOOT (`z ≈ 0`) sink: a part that starts in the air
- * (`render_min_height`) keeps its gap.
- *
- * A building cut by a tile edge is two pieces, one per tile, each placed by its
- * own centre; on a slope their roofs can differ by the slope across the seam.
+ * Each building has one ground anchor so roofs stay planar. Ground-standing
+ * wall feet extend below the lowest sampled footprint corner; elevated parts
+ * retain their recorded minimum height. Tile-clipped building pieces still
+ * have independent anchors, which can differ on a slope.
  */
 import { latFromMercatorY, type TileId } from './tileMath';
 
@@ -86,19 +39,18 @@ export interface GroundLattice {
 }
 
 /**
- * GoWay's terrain: Mapterhorn's Terrarium tiles, 512 px, to z12
+ * GoWay's terrain: Mapterhorn's Terrarium tiles, 512 px, up to regional z16
  * (`lib/map/style/relief.ts` → `RELIEF_DEM`, held equal by
  * `city3dGroundLattice.test.ts`; not imported, the relief is another chunk).
  * What a street tile is cut for before any terrain is on.
  */
-export const TERRAIN_LATTICE: GroundLattice = { zoom: 12, tileSize: 512, meshCells: 128 };
+export const TERRAIN_LATTICE: GroundLattice = { zoom: 16, tileSize: 512, meshCells: 128 };
 
 export const GROUND = {
   /**
-   * The most DEM pixels a grid holds across one tile: GoWay's DEM at a z14
-   * tile (128). A finer DEM (a foreign style's) is sampled no finer than
-   * this, and then only approximately: the budget is ~17,000 samples (~7 ms
-   * on the main thread) for one tile.
+   * Bounded building/tree samples across one tile. Fine regional DEMs can
+   * exceed this resolution; this grid approximates them. Street refinement
+   * uses Ground.sample directly rather than this cache.
    */
   maxCells: 128,
   /** The least any building's foot is sunk below its centre's ground. */
@@ -240,8 +192,8 @@ export function createGround(
 /**
  * The ground at `u` east, `v` south across the grid's tile (both 0–1): the
  * DEM read bilinearly between the four pixel centres around the point —
- * MapLibre's `get_elevation`, on the CPU. The street detail's vertex shader
- * reads its atlas with the same arithmetic (`cityStreets/streetMaterials.ts`).
+ * MapLibre's `get_elevation` arithmetic on the CPU. Resolution is bounded
+ * by GROUND.maxCells for buildings and trees.
  */
 export function gridAt(grid: GroundGrid, u: number, v: number): number {
   const { values, cells, size } = grid;

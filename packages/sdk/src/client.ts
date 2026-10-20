@@ -22,6 +22,22 @@ import {
   placeReviewWithStatusSchema,
   reviewListQuerySchema,
   reviewPathSchema,
+  savedDefaultListInputSchema,
+  savedListInputSchema,
+  savedListItemInputSchema,
+  savedListItemOrderInputSchema,
+  savedListItemPageSchema,
+  savedListItemPathSchema,
+  savedListItemQuerySchema,
+  savedListItemSchema,
+  savedListItemUpdateInputSchema,
+  savedListPageSchema,
+  savedListPathSchema,
+  savedListQuerySchema,
+  savedListSchema,
+  savedListUpdateInputSchema,
+  savedPlacesQuerySchema,
+  savedPlacesSchema,
   capabilityPathSchema,
   claimDecisionInputSchema,
   claimPathSchema,
@@ -102,6 +118,8 @@ import {
   liveShapePathSchema,
   liveShapeSchema,
   liveSourcePageSchema,
+  nearbyTransitQuerySchema,
+  nearbyTransitSchema,
   DEFAULT_MAP_STYLE,
   isMapLightPreset,
   isMapStyleId,
@@ -144,6 +162,19 @@ import type {
   PlaceReviewWithStatus,
   PlaceReviewWithStatusPage,
   ReviewListQuery,
+  SavedDefaultListInput,
+  SavedList,
+  SavedListInput,
+  SavedListItem,
+  SavedListItemInput,
+  SavedListItemOrderInput,
+  SavedListItemPage,
+  SavedListItemQuery,
+  SavedListItemUpdateInput,
+  SavedListPage,
+  SavedListQuery,
+  SavedListUpdateInput,
+  SavedPlaces,
   ClaimDecisionInput,
   DuplicateCandidate,
   DuplicateCandidatePage,
@@ -203,6 +234,8 @@ import type {
   SearchResults,
   LiveShape,
   LiveSourcePage,
+  NearbyTransit,
+  NearbyTransitQuery,
   RoadAccessDecision,
   RoadAccessInput,
   RoadRuleSetListQuery,
@@ -573,6 +606,88 @@ export interface GoWayClaimsApi {
 }
 
 /**
+ * The places inside one of your saved lists.
+ *
+ * Every call is identity-bound and yours alone: a list that is not yours
+ * rejects with `GoWayNotFoundError`, exactly as one that does not exist.
+ */
+export interface GoWayListItemsApi {
+  /** The places in a list, in your order. Rejects with `GoWayNotFoundError` for a list that is not yours. */
+  list(
+    listId: string,
+    query?: SavedListItemQuery,
+    options?: GoWayRequestOptions,
+  ): Promise<SavedListItemPage>;
+  /**
+   * Save a place at the end of a list. A place already in it resolves with its
+   * existing item, unchanged. Rejects with `GoWayGoneError` for a removed or
+   * merged place (`details.mergedInto` names the survivor), `GoWayNotFoundError`
+   * for one that never existed, and `GoWayConflictError` with
+   * `details.reason === 'item_limit_reached'` when the list is full.
+   */
+  add(
+    listId: string,
+    input: SavedListItemInput,
+    options?: GoWayRequestOptions,
+  ): Promise<SavedListItem>;
+  /**
+   * Put the named items first, in this order; the list's other items keep
+   * their order after them. Resolves with nothing (`204`).
+   */
+  order(
+    listId: string,
+    input: SavedListItemOrderInput,
+    options?: GoWayRequestOptions,
+  ): Promise<void>;
+  /** Set your note on a saved place, or clear it with `{ note: null }`. */
+  setNote(
+    listId: string,
+    itemId: string,
+    input: SavedListItemUpdateInput,
+    options?: GoWayRequestOptions,
+  ): Promise<SavedListItem>;
+  /** Remove a place from a list. Resolves with nothing (`204`). */
+  remove(listId: string, itemId: string, options?: GoWayRequestOptions): Promise<void>;
+}
+
+/**
+ * Your saved place lists: private, personal, and never shared or published.
+ *
+ * Identity-bound as yourself: a session switched into an organization is
+ * refused with `GoWayForbiddenError`. A conflicting write rejects with
+ * `GoWayConflictError` whose `details.reason` is one of
+ * `SAVED_LIST_CONFLICT_REASONS`.
+ */
+export interface GoWayListsApi {
+  /** Your lists, oldest first. */
+  list(query?: SavedListQuery, options?: GoWayRequestOptions): Promise<SavedListPage>;
+  /** Create a private list. */
+  create(input: SavedListInput, options?: GoWayRequestOptions): Promise<SavedList>;
+  /**
+   * Your default "Saved" list, created with `input.name` when you have none —
+   * the list a one-tap save lands in. Several devices asking at once still get
+   * one list.
+   */
+  ensureDefault(input: SavedDefaultListInput, options?: GoWayRequestOptions): Promise<SavedList>;
+  /** One of your lists. */
+  get(listId: string, options?: GoWayRequestOptions): Promise<SavedList>;
+  /** Rename one of your lists. */
+  rename(
+    listId: string,
+    input: SavedListUpdateInput,
+    options?: GoWayRequestOptions,
+  ): Promise<SavedList>;
+  /** Delete one of your lists and the places saved in it. Resolves with nothing (`204`). */
+  delete(listId: string, options?: GoWayRequestOptions): Promise<void>;
+  /**
+   * Which of your lists hold these places (up to `MAX_SAVED_PLACES_LOOKUP`), so
+   * a result can show that it is saved. A place you have not saved is absent.
+   */
+  saved(placeIds: readonly string[], options?: GoWayRequestOptions): Promise<SavedPlaces>;
+  readonly items: GoWayListItemsApi;
+}
+
+/**
  * GoWay's moderation surface, for GoWay operators only.
  *
  * Every call needs an Oxy session whose person is on the deployment's operator
@@ -830,6 +945,25 @@ export interface GoWayLiveApi {
 }
 
 /**
+ * Public transport near a point (`docs/TRANSIT_NEARBY.md`): the stops around it
+ * and what leaves them next. Public — it works signed out — and the position is
+ * used for the one answer and never stored by GoWay.
+ */
+export interface GoWayTransitApi {
+  /**
+   * The stops within a radius and their next departures. Every departure says
+   * whether its time is the operator's `scheduled` timetable or its `realtime`
+   * prediction, and every operator that contributed comes with the credit and
+   * licence its data is re-served under — show them while the stops are shown.
+   *
+   * A point no served operator covers is an empty answer
+   * (`{ stops: [], operators: [] }`), not an error. A deployment with no live
+   * layer answers `GoWayUnavailableError`.
+   */
+  nearby(query: NearbyTransitQuery, options?: GoWayRequestOptions): Promise<NearbyTransit>;
+}
+
+/**
  * Road rules by place: what differs from one country or city to the next, and
  * whether a vehicle may enter where it is going. Public — none of it needs an
  * account, and the vehicle you describe is used for the one answer and never
@@ -854,6 +988,7 @@ export interface GoWayClient {
   readonly places: GoWayPlacesApi;
   readonly categories: GoWayCategoriesApi;
   readonly claims: GoWayClaimsApi;
+  readonly lists: GoWayListsApi;
   readonly moderation: GoWayModerationApi;
   readonly search: GoWaySearchApi;
   readonly geocode: GoWayGeocodeApi;
@@ -861,6 +996,7 @@ export interface GoWayClient {
   readonly captures: GoWayCapturesApi;
   readonly street3d: GoWayStreet3dApi;
   readonly live: GoWayLiveApi;
+  readonly transit: GoWayTransitApi;
   readonly roads: GoWayRoadsApi;
   readonly links: GoWayLinks;
 }
@@ -980,6 +1116,16 @@ function mediaPath(placeId: PlaceId, mediaId: string): string {
 function reviewPath(placeId: PlaceId, reviewId: string): string {
   const path = validInput(reviewPathSchema, { placeId, reviewId }, 'path');
   return `/places/${pathSegment(path.placeId, 'placeId')}/reviews/${pathSegment(path.reviewId, 'reviewId')}`;
+}
+
+function listPath(listId: string): string {
+  const path = validInput(savedListPathSchema, { listId }, 'path');
+  return `/lists/${pathSegment(path.listId, 'listId')}`;
+}
+
+function listItemPath(listId: string, itemId: string): string {
+  const path = validInput(savedListItemPathSchema, { listId, itemId }, 'path');
+  return `/lists/${pathSegment(path.listId, 'listId')}/items/${pathSegment(path.itemId, 'itemId')}`;
 }
 
 function sessionPath(sessionId: string): string {
@@ -1588,6 +1734,160 @@ export function createGoWayClient(options: GoWayClientOptions = {}): GoWayClient
       ),
   });
 
+  const lists: GoWayListsApi = Object.freeze({
+    list: async (query: SavedListQuery = {}, callOptions: GoWayRequestOptions = {}) =>
+      request(
+        config,
+        {
+          method: 'GET',
+          path: '/lists',
+          query: validInput(savedListQuerySchema, query, 'query'),
+          signal: callOptions.signal,
+        },
+        savedListPageSchema,
+      ),
+
+    create: async (input: SavedListInput, callOptions: GoWayRequestOptions = {}) =>
+      request(
+        config,
+        {
+          method: 'POST',
+          path: '/lists',
+          body: validInput(savedListInputSchema, input, 'input'),
+          signal: callOptions.signal,
+        },
+        savedListSchema,
+      ),
+
+    ensureDefault: async (input: SavedDefaultListInput, callOptions: GoWayRequestOptions = {}) =>
+      request(
+        config,
+        {
+          method: 'PUT',
+          path: '/lists/default',
+          body: validInput(savedDefaultListInputSchema, input, 'input'),
+          signal: callOptions.signal,
+        },
+        savedListSchema,
+      ),
+
+    get: async (listId: string, callOptions: GoWayRequestOptions = {}) =>
+      request(
+        config,
+        { method: 'GET', path: listPath(listId), signal: callOptions.signal },
+        savedListSchema,
+      ),
+
+    rename: async (
+      listId: string,
+      input: SavedListUpdateInput,
+      callOptions: GoWayRequestOptions = {},
+    ) =>
+      request(
+        config,
+        {
+          method: 'PATCH',
+          path: listPath(listId),
+          body: validInput(savedListUpdateInputSchema, input, 'input'),
+          signal: callOptions.signal,
+        },
+        savedListSchema,
+      ),
+
+    delete: async (listId: string, callOptions: GoWayRequestOptions = {}) =>
+      request(
+        config,
+        { method: 'DELETE', path: listPath(listId), signal: callOptions.signal },
+        null,
+      ),
+
+    saved: async (placeIds: readonly string[], callOptions: GoWayRequestOptions = {}) =>
+      request(
+        config,
+        {
+          method: 'GET',
+          path: '/saved-places',
+          query: validInput(savedPlacesQuerySchema, { placeIds: [...placeIds] }, 'query'),
+          signal: callOptions.signal,
+        },
+        savedPlacesSchema,
+      ),
+
+    items: Object.freeze({
+      list: async (
+        listId: string,
+        query: SavedListItemQuery = {},
+        callOptions: GoWayRequestOptions = {},
+      ) =>
+        request(
+          config,
+          {
+            method: 'GET',
+            path: `${listPath(listId)}/items`,
+            query: validInput(savedListItemQuerySchema, query, 'query'),
+            signal: callOptions.signal,
+          },
+          savedListItemPageSchema,
+        ),
+
+      add: async (
+        listId: string,
+        input: SavedListItemInput,
+        callOptions: GoWayRequestOptions = {},
+      ) =>
+        request(
+          config,
+          {
+            method: 'POST',
+            path: `${listPath(listId)}/items`,
+            body: validInput(savedListItemInputSchema, input, 'input'),
+            signal: callOptions.signal,
+          },
+          savedListItemSchema,
+        ),
+
+      order: async (
+        listId: string,
+        input: SavedListItemOrderInput,
+        callOptions: GoWayRequestOptions = {},
+      ) =>
+        request(
+          config,
+          {
+            method: 'PUT',
+            path: `${listPath(listId)}/items/order`,
+            body: validInput(savedListItemOrderInputSchema, input, 'input'),
+            signal: callOptions.signal,
+          },
+          null,
+        ),
+
+      setNote: async (
+        listId: string,
+        itemId: string,
+        input: SavedListItemUpdateInput,
+        callOptions: GoWayRequestOptions = {},
+      ) =>
+        request(
+          config,
+          {
+            method: 'PATCH',
+            path: listItemPath(listId, itemId),
+            body: validInput(savedListItemUpdateInputSchema, input, 'input'),
+            signal: callOptions.signal,
+          },
+          savedListItemSchema,
+        ),
+
+      remove: async (listId: string, itemId: string, callOptions: GoWayRequestOptions = {}) =>
+        request(
+          config,
+          { method: 'DELETE', path: listItemPath(listId, itemId), signal: callOptions.signal },
+          null,
+        ),
+    }),
+  });
+
   const moderation: GoWayModerationApi = Object.freeze({
     claims: async (query: ModerationClaimListQuery = {}, callOptions: GoWayRequestOptions = {}) =>
       request(
@@ -2113,6 +2413,20 @@ export function createGoWayClient(options: GoWayClientOptions = {}): GoWayClient
     },
   });
 
+  const transit: GoWayTransitApi = Object.freeze({
+    nearby: async (query: NearbyTransitQuery, callOptions: GoWayRequestOptions = {}) =>
+      request(
+        config,
+        {
+          method: 'GET',
+          path: '/transit/nearby',
+          query: validInput(nearbyTransitQuerySchema, query, 'query'),
+          signal: callOptions.signal,
+        },
+        nearbyTransitSchema,
+      ),
+  });
+
   const roads: GoWayRoadsApi = Object.freeze({
     ruleSets: async (query: RoadRuleSetListQuery = {}, callOptions: GoWayRequestOptions = {}) =>
       request(
@@ -2164,6 +2478,7 @@ export function createGoWayClient(options: GoWayClientOptions = {}): GoWayClient
     places,
     categories,
     claims,
+    lists,
     moderation,
     search,
     geocode,
@@ -2171,6 +2486,7 @@ export function createGoWayClient(options: GoWayClientOptions = {}): GoWayClient
     captures,
     street3d,
     live,
+    transit,
     roads,
     links: createLinks(webBaseUrl),
   });

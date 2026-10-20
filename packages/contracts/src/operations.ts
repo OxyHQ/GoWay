@@ -38,12 +38,18 @@ import {
 import { moderationReviewListQuerySchema, reviewListQuerySchema } from './review';
 import { revisionListQuerySchema } from './revision';
 import {
+  savedListItemQuerySchema,
+  savedListQuerySchema,
+  savedPlacesQuerySchema,
+} from './saved-list';
+import {
   reverseGeocodeQuerySchema,
   searchParametersSchema,
   structuredGeocodeQuerySchema,
 } from './search';
 import { liveShapePathSchema } from './live-source';
 import { streetCoverageQuerySchema } from './street3d';
+import { nearbyTransitQuerySchema } from './transit';
 import {
   roadRuleSetListQuerySchema,
   roadRulesQuerySchema,
@@ -68,6 +74,7 @@ export type ApiTag =
   | 'Hours'
   | 'Media'
   | 'Reviews'
+  | 'Saved places'
   | 'Claims'
   | 'Moderation'
   | 'Search'
@@ -75,7 +82,8 @@ export type ApiTag =
   | 'Captures'
   | 'Street 3D'
   | 'Live'
-  | 'Road rules';
+  | 'Road rules'
+  | 'Transit';
 
 export interface ApiOperation {
   readonly operationId: string;
@@ -126,6 +134,13 @@ export const mediaPathSchema = z.object({
 export const reviewPathSchema = z.object({
   placeId: placeIdSchema,
   reviewId: z.string().min(1).max(128),
+});
+/** A saved list's `{listId}`. */
+export const savedListPathSchema = z.object({ listId: z.string().min(1).max(128) });
+/** A saved list's `{listId}` and one of its items' `{itemId}`. */
+export const savedListItemPathSchema = z.object({
+  listId: z.string().min(1).max(128),
+  itemId: z.string().min(1).max(128),
 });
 /** `{sceneId}` */
 export const scenePathSchema = z.object({ sceneId: z.string().min(1).max(64) });
@@ -512,6 +527,150 @@ export const API_OPERATIONS: readonly ApiOperation[] = [
     body: 'ContentReportInput',
     responses: { 201: 'PlaceReport', 200: 'PlaceReport' },
     errors: [...WRITE_ERRORS, 'not_found', 'gone'],
+  },
+
+  // ── Saved places ──────────────────────────────────────────────────────────
+  // Every operation is the caller's own: another person's list is `not_found`.
+  {
+    operationId: 'listSavedLists',
+    method: 'get',
+    path: '/lists',
+    tag: 'Saved places',
+    summary: 'Your saved lists, oldest first.',
+    auth: 'required',
+    query: savedListQuerySchema,
+    responses: { 200: 'SavedListPage' },
+    errors: [...READ_ERRORS, 'unauthorized', 'forbidden'],
+  },
+  {
+    operationId: 'createSavedList',
+    method: 'post',
+    path: '/lists',
+    tag: 'Saved places',
+    summary: 'Create a private list. `conflict` when the name is taken or you hold the most lists.',
+    auth: 'required',
+    body: 'SavedListInput',
+    responses: { 201: 'SavedList' },
+    errors: [...WRITE_ERRORS, 'forbidden', 'conflict'],
+  },
+  {
+    operationId: 'ensureDefaultSavedList',
+    method: 'put',
+    path: '/lists/default',
+    tag: 'Saved places',
+    summary:
+      'Your default "Saved" list, created with the given name when you have none: 201 when created, 200 when it existed.',
+    auth: 'required',
+    body: 'SavedDefaultListInput',
+    responses: { 201: 'SavedList', 200: 'SavedList' },
+    errors: [...WRITE_ERRORS, 'forbidden', 'conflict'],
+  },
+  {
+    operationId: 'getSavedList',
+    method: 'get',
+    path: '/lists/{listId}',
+    tag: 'Saved places',
+    summary: 'One of your lists.',
+    auth: 'required',
+    pathParameters: savedListPathSchema,
+    responses: { 200: 'SavedList' },
+    errors: ['bad_request', 'unauthorized', 'forbidden', 'not_found'],
+  },
+  {
+    operationId: 'renameSavedList',
+    method: 'patch',
+    path: '/lists/{listId}',
+    tag: 'Saved places',
+    summary: 'Rename one of your lists.',
+    auth: 'required',
+    pathParameters: savedListPathSchema,
+    body: 'SavedListUpdateInput',
+    responses: { 200: 'SavedList' },
+    errors: [...WRITE_ERRORS, 'forbidden', 'not_found', 'conflict'],
+  },
+  {
+    operationId: 'deleteSavedList',
+    method: 'delete',
+    path: '/lists/{listId}',
+    tag: 'Saved places',
+    summary: 'Delete one of your lists and the places saved in it.',
+    auth: 'required',
+    pathParameters: savedListPathSchema,
+    responses: { 204: null },
+    errors: ['bad_request', 'unauthorized', 'forbidden', 'not_found'],
+  },
+  {
+    operationId: 'listSavedListItems',
+    method: 'get',
+    path: '/lists/{listId}/items',
+    tag: 'Saved places',
+    summary: 'The places in one of your lists, in your order.',
+    auth: 'required',
+    pathParameters: savedListPathSchema,
+    query: savedListItemQuerySchema,
+    responses: { 200: 'SavedListItemPage' },
+    errors: [...READ_ERRORS, 'unauthorized', 'forbidden', 'not_found'],
+  },
+  {
+    operationId: 'addSavedListItem',
+    method: 'post',
+    path: '/lists/{listId}/items',
+    tag: 'Saved places',
+    summary:
+      'Save a place to one of your lists, at the end. A place already in the list answers its existing item with 200.',
+    auth: 'required',
+    pathParameters: savedListPathSchema,
+    body: 'SavedListItemInput',
+    responses: { 201: 'SavedListItem', 200: 'SavedListItem' },
+    errors: [...WRITE_ERRORS, 'forbidden', 'not_found', 'gone', 'conflict'],
+  },
+  {
+    operationId: 'orderSavedListItems',
+    method: 'put',
+    path: '/lists/{listId}/items/order',
+    tag: 'Saved places',
+    summary:
+      "Put the named items first, in this order; the list's other items keep their order after them.",
+    auth: 'required',
+    pathParameters: savedListPathSchema,
+    body: 'SavedListItemOrderInput',
+    responses: { 204: null },
+    errors: [...WRITE_ERRORS, 'forbidden', 'not_found'],
+  },
+  {
+    operationId: 'updateSavedListItem',
+    method: 'patch',
+    path: '/lists/{listId}/items/{itemId}',
+    tag: 'Saved places',
+    summary: 'Set or clear your note on a saved place.',
+    auth: 'required',
+    pathParameters: savedListItemPathSchema,
+    body: 'SavedListItemUpdateInput',
+    responses: { 200: 'SavedListItem' },
+    errors: [...WRITE_ERRORS, 'forbidden', 'not_found'],
+  },
+  {
+    operationId: 'removeSavedListItem',
+    method: 'delete',
+    path: '/lists/{listId}/items/{itemId}',
+    tag: 'Saved places',
+    summary: 'Remove a place from one of your lists.',
+    auth: 'required',
+    pathParameters: savedListItemPathSchema,
+    responses: { 204: null },
+    errors: ['bad_request', 'unauthorized', 'forbidden', 'not_found'],
+  },
+  {
+    operationId: 'getSavedPlaces',
+    method: 'get',
+    path: '/saved-places',
+    tag: 'Saved places',
+    summary:
+      'Which of your lists hold these places (up to 50), so a result can show it is saved. Places you have not saved are absent.',
+    auth: 'required',
+    query: savedPlacesQuerySchema,
+    responses: { 200: 'SavedPlaces' },
+    errors: [...READ_ERRORS, 'unauthorized', 'forbidden'],
   },
 
   // ── Claims ────────────────────────────────────────────────────────────────
@@ -1033,6 +1192,19 @@ export const API_OPERATIONS: readonly ApiOperation[] = [
     pathParameters: liveShapePathSchema,
     responses: { 200: 'LiveShape' },
     errors: ['bad_request', 'not_found', 'service_unavailable'],
+  },
+  // ── Transit ───────────────────────────────────────────────────────────────
+  {
+    operationId: 'getNearbyTransit',
+    method: 'get',
+    path: '/transit/nearby',
+    tag: 'Transit',
+    summary:
+      "The public-transport stops around a point and their next departures, each marked `scheduled` or `realtime`, with every contributing operator's credit and licence. A point no served operator covers answers an empty list, not an error.",
+    auth: 'public',
+    query: nearbyTransitQuerySchema,
+    responses: { 200: 'NearbyTransit' },
+    errors: [...READ_ERRORS, 'service_unavailable'],
   },
   // ── Road rules ────────────────────────────────────────────────────────────
   {

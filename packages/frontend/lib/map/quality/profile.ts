@@ -98,6 +98,10 @@ export interface QualityProfile {
     max: number;
   };
   streets: {
+    /** Geometric error and minimum edge for shared ground tessellation. */
+    groundErrorM: number;
+    groundMinEdgeM: number;
+    groundsPerFrame: number;
     /** Road tiles drawn with street detail, two draw calls each (`MAP_STREETS.md`). */
     maxTiles: number;
     /**
@@ -129,6 +133,8 @@ export interface QualityProfile {
      * it; the knob is for a device that cannot.
      */
     terrain3d: boolean;
+    /** DEM tiles retained by the terrain data worker. */
+    demCacheTiles: number;
     /**
      * The side of MapLibre's terrain textures (the 2D layers cached per
      * terrain tile), as a multiple of the terrain tile's 1,024 px: 2 is
@@ -194,9 +200,15 @@ export const QUALITY_PRESETS: Readonly<Record<QualityTier, Omit<QualityProfile, 
     life: { cars: 300, people: 300 },
     live: { maxEntities: 500 },
     landmarks: { max: 2 },
-    streets: { maxTiles: 6, drawTriangles: 400_000 },
+    streets: {
+      groundErrorM: 0.015,
+      groundMinEdgeM: 0.25,
+      groundsPerFrame: 1,
+      maxTiles: 6,
+      drawTriangles: 400_000,
+    },
     camera: { volumeBytesPerTile: 256 * KiB, footprintVertices: 8 },
-    relief: { terrain3d: true, terrainTextureScale: 1, globeNight: true },
+    relief: { terrain3d: true, terrainTextureScale: 1, globeNight: true, demCacheTiles: 16 },
     basemap: { density: 'standard' },
   },
   medium: {
@@ -224,9 +236,15 @@ export const QUALITY_PRESETS: Readonly<Record<QualityTier, Omit<QualityProfile, 
     life: { cars: 700, people: 700 },
     live: { maxEntities: 2_000 },
     landmarks: { max: 4 },
-    streets: { maxTiles: 10, drawTriangles: 900_000 },
+    streets: {
+      groundErrorM: 0.015,
+      groundMinEdgeM: 0.25,
+      groundsPerFrame: 1,
+      maxTiles: 10,
+      drawTriangles: 900_000,
+    },
     camera: { volumeBytesPerTile: 512 * KiB, footprintVertices: 12 },
-    relief: { terrain3d: true, terrainTextureScale: 2, globeNight: true },
+    relief: { terrain3d: true, terrainTextureScale: 2, globeNight: true, demCacheTiles: 32 },
     basemap: { density: 'style' },
   },
   high: {
@@ -254,9 +272,15 @@ export const QUALITY_PRESETS: Readonly<Record<QualityTier, Omit<QualityProfile, 
     life: { cars: 1200, people: 1200 },
     live: { maxEntities: 5_000 },
     landmarks: { max: 8 },
-    streets: { maxTiles: 16, drawTriangles: 2_000_000 },
+    streets: {
+      groundErrorM: 0.015,
+      groundMinEdgeM: 0.25,
+      groundsPerFrame: 1,
+      maxTiles: 16,
+      drawTriangles: 2_000_000,
+    },
     camera: { volumeBytesPerTile: 1 * MiB, footprintVertices: 16 },
-    relief: { terrain3d: true, terrainTextureScale: 2, globeNight: true },
+    relief: { terrain3d: true, terrainTextureScale: 2, globeNight: true, demCacheTiles: 32 },
     basemap: { density: 'style' },
   },
 };

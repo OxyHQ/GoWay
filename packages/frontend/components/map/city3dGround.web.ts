@@ -90,7 +90,8 @@ export function followTerrain(
   };
 
   const onSourceData = (event: MapSourceDataEvent) => {
-    if (!source || event.sourceId !== source || !event.tile || timer) return;
+    if (!source || event.sourceId !== source || !event.tile) return;
+    if (timer) clearTimeout(timer);
     timer = setTimeout(refresh, REFRESH_AFTER_MS);
   };
 

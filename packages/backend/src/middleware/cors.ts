@@ -261,6 +261,12 @@ export const PUBLIC_READ_ROUTES: readonly PublicRoute[] = [
   },
   {
     method: 'GET',
+    path: '/transit/nearby',
+    because:
+      "the stops near a place and their next departures, signed out; each operator's credit and licence travel with it",
+  },
+  {
+    method: 'GET',
     path: '/roads/rule-sets',
     because: "each country's road rules, the same for every caller",
   },

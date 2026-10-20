@@ -120,13 +120,11 @@ const TERRAIN_PATH = /^\/map\/terrain\/(\d{1,2})\/(\d{1,9})\/(\d{1,9})\.webp$/;
 const TERRAIN_EDGE_TTL_SECONDS = 604800;
 
 /**
- * The deepest elevation zoom GoWay serves. Mapterhorn is complete to z12
- * (Copernicus GLO-30) and patchy above it, and its `planet.pmtiles` is z0–12;
- * the client's source says `maxzoom: 12` and over-zooms from there
- * (`lib/map/style/relief.ts`), so a deeper request is a bug and answered as
- * a miss before anything is fetched.
+ * The deepest regional elevation zoom GoWay serves. The worldwide archive
+ * ends at z12; configured upstream regional tiles may extend to z16. Missing
+ * regional tiles fall back through the client's parent-tile requests.
  */
-const MAX_TERRAIN_ZOOM = 12;
+const MAX_TERRAIN_ZOOM = 16;
 
 /** `/map/fonts/{fontstack}/{start}-{end}.pbf`. */
 const GLYPH_PATH = /^\/map\/fonts\/([^/]{1,64})\/(\d{1,7})-(\d{1,7})\.pbf$/;
@@ -417,7 +415,8 @@ async function serveTerrain(url, request, env, ctx) {
   if (x >= span || y >= span) return notFound('Tile coordinate outside the world at that zoom.');
 
   if (env.MAP_TILES && env.MAP_TERRAIN_ARCHIVE) {
-    return serveTerrainFromArchive(z, x, y, request, env, ctx);
+    const archived = await serveTerrainFromArchive(z, x, y, request, env, ctx);
+    if (archived.status !== 404 || !env.MAP_TERRAIN_UPSTREAM) return archived;
   }
 
   const upstream = env.MAP_TERRAIN_UPSTREAM;

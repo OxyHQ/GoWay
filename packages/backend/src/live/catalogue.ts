@@ -156,6 +156,7 @@ export const LIVE_SOURCES: readonly LiveSourceDefinition[] = [
     // R11–R17, RT1–2, RG1, RL3–4 — with shapes) and the high-speed,
     // long-distance and Media Distancia file (route names, no shapes).
     // Realtime trip ids are their `trips.txt` ids.
+    departures: {},
     staticGtfs: {
       zips: [
         'https://ssl.renfe.com/ftransit/Fichero_CER_FOMENTO/fomento_transit.zip',
@@ -302,6 +303,7 @@ export const LIVE_SOURCES: readonly LiveSourceDefinition[] = [
     pollIntervalSeconds: 20,
     staleAfterSeconds: 180,
     dropAfterSeconds: 600,
+    departures: {},
     staticGtfs: { zip: 'https://rrgtfsfeeds.s3.amazonaws.com/gtfslirr.zip' },
     create: (settings) =>
       createGtfsRealtimeAdapter(
@@ -334,6 +336,7 @@ export const LIVE_SOURCES: readonly LiveSourceDefinition[] = [
     pollIntervalSeconds: 20,
     staleAfterSeconds: 180,
     dropAfterSeconds: 600,
+    departures: {},
     staticGtfs: { zip: 'https://rrgtfsfeeds.s3.amazonaws.com/gtfsmnr.zip' },
     create: (settings) =>
       createGtfsRealtimeAdapter(
@@ -370,6 +373,7 @@ export const LIVE_SOURCES: readonly LiveSourceDefinition[] = [
     pollIntervalSeconds: 30,
     staleAfterSeconds: 120,
     dropAfterSeconds: 300,
+    departures: {},
     staticGtfs: { zip: 'https://rrgtfsfeeds.s3.amazonaws.com/gtfs_subway.zip' },
     create: (settings) =>
       createArrivalEstimateAdapter(
@@ -420,6 +424,7 @@ export const LIVE_SOURCES: readonly LiveSourceDefinition[] = [
     pollIntervalSeconds: 30,
     staleAfterSeconds: 120,
     dropAfterSeconds: 300,
+    departures: { realtimeUrls: (settings) => [settings.url] },
     staticGtfs: { zip: 'https://www.ambmobilitat.cat/OpenData/google_transit.zip' },
     create: (settings) =>
       createArrivalEstimateAdapter(
@@ -478,6 +483,7 @@ export const LIVE_SOURCES: readonly LiveSourceDefinition[] = [
     pollIntervalSeconds: 20,
     staleAfterSeconds: 120,
     dropAfterSeconds: 600,
+    departures: {},
     staticGtfs: { zip: 'https://api.control.optibus.co/opendata/v1/gtfs?uid=c-5cfcd2d1' },
     create: (settings) =>
       createGtfsRealtimeAdapter(

@@ -89,9 +89,9 @@ describe('sampleGroundGrid', () => {
   });
 
   test("the grid's cells are the DEM's pixels across the tile, within the budget", () => {
-    expect(latticeCells({ z: 15 }, TERRAIN_LATTICE)).toBe(64);
+    expect(latticeCells({ z: 15 }, TERRAIN_LATTICE)).toBe(128);
     expect(latticeCells({ z: 14 }, TERRAIN_LATTICE)).toBe(128);
-    expect(latticeCells({ z: 16 }, TERRAIN_LATTICE)).toBe(32);
+    expect(latticeCells({ z: 16 }, TERRAIN_LATTICE)).toBe(128);
     expect(latticeCells({ z: 13 }, TERRAIN_LATTICE)).toBe(GROUND.maxCells);
     expect(latticeCells({ z: 30 }, TERRAIN_LATTICE)).toBe(1);
   });
@@ -320,8 +320,8 @@ describe('one ground for everything standing on it', () => {
       polygonBoxes: new Float32Array(0),
     });
     const sampled = calls;
-    // GoWay's DEM over a z15 tile: 64 pixels across, one more each side.
-    expect(sampled).toBe(66 * 66);
+    // A fine regional DEM is bounded by the shared grid budget, plus its halo.
+    expect(sampled).toBe((GROUND.maxCells + 2) ** 2);
     // City life's read of the same tile: no new samples.
     expect(ground.hasGrid(tile)).toBe(true);
     expect(ground.grid(tile).values[0]).toBe(40);

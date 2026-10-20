@@ -3,7 +3,9 @@ import { createContext, useContext, useMemo, type ReactNode } from 'react';
 
 import { CREDITS_EN, CREDITS_ES } from './messages/credits';
 import { PRODUCTS_EN, PRODUCTS_ES } from './messages/products';
+import { SAVED_EN, SAVED_ES } from './messages/saved';
 import { STREET3D_EN, STREET3D_ES } from './messages/street3d';
+import { TRANSIT_EN, TRANSIT_ES } from './messages/transit';
 
 // Minimal, dependency-free i18n. Synchronous by design — no suspense — so it is
 // safe to mount at the root of the provider tree. Swap in i18next later if the
@@ -23,6 +25,8 @@ const en: Messages = {
   'map.resetNorth': 'Reset to north',
   ...STREET3D_EN,
   ...PRODUCTS_EN,
+  ...SAVED_EN,
+  ...TRANSIT_EN,
   ...CREDITS_EN,
 };
 
@@ -36,6 +40,8 @@ const es: Messages = {
   'map.resetNorth': 'Orientar al norte',
   ...STREET3D_ES,
   ...PRODUCTS_ES,
+  ...SAVED_ES,
+  ...TRANSIT_ES,
   ...CREDITS_ES,
 };
 

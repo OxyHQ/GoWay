@@ -542,3 +542,24 @@ tilted terrain view is the one most likely to drop frames.
    layer's device gating on weak GPUs, and whether `Save-Data` should drop the
    hillshade.
 5. Native globe and terrain when maplibre-react-native exposes them.
+
+## Regional DEM and mapped bridge spans
+
+The web relief adapter now retains regional elevation tiles through z16. A
+missing regional tile falls back through MapLibre to its available parent; a
+miss in a configured coarse archive can use the configured terrain upstream.
+Metro serves the same adapter at the current web origin, without another app
+server or forwarding browser credentials.
+
+`terrainDem.web.ts` prepares one DEM in a worker for terrain, hillshade and
+all city-ground samplers. Where an elevation source retains a bridge surface,
+`bridgeGround.ts` reconstructs ground only inside recorded bridge corridors,
+using exterior samples and preserving abutments. Parallel carriageways and
+separate bridge sidewalks contribute their mapped boundaries. Missing exterior
+data leaves the source unchanged. The reconstruction never raises terrain and
+is an estimate, not a survey of the underside. Modified Terrarium pixels are
+encoded as lossless PNG; other tiles retain their original bytes.
+
+The previous street ground atlas/fixed z15 elevation approximation is replaced
+by absolute street geometry and shared CPU/GPU contact. The earlier measurements
+in this document describe that previous implementation.

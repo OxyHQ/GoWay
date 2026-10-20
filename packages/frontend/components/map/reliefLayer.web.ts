@@ -31,7 +31,9 @@
  * fallback. GoWay's imagery documents (satellite, hybrid) have no `water`:
  * they get the terrain, which the photograph drapes over, and no hillshade.
  */
-import type { Map as MapLibreMap } from 'maplibre-gl';
+import type { Map as MapLibreMap, AddProtocolAction } from 'maplibre-gl';
+import { CITY_ROAD_TILE_PATH } from '@/lib/map/cityRoads';
+import { terrainDemProtocol } from './terrainDem.web';
 
 import {
   type MapAppearance,
@@ -70,6 +72,9 @@ import { STYLE_HILLSHADE_LAYER_ID } from '@/lib/map/style/layers';
 import { reportMapDefect } from './shared';
 
 export interface AttachReliefOptions {
+  addProtocol?: (name: string, action: AddProtocolAction) => void;
+  removeProtocol?: (name: string) => void;
+  demCacheTiles?: number;
   flags: ReliefFlags;
   appearance: MapAppearance;
   /**
@@ -97,6 +102,7 @@ export interface AttachReliefOptions {
 }
 
 export interface ReliefHandle {
+  setDemCacheTiles(tiles: number): void;
   /** The quality profile changed: allow or forbid 3D terrain, live. */
   setTerrain3d(allowed: boolean): void;
   /** The quality profile changed: the terrain textures' scale, live (the terrain is re-made). */
@@ -145,6 +151,7 @@ export function attachRelief(map: MapLibreMap, options: AttachReliefOptions): Re
   const previousBackground = container.style.background;
   let detached = false;
   let terrainReady = false;
+  let dem: ReturnType<typeof terrainDemProtocol> | null = null;
   let terrain3d = options.terrain3d !== false;
   let textureScale = options.terrainTextureScale ?? 2;
   const night = flags.globe
@@ -219,7 +226,16 @@ export function attachRelief(map: MapLibreMap, options: AttachReliefOptions): Re
       );
       return;
     }
-    const tiles = resolveTerrainTileUrl();
+    if (!dem && options.addProtocol && options.removeProtocol && options.demCacheTiles) {
+      dem = terrainDemProtocol({
+        template: resolveTerrainTileUrl(),
+        roads: window.location.origin + CITY_ROAD_TILE_PATH,
+        cacheTiles: options.demCacheTiles,
+        addProtocol: options.addProtocol,
+        removeProtocol: options.removeProtocol,
+      });
+    }
+    const tiles = dem?.template ?? resolveTerrainTileUrl();
     for (const id of shaded
       ? [RELIEF_SOURCE_IDS.hillshade, RELIEF_SOURCE_IDS.terrain]
       : [RELIEF_SOURCE_IDS.terrain]) {
@@ -300,6 +316,10 @@ export function attachRelief(map: MapLibreMap, options: AttachReliefOptions): Re
   applySafely();
 
   return {
+    setDemCacheTiles(tiles) {
+      options.demCacheTiles = tiles;
+      dem?.setCacheTiles(tiles);
+    },
     setTerrain3d(allowed) {
       if (terrain3d === allowed) return;
       terrain3d = allowed;
@@ -328,6 +348,8 @@ export function attachRelief(map: MapLibreMap, options: AttachReliefOptions): Re
     detach() {
       if (detached) return;
       detached = true;
+      dem?.dispose();
+      dem = null;
       // Its live-clock timer; the layer goes with the map.
       night?.setEnabled(false);
       map.off('pitch', syncTerrain);

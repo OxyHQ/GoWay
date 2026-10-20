@@ -29,6 +29,7 @@ import { RiArrowUpLine } from '@oxy.so/bloom/icons/RiArrowUpLine';
 import { RiBikeLine } from '@oxy.so/bloom/icons/RiBikeLine';
 import { RiCarLine } from '@oxy.so/bloom/icons/RiCarLine';
 import { RiCloseLine } from '@oxy.so/bloom/icons/RiCloseLine';
+import { RiSendPlaneLine } from '@oxy.so/bloom/icons/RiSendPlaneLine';
 import { RiDeleteBinLine } from '@oxy.so/bloom/icons/RiDeleteBinLine';
 import { RiMap2Line } from '@oxy.so/bloom/icons/RiMap2Line';
 import { RiWalkLine } from '@oxy.so/bloom/icons/RiWalkLine';
@@ -227,6 +228,11 @@ export interface DirectionsBodyProps {
   viewport: GeoBounds | null;
   /** The user's own position, when already known. Biases the picker's search. */
   near: GeoCoordinate | null;
+  /**
+   * Begin guided navigation along the route. Omitted where the screen cannot
+   * guide; the button is then not drawn.
+   */
+  onStartGuidance?: () => void;
   testID?: string;
 }
 
@@ -313,6 +319,7 @@ export function DirectionsBody({
   center,
   viewport,
   near,
+  onStartGuidance,
   testID,
 }: DirectionsBodyProps) {
   const theme = useTheme();
@@ -368,10 +375,18 @@ export function DirectionsBody({
     );
   }
 
-  return <RouteBody directions={directions} testID={testID} />;
+  return <RouteBody directions={directions} onStartGuidance={onStartGuidance} testID={testID} />;
 }
 
-function RouteBody({ directions, testID }: { directions: DirectionsController; testID?: string }) {
+function RouteBody({
+  directions,
+  onStartGuidance,
+  testID,
+}: {
+  directions: DirectionsController;
+  onStartGuidance?: () => void;
+  testID?: string;
+}) {
   const { route, stops } = directions;
   const origin = stops[0];
   const total = stops.length;
@@ -468,6 +483,7 @@ function RouteBody({ directions, testID }: { directions: DirectionsController; t
           <ManeuverList
             steps={directions.steps}
             stops={stops}
+            mode={directions.travelMode}
             selected={directions.selectedStep}
             onSelect={directions.selectStep}
             testID="directions-maneuvers"
@@ -478,7 +494,19 @@ function RouteBody({ directions, testID }: { directions: DirectionsController; t
       {/* Leaving is one control, not two: there is no state where "clear the
           route" and "stop planning" are usefully different, and the map is not
           moved on the way out — browsing resumes exactly where it is. */}
-      <View className="flex-row px-space-16">
+      <View className="flex-row flex-wrap items-center gap-space-8 px-space-16">
+        {route && onStartGuidance ? (
+          <Button
+            size="sm"
+            leadingIcon={RiSendPlaneLine}
+            onPress={onStartGuidance}
+            accessibilityLabel="Start guidance along this route"
+            tone="accent"
+            appearance="solid"
+          >
+            Start
+          </Button>
+        ) : null}
         <Button
           size="sm"
           leadingIcon={RiCloseLine}

@@ -13,126 +13,123 @@
  */
 import { View } from 'react-native';
 import { placeDisplayName } from '@goway.to/sdk';
-import type { Place, PlaceWithDistance, SearchResult } from '@goway.to/sdk';
+import type { CategoryTaxonomy, Place, PlaceWithDistance, SearchResult } from '@goway.to/sdk';
 import { Item } from '@oxy.so/bloom/item';
-import { Text } from '@oxy.so/bloom/typography';
+import { PlaceCard, type PlaceCardProps } from '@oxy.so/bloom/place-card';
 import { useTheme } from '@oxy.so/bloom/theme';
 import { RiMapPin2Line } from '@oxy.so/bloom/icons/RiMapPin2Line';
-import { RiVerifiedBadgeLine } from '@oxy.so/bloom/icons/RiVerifiedBadgeLine';
 
-import {
-  capabilitySummary,
-  ecosystemCapabilities,
-  presentCapability,
-} from '@/lib/goway/capabilities';
-import { resolveCategory } from '@/lib/goway/categories';
+import { ecosystemCapabilities, presentCapability } from '@/lib/goway/capabilities';
 import { formatAddress, formatDistance, formatPlaceSubtitle } from '@/lib/goway/format';
 import { openingSummary } from '@/lib/goway/hours';
 import { useCategoryTaxonomy } from '@/lib/goway/queries';
 
-/** A tiny glyph+word pair. Never a bare coloured dot. */
-function Tag({ children, color }: { children: string; color: string }) {
-  return (
-    <Text className="text-caption" style={{ color }}>
-      {children}
-    </Text>
-  );
-}
+import { useSaveControl } from '../saved/useSaveControl';
 
 export interface PlaceRowProps {
   place: Place | PlaceWithDistance;
   selected?: boolean;
   onPress: () => void;
+  /**
+   * Draw the save heart. On by default: a result is a place worth keeping.
+   * A row that PICKS a place for something else (a route stop) turns it off.
+   */
+  saveable?: boolean;
   testID?: string;
 }
 
-export function PlaceRow({ place, selected = false, onPress, testID }: PlaceRowProps) {
-  const theme = useTheme();
-  const taxonomy = useCategoryTaxonomy();
-  const category = resolveCategory(place.categories, taxonomy);
-  const Icon = category.icon;
+/** The most capabilities a row names; the rest are on the place's own page. */
+const ROW_CAPABILITIES = 2;
+
+/**
+ * A GoWay place as Bloom's `PlaceCard` row.
+ *
+ * Everything the card draws is something the place records: its cover photo
+ * (an Oxy file id the app's image resolver turns into a URL), the published
+ * rating summary (absent, not "New", when nobody has rated it), the category,
+ * and whether it is open — evaluated by the SDK's `openingStatusAt`, which
+ * answers nothing without the place's timezone. The ecosystem capabilities
+ * ride in the facts row as words, so the card never relies on colour.
+ */
+/**
+ * What a place is as a `PlaceCard` row: everything but the press, the save
+ * heart and the test id, which belong to whoever draws it. A search result and
+ * a place in a saved list are the same row (`PlaceList` draws it too), so it is
+ * written once, here.
+ */
+export function placeRowCardProps(
+  place: Place | PlaceWithDistance,
+  taxonomy: CategoryTaxonomy | undefined,
+): Omit<PlaceCardProps, 'density' | 'style' | 'testID'> {
   const subtitle = formatPlaceSubtitle(place, taxonomy);
   const distance = 'distanceMeters' in place ? formatDistance(place.distanceMeters) : null;
   const opening = openingSummary(place);
-  const capabilities = ecosystemCapabilities(place.capabilities);
+  const closed = place.status === 'closed';
+  const capabilities = ecosystemCapabilities(place.capabilities).slice(0, ROW_CAPABILITIES);
   const oxyVerified =
     place.verification.state === 'oxy_verified' || place.verification.state === 'owner_verified';
+  const address = formatAddress(place.address);
 
-  // The accessible name carries everything the visual tags carry, in words, so
-  // colour and iconography are never the only channel.
-  const displayName = placeDisplayName(place);
-  const spoken = [
-    displayName,
-    subtitle,
-    place.status === 'closed' ? 'permanently closed' : null,
-    opening?.spoken ?? null,
-    oxyVerified ? 'verified by Oxy' : null,
-    capabilitySummary(place.capabilities),
-    distance ? `${distance} away` : null,
-  ]
-    .filter(Boolean)
-    .join(', ');
+  const facts = [
+    ...(distance
+      ? [{ icon: RiMapPin2Line, label: distance, accessibilityLabel: `${distance} away` }]
+      : []),
+    ...capabilities.map((capability) => ({ label: presentCapability(capability).label })),
+  ];
+
+  return {
+    name: placeDisplayName(place),
+    category: subtitle || undefined,
+    photo: place.coverFileId,
+    photoVariant: 'thumb',
+    rating: place.rating?.average,
+    reviewCount: place.rating?.count,
+    badge: oxyVerified ? 'Verified by Oxy' : undefined,
+    openState: closed ? 'closed' : opening?.state,
+    openLabel: closed ? 'Permanently closed' : undefined,
+    hours: closed ? undefined : opening?.text,
+    address: address ?? undefined,
+    facts,
+  };
+}
+
+export function PlaceRow({
+  place,
+  selected = false,
+  onPress,
+  saveable = true,
+  testID,
+}: PlaceRowProps) {
+  const taxonomy = useCategoryTaxonomy();
+  const saving = useSaveControl({ id: place.id, name: placeDisplayName(place) }, saveable);
+
+  const card = (
+    <PlaceCard
+      {...placeRowCardProps(place, taxonomy)}
+      {...(saveable
+        ? {
+            favorite: saving.saved,
+            onFavoriteChange: saving.onFavoriteChange,
+            saveLabel: saving.saveLabel,
+            removeLabel: saving.removeLabel,
+          }
+        : {})}
+      onPress={onPress}
+      testID={testID}
+    />
+  );
 
   return (
-    <Item
-      role="option"
-      selected={selected}
-      onPress={onPress}
-      accessibilityLabel={spoken}
-      testID={testID}
-      leading={
-        <View className="h-9 w-9 items-center justify-center rounded-radius-max bg-muted">
-          <Icon width={18} height={18} fill={theme.colors.textSecondary} />
+    <>
+      {selected ? (
+        <View className="rounded-radius-12 bg-accent" accessibilityState={{ selected }}>
+          {card}
         </View>
-      }
-      trailing={
-        distance ? (
-          <Text className="text-caption text-muted-foreground">{distance}</Text>
-        ) : undefined
-      }
-    >
-      <View className="flex-1 gap-space-2">
-        <View className="flex-row items-center gap-space-4">
-          <Text className="text-body text-foreground" numberOfLines={1}>
-            {displayName}
-          </Text>
-          {oxyVerified ? (
-            <RiVerifiedBadgeLine width={14} height={14} fill={theme.colors.primary} />
-          ) : null}
-        </View>
-
-        {subtitle ? (
-          <Text className="text-bodySmall text-muted-foreground" numberOfLines={1}>
-            {subtitle}
-          </Text>
-        ) : null}
-
-        {/* Status words, not status colours. The tint is redundant emphasis. */}
-        {place.status === 'closed' || opening || capabilities.length > 0 ? (
-          <View className="flex-row flex-wrap items-center gap-space-8">
-            {place.status === 'closed' ? (
-              <Tag color={theme.colors.errorSubtleForeground}>Permanently closed</Tag>
-            ) : null}
-            {place.status !== 'closed' && opening ? (
-              <Tag
-                color={
-                  opening.state === 'open'
-                    ? theme.colors.successSubtleForeground
-                    : theme.colors.textSecondary
-                }
-              >
-                {opening.text}
-              </Tag>
-            ) : null}
-            {capabilities.slice(0, 2).map((capability) => (
-              <Tag key={capability.key} color={theme.colors.textSecondary}>
-                {presentCapability(capability).label}
-              </Tag>
-            ))}
-          </View>
-        ) : null}
-      </View>
-    </Item>
+      ) : (
+        card
+      )}
+      {saving.dialog}
+    </>
   );
 }
 
@@ -140,6 +137,8 @@ export interface SearchResultRowProps {
   result: SearchResult;
   selected?: boolean;
   onPress: () => void;
+  /** As on {@link PlaceRowProps}: whether a place result draws the save heart. */
+  saveable?: boolean;
   testID?: string;
 }
 
@@ -154,12 +153,21 @@ export function SearchResultRow({
   result,
   selected = false,
   onPress,
+  saveable = true,
   testID,
 }: SearchResultRowProps) {
   const theme = useTheme();
 
   if (result.place) {
-    return <PlaceRow place={result.place} selected={selected} onPress={onPress} testID={testID} />;
+    return (
+      <PlaceRow
+        place={result.place}
+        selected={selected}
+        onPress={onPress}
+        saveable={saveable}
+        testID={testID}
+      />
+    );
   }
 
   const where = formatAddress(result.address) ?? contextLine(result);

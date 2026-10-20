@@ -169,15 +169,31 @@ function fits<T>(list: T[] | undefined, count: number): T[] | null {
 function recordedCounts(piece: RoadPiece): { forward: number; backward: number } | null {
   if (piece.oneway === 1 || piece.oneway === -1) {
     const travel = piece.oneway === 1 ? piece.lanesForward : piece.lanesBackward;
-    const listed = piece.turnLanes?.length ?? piece.busLanes?.length;
+    const listed =
+      piece.turnLanes?.length ??
+      piece.busLanes?.length ??
+      piece.changeLanes?.length ??
+      (piece.oneway === 1
+        ? (piece.turnLanesForward?.length ??
+          piece.busLanesForward?.length ??
+          piece.changeLanesForward?.length)
+        : (piece.turnLanesBackward?.length ??
+          piece.busLanesBackward?.length ??
+          piece.changeLanesBackward?.length));
     const n = piece.lanes ?? travel ?? listed;
     if (n === undefined) return null;
     return piece.oneway === 1 ? { forward: n, backward: 0 } : { forward: 0, backward: n };
   }
   let forward =
-    piece.lanesForward ?? piece.turnLanesForward?.length ?? piece.busLanesForward?.length;
+    piece.lanesForward ??
+    piece.turnLanesForward?.length ??
+    piece.busLanesForward?.length ??
+    piece.changeLanesForward?.length;
   let backward =
-    piece.lanesBackward ?? piece.turnLanesBackward?.length ?? piece.busLanesBackward?.length;
+    piece.lanesBackward ??
+    piece.turnLanesBackward?.length ??
+    piece.busLanesBackward?.length ??
+    piece.changeLanesBackward?.length;
   if (piece.lanes !== undefined) {
     if (forward !== undefined && backward === undefined) backward = piece.lanes - forward;
     else if (backward !== undefined && forward === undefined) forward = piece.lanes - backward;
@@ -316,8 +332,8 @@ export function crossSection(piece: RoadPiece, rules: PaintRules): CrossSection 
   const counted = recordedCounts(piece);
   const recorded = counted !== null;
   const fallback = defaultLanes(piece.highway, oneway);
-  const forward = counted ? Math.min(counted.forward, 8) : piece.oneway === -1 ? 0 : fallback;
-  const backward = counted ? Math.min(counted.backward, 8) : piece.oneway === 1 ? 0 : fallback;
+  const forward = counted ? counted.forward : piece.oneway === -1 ? 0 : fallback;
+  const backward = counted ? counted.backward : piece.oneway === 1 ? 0 : fallback;
 
   const fwd = directionLanes(piece, 1, forward, recorded, rules);
   const bwd = directionLanes(piece, -1, backward, recorded, rules);
@@ -340,10 +356,12 @@ export function crossSection(piece: RoadPiece, rules: PaintRules): CrossSection 
   let laneWidth = LANE_WIDTH_M[piece.highway];
   let widthRecorded = false;
   if (piece.width !== undefined && laneCount > 0) {
-    // `width` is the whole carriageway; it is used when it leaves each
-    // lane a plausible width, and refused (the class default drawn) when not.
+    // A measured carriageway must not be rejected against ASSUMED lanes:
+    // a wide road without lane tags still has its recorded width. Keep its
+    // generic bands unmarked rather than inventing a count from that width.
+    // Only recorded counts can contradict a measured per-lane width.
     const each = (piece.width - fixed) / laneCount;
-    if (each >= 2.3 && each <= 5) {
+    if (recorded ? each >= 2.3 && each <= 5 : each > 0) {
       laneWidth = each;
       widthRecorded = true;
     }

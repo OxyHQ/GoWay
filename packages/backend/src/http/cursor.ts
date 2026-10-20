@@ -46,6 +46,8 @@ export const CURSOR_KINDS = [
   'place-hours-exceptions',
   'place-media',
   'place-reviews',
+  'saved-lists',
+  'saved-list-items',
   'account-claims',
   'place-revisions',
   'moderation-claims',

@@ -142,6 +142,8 @@ export interface GtfsVehiclePosition {
   currentStatus?: number;
   /** The stop the status refers to. */
   stopId?: string;
+  /** The trip's `schedule_relationship` (0 scheduled, 3 canceled, 7 deleted), when stated. */
+  tripRelationship?: number;
 }
 
 /** One predicted stop of a trip. Times in seconds since the epoch. */
@@ -149,11 +151,17 @@ export interface GtfsStopTimeUpdate {
   stopId?: string;
   arrival?: number;
   departure?: number;
+  /** `schedule_relationship`: the vehicle will not call here (SKIPPED). */
+  skipped?: boolean;
+  /** `schedule_relationship`: the feed has nothing for this stop (NO_DATA). */
+  noData?: boolean;
 }
 
 export interface GtfsTripUpdate {
   tripId?: string;
   routeId?: string;
+  /** The whole trip is canceled (or deleted): it does not run. */
+  canceled?: boolean;
   stops: GtfsStopTimeUpdate[];
 }
 
@@ -175,6 +183,7 @@ function readTrip(reader: ProtobufReader, out: GtfsVehiclePosition): void {
     const { field, wire } = reader.tag();
     if (field === 1 && wire === WIRE_BYTES) out.tripId = reader.string();
     else if (field === 5 && wire === WIRE_BYTES) out.routeId = reader.string();
+    else if (field === 4 && wire === WIRE_VARINT) out.tripRelationship = reader.varint();
     else reader.skip(wire);
   }
 }
@@ -235,6 +244,7 @@ function readTripUpdate(reader: ProtobufReader): GtfsTripUpdate {
       readTrip(reader.message(), trip);
       if (trip.tripId) out.tripId = trip.tripId;
       if (trip.routeId) out.routeId = trip.routeId;
+      if (trip.tripRelationship === 3 || trip.tripRelationship === 7) out.canceled = true;
     } else if (field === 2 && wire === WIRE_BYTES) {
       const update = reader.message();
       const stop: GtfsStopTimeUpdate = {};
@@ -245,7 +255,11 @@ function readTripUpdate(reader: ProtobufReader): GtfsTripUpdate {
           stop.arrival = readEventTime(update.message());
         else if (tag.field === 3 && tag.wire === WIRE_BYTES)
           stop.departure = readEventTime(update.message());
-        else update.skip(tag.wire);
+        else if (tag.field === 5 && tag.wire === WIRE_VARINT) {
+          const relationship = update.varint();
+          if (relationship === 1) stop.skipped = true;
+          else if (relationship === 2) stop.noData = true;
+        } else update.skip(tag.wire);
       }
       out.stops.push(stop);
     } else reader.skip(wire);

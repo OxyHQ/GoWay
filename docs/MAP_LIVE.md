@@ -86,6 +86,12 @@ export. It gives each vehicle its line's name and colour, its track
 line. AISA's realtime ids do not join any published static GTFS: its buses are
 drawn where reported, as approximate.
 
+Six of these sources also serve **stops and next departures** for a place
+(`GET /transit/nearby`, `docs/TRANSIT_NEARBY.md`): they carry `departures` in the
+catalogue, which reads their whole static archive (`stop_times.txt`) into a
+bounded in-memory timetable. Same licence, same credit; each departure says
+whether it is `scheduled` or `realtime`.
+
 Conditions that come with the accepted ones:
 
 - **adsb.lol** — the operator asks production users to get in touch ("If you

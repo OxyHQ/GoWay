@@ -13,7 +13,9 @@
     // imports it anyway — deliberately, so that the build-time verifier reads
     // a finished archive with exactly the code the edge serves it with — and a
     // file a program imports has to be in that program.
-    "worker/pmtiles.js",
+    "scripts/dev-city-tiles.js",
+    "scripts/dev-terrain.js",
+    "worker/*.js",
     "worker/coverageTree.js",
     // The satellite manifest builder checks what it writes with the Worker's
     // own parser (`scripts/build-satellite-manifest.ts`), which reads its
