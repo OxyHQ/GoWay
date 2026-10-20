@@ -31,26 +31,13 @@
  * agrees with our own predicate proves nothing; these assert against the engine
  * that throws in production.
  */
-import { readFileSync } from 'node:fs';
-import { fileURLToPath } from 'node:url';
+import { describe, expect, mock, test } from 'bun:test';
+import { LngLat, LngLatBounds } from 'maplibre-gl';
 
-import { describe, expect, it, mock, test } from 'bun:test';
-import { LngLat, LngLatBounds, MercatorCoordinate } from 'maplibre-gl';
-
-import {
-  asFinite,
-  drawableMarkers,
-  drawableOverlays,
-  isDrawableBounds,
-  isDrawableCoordinate,
-  isDrawableGeoJSON,
-  isViewport,
-  resolveOverlayPaint,
-  resolvePadding,
-  toLngLat,
-} from '@/components/map/shared';
-import type { MapMarker, MapOverlay } from '@/components/map/types';
-import { boundsOf, isDegenerateBounds } from '@/lib/map/geo';
+import { isDrawableBounds, isDrawableGeoJSON, toLngLat } from '@goway.to/maps/plugin';
+import { drawableOverlays, resolveOverlayPaint } from '@/components/map/overlays';
+import type { MapOverlay } from '@/components/map/types';
+import { boundsOf, isDegenerateBounds } from '@goway.to/sdk/geo';
 import {
   MAX_PADDING_SHARE,
   clampFitPadding,
@@ -121,58 +108,25 @@ describe('the throw itself', () => {
   });
 });
 
-describe('producer — a cluster of no places (lib/goway/markers.ts)', () => {
-  /**
-   * The bucket that broke it: the selected place, twice.
-   *
-   * `buildMarkers` draws the selection expanded and collapses "the rest" of its
-   * bucket into a bubble beside it. When the list carries the same place twice —
-   * a duplicate row, a refetch merged onto a stale page — "the rest" is EMPTY,
-   * and the mean of no coordinates is `0 / 0` on both axes.
-   */
+describe('producer — places (lib/goway/markers.ts)', () => {
+  /** The same place twice: a duplicate row, a refetch merged onto a stale page. */
   const duplicated = [place('dup', 41.3874, 2.1686), place('dup', 41.3874, 2.1686)];
 
-  test('draws no bubble for it, rather than one at (NaN, NaN)', () => {
-    const { markers, clusters } = buildMarkers({
+  test('one marker per place, each surviving the engine, each free to cluster', () => {
+    const { markers } = buildMarkers({
       places: duplicated,
       zoom: 15,
       selectedPlaceId: 'dup',
       taxonomy: undefined,
     });
-
-    expect(markers).toHaveLength(1);
-    expect(markers[0].id).toBe('dup');
-    expect([...clusters.keys()]).toEqual([]);
-  });
-
-  test('every marker it produces survives the engine', () => {
-    for (const marker of buildMarkers({
-      places: duplicated,
-      zoom: 15,
-      selectedPlaceId: 'dup',
-      taxonomy: undefined,
-    }).markers) {
+    for (const marker of markers) {
       expect(() => draw(marker.coordinate)).not.toThrow();
+      // Clustering is the map's (`<Markers cluster>`), which never folds the
+      // selected one; no marker here carries an averaged position.
+      expect(marker.clustered).toBe(true);
     }
-  });
-
-  test('a real cluster beside the selection is still drawn', () => {
-    // Same 72 px bucket, three DISTINCT places, one of them selected.
-    const bucket = [
-      place('a', 41.3874, 2.1686),
-      place('b', 41.38741, 2.16861),
-      place('c', 41.38742, 2.16862),
-    ];
-    const { markers, clusters } = buildMarkers({
-      places: bucket,
-      zoom: 15,
-      selectedPlaceId: 'a',
-      taxonomy: undefined,
-    });
-
-    expect(markers.map((marker) => marker.id)).toContain('a');
-    expect(clusters.size).toBe(1);
-    for (const marker of markers) expect(() => draw(marker.coordinate)).not.toThrow();
+    // One place, one marker, however many times the list carries it.
+    expect(markers.map((marker) => marker.id)).toEqual(['dup']);
   });
 });
 
@@ -272,58 +226,7 @@ describe('producer — stops (features/directions/stops.ts)', () => {
   });
 });
 
-describe('seam — components/map/shared.ts', () => {
-  const good: MapMarker = { id: 'good', coordinate: { latitude: 41.3874, longitude: 2.1686 } };
-  const bad: MapMarker = { id: 'bad', coordinate: { latitude: NaN, longitude: NaN } };
-
-  test('drops an undrawable marker instead of letting it reach the engine', () => {
-    const kept = drawableMarkers([good, bad, { ...good, id: 'good2' }]);
-    expect(kept.map((marker) => marker.id)).toEqual(['good', 'good2']);
-    for (const marker of kept) expect(() => draw(marker.coordinate)).not.toThrow();
-    // And the thing it dropped is exactly the production crash.
-    expect(() => draw(bad.coordinate)).toThrow('Invalid LngLat object: (NaN, NaN)');
-  });
-
-  test('returns the input array untouched when nothing is wrong', () => {
-    const markers = [good];
-    expect(drawableMarkers(markers)).toBe(markers);
-    expect(drawableMarkers(undefined)).toEqual([]);
-  });
-
-  test('accepts an unwrapped longitude, because the engine does', () => {
-    // A click east of the antimeridian comes back as 181, not -179. Rejecting
-    // it here would break panning past the date line in the name of safety.
-    expect(isDrawableCoordinate({ latitude: 0, longitude: 181 })).toBe(true);
-    expect(() => draw({ latitude: 0, longitude: 181 })).not.toThrow();
-    // Latitude is bounded, because `LngLat` throws outside ±90.
-    expect(isDrawableCoordinate({ latitude: 91, longitude: 0 })).toBe(false);
-    expect(() => new LngLat(0, 91)).toThrow('Invalid LngLat latitude value');
-  });
-
-  test('refuses a box the engine cannot build', () => {
-    expect(isDrawableBounds({ west: NaN, south: NaN, east: NaN, north: NaN })).toBe(false);
-    expect(
-      isDrawableBounds({ west: Infinity, south: Infinity, east: -Infinity, north: -Infinity }),
-    ).toBe(false);
-    expect(isDrawableBounds(null)).toBe(false);
-    expect(isDrawableBounds({ west: 2.1, south: 41.3, east: 2.2, north: 41.4 })).toBe(true);
-  });
-
-  test('refuses a non-finite padding and clamps a negative one', () => {
-    expect(resolvePadding({ top: NaN, right: 24, bottom: 24, left: 24 }, 48)).toBeNull();
-    expect(resolvePadding(NaN, 48)).toBeNull();
-    expect(resolvePadding({ top: -24, right: 24, bottom: -24, left: 24 }, 48)).toEqual({
-      top: 0,
-      right: 24,
-      bottom: 0,
-      left: 24,
-    });
-    expect(resolvePadding(undefined, 48)).toEqual({ top: 48, right: 48, bottom: 48, left: 48 });
-    expect(resolvePadding(12, 48)).toEqual({ top: 12, right: 12, bottom: 12, left: 12 });
-  });
-});
-
-describe('facts the seam depends on (lib/map/geo.ts)', () => {
+describe('facts the seam depends on (@goway.to/sdk/geo)', () => {
   test('isDegenerateBounds cannot be the NaN check — every NaN comparison is false', () => {
     // This is why `isDrawableBounds` runs FIRST in both forks: a NaN box is not
     // "degenerate", so it would sail past this and into `map.fitBounds`.
@@ -494,53 +397,6 @@ describe('seam — overlays are raw GeoJSON, and they fail the OTHER way', () =>
   });
 });
 
-describe('seam — the camera SCALARS, which poison the transform one step later', () => {
-  test('a NaN zoom is the same crash, arriving through getBounds()', () => {
-    // MapLibre's own clamp does not stop it: nothing compares true to NaN.
-    const clamp = (n: number, min: number, max: number) => Math.min(Math.max(n, min), max);
-    expect(Number.isNaN(clamp(NaN, 0, 22))).toBe(true);
-    expect(Number.isNaN(2 ** NaN)).toBe(true);
-
-    // So `transform._scale` and `worldSize` become NaN, and the next
-    // unprojection — which is literally `screenPointToMercatorCoordinate(p)
-    // .toLngLat()`, run four times by `getBounds()`, which this canvas calls on
-    // every `move` event and which `jumpTo` fires SYNCHRONOUSLY — throws the
-    // exact string the user saw.
-    expect(() => new MercatorCoordinate(100 / NaN, 100 / NaN).toLngLat()).toThrow(
-      'Invalid LngLat object: (NaN, NaN)',
-    );
-  });
-
-  test('isViewport no longer mistakes a NaN zoom for a viewport', () => {
-    // `typeof NaN === 'number'`, so the old test said yes and handed the NaN on.
-    // Treating it as a bare coordinate keeps the camera's current zoom.
-    expect(isViewport({ latitude: 41.3874, longitude: 2.1686, zoom: NaN })).toBe(false);
-    expect(isViewport({ latitude: 41.3874, longitude: 2.1686, zoom: 15 })).toBe(true);
-    expect(isViewport({ latitude: 41.3874, longitude: 2.1686 })).toBe(false);
-  });
-
-  test('asFinite passes real numbers and nothing else', () => {
-    expect(asFinite(0)).toBe(0);
-    expect(asFinite(-3.5)).toBe(-3.5);
-    expect(asFinite(NaN)).toBeUndefined();
-    expect(asFinite(Infinity)).toBeUndefined();
-    expect(asFinite(-Infinity)).toBeUndefined();
-    expect(asFinite(undefined)).toBeUndefined();
-    expect(asFinite(null)).toBeUndefined();
-  });
-
-  test('a NaN maxZoom would have reached the fitted centre', () => {
-    // `zoom = Math.min(computedZoom, options.maxZoom)` — and Math.min with NaN
-    // is NaN, which MapLibre's `scaleX < 0` guard does not catch. It ends up
-    // multiplying the padding offset by `scale / 2 ** NaN`.
-    expect(Number.isNaN(Math.min(11.5, NaN))).toBe(true);
-    expect(() => new LngLat(0 * (1 / 2 ** NaN), 0 * (1 / 2 ** NaN))).toThrow(
-      'Invalid LngLat object: (NaN, NaN)',
-    );
-    expect(asFinite(NaN)).toBeUndefined();
-  });
-});
-
 // ---------------------------------------------------------------------------
 // The door `every()` left open: a composite geometry with no parts
 // ---------------------------------------------------------------------------
@@ -614,44 +470,5 @@ describe('seam — an EMPTY composite geometry is the same silent failure', () =
       ],
     });
     expect(drawableOverlays([good, empty]).map((o) => o.id)).toEqual(['goway-route']);
-  });
-});
-
-// ---------------------------------------------------------------------------
-// A failing tile must not speak for the whole canvas
-// ---------------------------------------------------------------------------
-
-describe('the degraded state is left as well as entered', () => {
-  // `goway.to` showed "Map data unavailable" over a map that was drawing
-  // perfectly. The cause was a handful of stale edge-cached tiles among
-  // thousands of good ones: `emitError` latched on the first of them and
-  // nothing ever retracted it, so one square of a viewport spoke for all of it
-  // and kept speaking after the square came good.
-  //
-  // Source assertions, because the behaviour lives in a MapLibre `idle`
-  // listener and there is no engine here to fire one. What they pin is the
-  // shape of the rule, which is what was missing rather than mis-implemented.
-  const web = () =>
-    readFileSync(fileURLToPath(new URL('../MapCanvas.web.tsx', import.meta.url).href), 'utf8');
-
-  it('clears a tile error once the viewport settles with its tiles', () => {
-    const source = web();
-    expect(source).toContain('map.areTilesLoaded()');
-    expect(source).toMatch(/reason !== 'tiles'\) return current;/);
-  });
-
-  it('never clears a style error the same way', () => {
-    // Nothing about a viewport finishing says the style document arrived, and a
-    // map with no style has nothing to draw whatever the tiles do.
-    const idle = web().slice(web().indexOf('const handleIdle'));
-    const body = idle.slice(0, idle.indexOf('\n    };'));
-    expect(body).not.toContain("'style'");
-  });
-
-  it('tells the screen about the recovery, not only the failure', () => {
-    // ExploreScreen hides "Search this area" and the directions picker while
-    // `mapError` is set. Without this call they stay hidden for the life of the
-    // screen on a map that is working.
-    expect(web()).toContain('handlers.current.onError?.(null)');
   });
 });

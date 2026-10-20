@@ -28,7 +28,8 @@
  */
 import type { RoadClass, Side, Turn } from '@/lib/map/cityRoads';
 
-import type { DrivingSide } from '../roads/drivingSide';
+import { busLaneFlags } from '../roads/busLanes';
+import { type DrivingSide, kerbSideOf } from '../roads/drivingSide';
 import { defaultLanes } from '../roads/roadGraph';
 import type { LaneChange, RoadPiece } from '../roads/roadTiles';
 
@@ -214,9 +215,7 @@ function recordedCounts(piece: RoadPiece): { forward: number; backward: number }
 
 /** The side a travel direction keeps its kerb on, in DRAWN terms. */
 function kerbSide(dir: 1 | -1, rules: PaintRules): 'left' | 'right' {
-  const travelRight = rules.drivingSide === 'right';
-  // Travelling with the drawn direction, the traveller's right is the drawn right.
-  return (dir === 1) === travelRight ? 'right' : 'left';
+  return kerbSideOf(dir, rules.drivingSide);
 }
 
 interface Lane {
@@ -269,42 +268,9 @@ function directionLanes(
   if (changes) {
     for (let i = 0; i < count; i++) lanes[i].change = changes[i];
   }
-  const busPattern = fits(
-    forDirection(piece.busLanes, piece.busLanesForward, piece.busLanesBackward),
-    count,
-  );
-  // The traveller's kerb is on their right where traffic keeps right.
-  const kerbFirst = rules.drivingSide === 'left';
-  const markKerb = (k: number) => {
-    for (let i = 0; i < Math.min(k, count - 1); i++) {
-      lanes[kerbFirst ? i : count - 1 - i].kind = 'bus';
-    }
-  };
-  if (busPattern) {
-    // Never every lane: a road all bus lanes is a busway, drawn as plain lanes.
-    if (busPattern.some((b) => !b)) {
-      for (let i = 0; i < count; i++) if (busPattern[i]) lanes[i].kind = 'bus';
-    }
-  } else {
-    const k = forDirection(piece.lanesBus, piece.lanesBusForward, piece.lanesBusBackward);
-    if (k !== undefined) markKerb(k);
-    else if (piece.busway) {
-      // `busway:<side>` names a DRAWN side; the travel lane on that side of
-      // this direction's lanes is its bus lane, if this direction is there.
-      const sides: ('left' | 'right')[] =
-        piece.busway === 'both'
-          ? oneway
-            ? [kerbSide(dir, rules)]
-            : ['left', 'right']
-          : [piece.busway];
-      for (const s of sides) {
-        // Which end of the traveller's list is the drawn side `s`.
-        const travellerRight = (s === 'right') === (dir === 1);
-        if (!oneway && s !== kerbSide(dir, rules)) continue;
-        lanes[travellerRight ? count - 1 : 0].kind = count > 1 ? 'bus' : lanes[0].kind;
-      }
-    }
-  }
+  busLaneFlags(piece, dir, rules.drivingSide, count).forEach((bus, i) => {
+    if (bus) lanes[i].kind = 'bus';
+  });
   return lanes;
 }
 

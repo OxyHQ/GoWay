@@ -1,8 +1,9 @@
 /**
  * The brand survives a new route being written.
  *
- * `MapBrand` draws the GoWay logo on every map, and `BrandedChromeProvider`
- * lets a surface that already shows the logo in its own chrome stand it down.
+ * `@goway.to/maps` draws the GoWay logo on every map (its own suite pins that
+ * the badge has no off switch), and `BrandedChromeProvider` lets a surface
+ * that already shows the logo in its own chrome stand it down.
  * That is one toggle, and the failure it must never produce is an UNBRANDED map
  * inside somebody else's page.
  *
@@ -71,21 +72,6 @@ describe('the app', () => {
     const bar = read('features/explore/MapTopBar.tsx');
     expect(bar).toContain("label={t('map.title')}");
     expect(bar).not.toMatch(/<Text[^>]*>\s*\{t\('map\.title'\)\}/);
-  });
-});
-
-describe('MapBrand', () => {
-  it('honours the declaration', () => {
-    const source = read('components/map/MapBrand.tsx');
-    expect(source).toContain('useBrandedChrome');
-    expect(source).toContain('if (chromeIsBranded) return null;');
-  });
-
-  it('has no prop that would let a screen switch it off', () => {
-    // The distinction the design rests on: a SURFACE opts into being branded
-    // already; a screen cannot ask for no brand. A props interface here would
-    // be that second thing.
-    expect(read('components/map/MapBrand.tsx')).not.toMatch(/interface MapBrandProps/);
   });
 });
 

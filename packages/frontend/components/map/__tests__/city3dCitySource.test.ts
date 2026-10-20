@@ -19,7 +19,7 @@ import {
   CITY_TILE_ZOOM,
   CITY_TREE_LAYER,
 } from '@/lib/map/cityTiles';
-import { OPENMAPTILES_SOURCE_LAYERS } from '@/lib/map/style/schema';
+import { OPENMAPTILES_SOURCE_LAYERS } from '@goway.to/sdk';
 
 const basemap = { template: 'https://tiles.example/{z}/{x}/{y}.pbf', maxzoom: 14 };
 const BARCELONA: [number, number, number, number] = [2.052, 41.317, 2.228, 41.468];
@@ -109,7 +109,7 @@ describe('fetchCityCoverageDocument: where the road archive is published', () =>
   const roads = { maxZoom: 14, bits: 'Aw==' };
 
   test('goway.to before any region: nothing covered, no road tile asked for, not a failure', async () => {
-    // What production answers today (`worker/city.js` with no manifest).
+    // What production answers today (`map-service/src/city.js` with no manifest).
     expect(
       await fetchCityCoverageDocument('x', answer(200, { schema: 2, regions: [], tiles: null })),
     ).toEqual({ buildings: [], roads: [], failed: false });

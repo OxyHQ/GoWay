@@ -29,7 +29,7 @@ import { RiWifiLine } from '@oxy.so/bloom/icons/RiWifiLine';
 import { RiFocus3Line } from '@oxy.so/bloom/icons/RiFocus3Line';
 
 import type { GoWayFailureKind } from '@/lib/goway/errors';
-import type { LocationErrorReason } from '@/lib/map/useUserLocation';
+import type { LocationErrorReason } from '@goway.to/maps';
 
 export interface PanelStateProps {
   icon: BloomIconComponent;

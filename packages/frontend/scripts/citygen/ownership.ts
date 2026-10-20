@@ -7,7 +7,7 @@
  * owns exactly the tiles that lie WHOLLY inside its polygon — the `.poly`
  * Geofabrik cut the extract with. Its archive holds those tiles and no
  * others, and the Worker answers a tile from the archive of the region that
- * owns it (`worker/index.js`).
+ * owns it (`map-service/src/index.js`).
  *
  * Why wholly inside, and not "the tile's centre is inside":
  *
@@ -46,7 +46,7 @@ import {
   FULL,
   intersectCoverageTrees,
   MIXED,
-} from '../../worker/coverageTree.js';
+} from '@goway/map-service/coverageTree.js';
 
 /** A ring of `[lon, lat]` points; the closing point may or may not repeat the first. */
 export type Ring = [number, number][];

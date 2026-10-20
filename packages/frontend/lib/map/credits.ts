@@ -65,7 +65,7 @@ const BUILDING_DATA_LINKS: readonly CreditLink[] = [
  * GoWay's 3D city tiles — buildings, trees and the street network — are a
  * Derivative Database of OpenStreetMap, so the ODbL obliges GoWay to offer the
  * database to anyone it serves the tiles to. The manifest the Worker serves
- * (`worker/city.js`, `docs/MAP_CITY_PLANET.md`) lists every published
+ * (`map-service/src/city.js`, `docs/MAP_CITY_PLANET.md`) lists every published
  * regional archive with its receipt — the OSM extract and replication date it
  * was built from, and the official data merged into it — and each is
  * downloadable from `/map/city/data/<key>`. The canonical origin, as the

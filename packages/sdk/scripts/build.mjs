@@ -11,9 +11,11 @@
  *                       under `node16`/`nodenext` does not see ESM types
  *                       masquerading as CJS
  *
- * Three entries: `index` (`@goway.to/sdk`, the HTTP client), `live`
- * (`@goway.to/sdk/live`, the GoWay Live socket protocol) and `roadAccess`
- * (`@goway.to/sdk/road-access`, the road-access rules). Each is bundled ON
+ * Five entries: `index` (`@goway.to/sdk`, the HTTP client), `live`
+ * (`@goway.to/sdk/live`, the GoWay Live socket protocol), `roadAccess`
+ * (`@goway.to/sdk/road-access`, the road-access rules), `geo`
+ * (`@goway.to/sdk/geo`, the geographic arithmetic) and `map`
+ * (`@goway.to/sdk/map`, style names and the tile schema for a renderer). Each is bundled ON
  * ITS OWN — no shared chunk — so loading one never loads the other: the live
  * schemas stay out of every HTTP-only consumer, GoWay's own first paint
  * included, and a contract module both reach is simply inlined twice.
@@ -65,7 +67,7 @@ import ts from 'typescript';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const dist = join(root, 'dist');
-const ENTRIES = ['index', 'live', 'roadAccess'];
+const ENTRIES = ['index', 'live', 'roadAccess', 'geo', 'map'];
 const tsconfig = join(root, 'tsconfig.json');
 
 /** The runtime dependency, kept out of both bundles: `zod` and any subpath of it. */
@@ -131,6 +133,12 @@ for (const name of ENTRIES) {
 
   const bundle = await rollup({
     input: entry,
+    // One file at a time: rollup-plugin-dts type-checks each module as rollup
+    // loads it, and TypeScript prints a union's members in the order the
+    // checker created their types. Loaded in parallel, that order — and so the
+    // declaration bytes — changed from build to build, which the release's
+    // rebuild-and-compare refuses.
+    maxParallelFileOps: 1,
     // `respectExternal` makes the plugin inline declarations from node_modules
     // too, so zod must be named external here as well or its types are copied in.
     external: isExternal,

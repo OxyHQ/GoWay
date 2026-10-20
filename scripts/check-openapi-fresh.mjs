@@ -45,6 +45,27 @@ import { fileURLToPath } from 'node:url';
  * request body and whether it requires an Oxy session.
  */
 export const EXPECTED_OPERATIONS = [
+  { method: 'get', path: '/organization-lists', body: false, auth: false },
+  { method: 'post', path: '/organization-lists', body: true, auth: true },
+  { method: 'get', path: '/organization-lists/{listId}', body: false, auth: false },
+  { method: 'put', path: '/organization-lists/{listId}', body: true, auth: true },
+  { method: 'delete', path: '/organization-lists/{listId}', body: false, auth: true },
+  { method: 'get', path: '/organization-lists/{listId}/entries', body: false, auth: false },
+  { method: 'post', path: '/organization-lists/{listId}/entries', body: true, auth: true },
+  { method: 'put', path: '/organization-lists/{listId}/entries/{entryId}', body: true, auth: true },
+  {
+    method: 'delete',
+    path: '/organization-lists/{listId}/entries/{entryId}',
+    body: false,
+    auth: true,
+  },
+  {
+    method: 'post',
+    path: '/organization-lists/{listId}/entries/{entryId}/complete',
+    body: false,
+    auth: true,
+  },
+  { method: 'put', path: '/organization-lists/{listId}/order', body: true, auth: true },
   { method: 'get', path: '/places/nearby', body: false, auth: false },
   { method: 'get', path: '/places/bounds', body: false, auth: false },
   { method: 'get', path: '/places', body: false, auth: false },

@@ -29,18 +29,18 @@ import { useReducedMotion } from 'react-native-reanimated';
 import type { GeoCoordinate, Place, PlaceCapability, SearchResult } from '@goway.to/sdk';
 
 import type {
-  GeoBounds,
+  GeoBoundingBox,
   MapApi,
   MapFitOptions,
   MapLabelFeature,
   MapMarker,
   MapOverlay,
   MapPressEvent,
-  MapViewportChange,
+  MapCameraChange,
   ResolvedMapViewport,
 } from '@/components/map';
 import { DEFAULT_VIEWPORT } from '@/components/map';
-import { sameLabelSet } from '@/components/map/labels';
+import { sameLabelSet } from '@goway.to/maps';
 import { useDirections, type DirectionsController } from '@/features/directions/useDirections';
 import { declutterMarkerLabels, describeLabel, reconcileLabel } from '@/lib/goway/basemapLabels';
 import { ecosystemCapabilities } from '@/lib/goway/capabilities';
@@ -55,7 +55,7 @@ import {
   useSearch,
 } from '@/lib/goway/queries';
 import { useDebouncedValue } from '@/lib/useDebouncedValue';
-import { useUserLocation } from '@/lib/map/useUserLocation';
+import { useUserLocation } from '@goway.to/maps';
 
 import { boxOf, type CommittedBox, createOpeningFraming, nextBoxStep } from './committedBox';
 
@@ -86,8 +86,8 @@ const NO_LABELS: readonly MapLabelFeature[] = [];
 /** Zoom the camera settles at when a place is opened from a list. */
 const DETAIL_ZOOM = 16;
 
-/** Padding kept around a cluster the user opened, in px. */
-const CLUSTER_FIT_PADDING = 96;
+/** Padding kept around a result's extent when it is framed, in px. */
+const RESULT_FIT_PADDING = 96;
 
 /**
  * Fallback padding for framing a route, in px, when the screen has not said how
@@ -116,7 +116,7 @@ export interface ExploreController {
   /** Centre of the committed box, for ordering a list by distance. */
   center: GeoCoordinate | null;
   /** The committed box itself, for biasing a search toward what is on screen. */
-  bounds: GeoBounds | null;
+  bounds: GeoBoundingBox | null;
   placesBusy: boolean;
   placesFailure: GoWayFailureKind | null;
   retryPlaces: () => void;
@@ -160,7 +160,7 @@ export interface ExploreController {
    */
   ecosystem: ReadonlyMap<string, PlaceCapability>;
   onMarkerPress: (marker: MapMarker) => void;
-  onViewportChange: (change: MapViewportChange) => void;
+  onViewportChange: (change: MapCameraChange) => void;
 
   /** `true` once the camera has moved far enough to be a different question. */
   areaMoved: boolean;
@@ -308,7 +308,6 @@ export function useExplore(
     if (searching) {
       return {
         markers: results.map((result) => resultMarker(result, result.id === selectedMarkerId)),
-        clusters: new Map<string, Place[]>(),
         hiddenByZoom: 0,
       };
     }
@@ -342,7 +341,7 @@ export function useExplore(
 
   // ── Camera ───────────────────────────────────────────────────────────────
 
-  const commitViewport = useCallback((viewport: ResolvedMapViewport, bounds: GeoBounds) => {
+  const commitViewport = useCallback((viewport: ResolvedMapViewport, bounds: GeoBoundingBox) => {
     setCommitted(boxOf({ viewport, bounds }));
     setAreaMoved(false);
   }, []);
@@ -355,7 +354,7 @@ export function useExplore(
   const [opening] = useState(() => createOpeningFraming(Boolean(options.initialPlaceId)));
 
   const onViewportChange = useCallback(
-    (change: MapViewportChange) => {
+    (change: MapCameraChange) => {
       viewportRef.current = change.viewport;
 
       // Zoom drives marker visibility, so it has to track the live camera — but
@@ -429,7 +428,7 @@ export function useExplore(
       // dropping a pin in the middle of it and zooming to 16.
       if (result.boundingBox) {
         mapRef.current?.fitBounds(result.boundingBox, {
-          padding: CLUSTER_FIT_PADDING,
+          padding: RESULT_FIT_PADDING,
           maxZoom: 15,
           duration: cameraDuration,
         });
@@ -640,14 +639,6 @@ export function useExplore(
         if (slot >= 0) directions.beginEdit(slot);
         return;
       }
-      const cluster = built.clusters.get(marker.id);
-      if (cluster) {
-        mapRef.current?.fitCoordinates(
-          cluster.map((entry) => entry.location),
-          { padding: CLUSTER_FIT_PADDING, maxZoom: 17, duration: cameraDuration },
-        );
-        return;
-      }
       if (searching) {
         const result = results.find((entry) => entry.id === marker.id);
         if (result) selectResult(result);
@@ -656,17 +647,7 @@ export function useExplore(
       const place = places.find((entry) => entry.id === marker.id);
       if (place) selectPlace(place);
     },
-    [
-      built.clusters,
-      cameraDuration,
-      directions,
-      mapRef,
-      places,
-      results,
-      searching,
-      selectPlace,
-      selectResult,
-    ],
+    [directions, places, results, searching, selectPlace, selectResult],
   );
 
   return {

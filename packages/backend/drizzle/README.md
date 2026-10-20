@@ -273,3 +273,12 @@ takes ACCESS EXCLUSIVE and validates every row, all of them NULL in the new
 columns. That table is temporary keyframe metadata, small next to `places`,
 so it is validated in place rather than `NOT VALID`, as `0014`'s panorama
 CHECK was.
+
+## `0024_goway_oxy_file_references`
+
+GoWay's side of its Oxy file references (Oxy ADR 0043; `src/db/schema/oxyFiles.ts`):
+`oxy_file_reference_changes`, the outbox of reference changes owed to Oxy
+(withdrawals, merges), and `oxy_file_reference_reconciliations`, the log of
+reconciliation runs with a partial unique index allowing one open run per
+entity type. `pre`, purely additive: two new tables, no foreign keys, nothing
+existing is read or locked. The previous image never touches them.

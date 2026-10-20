@@ -38,7 +38,7 @@
  * advertised range, since a zoom past `maxZoom` is a legible intention ("as
  * close as you can") rather than an error.
  */
-import { MERCATOR_MAX_LATITUDE as MERCATOR_LATITUDE_LIMIT } from './geo';
+import { MERCATOR_MAX_LATITUDE as MERCATOR_LATITUDE_LIMIT } from '@goway.to/sdk/geo';
 import type { MapViewport } from '@/components/map/types';
 
 import { getMapSource } from './provider';

@@ -22,12 +22,13 @@
     "street3d:tick": "bun run src/street3d/runTick.ts",
     "street3d:admin": "bun run src/street3d/runAdmin.ts",
     "street3d:serve-assets": "bun run src/street3d/runServeAssets.ts",
-    "live:areas": "bun run src/live/runAreas.ts"
+    "live:areas": "bun run src/live/runAreas.ts",
+    "oxy-references:admin": "bun run src/oxy/runReferencesAdmin.ts"
   },
   "dependencies": {
     "@goway/contracts": "workspace:*",
-    "@oxy.so/core": "4.2.0",
-    "@oxy.so/db": "^1.0.0",
+    "@oxy.so/core": "6.0.0",
+    "@oxy.so/db": "^1.2.0",
     "@photostructure/tz-lookup": "11.7.0",
     "cors": "^2.8.6",
     "drizzle-orm": "0.45.2",

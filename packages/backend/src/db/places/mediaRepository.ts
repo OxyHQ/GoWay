@@ -6,9 +6,12 @@
  * positions never collide, and a logo or cover pointer is cleared in the same
  * commit as the item it named leaving the gallery.
  *
- * Nothing here talks to Oxy. The route checks and links a file before
- * {@link addPlaceMedia} and unlinks it after {@link removePlaceMedia}; a
- * database transaction never waits on another service.
+ * Nothing here talks to Oxy. The route checks and references a file before
+ * {@link addPlaceMedia}; {@link removePlaceMedia} and
+ * {@link moveMediaToSurvivor} QUEUE the reference changes they cause
+ * (`db/oxyFiles/referenceChanges`) in their own transaction, and
+ * `oxy/fileReferences` delivers them. A database transaction never waits on
+ * another service.
  */
 
 import { and, asc, eq, inArray, ne, sql, type SQL } from 'drizzle-orm';
@@ -28,6 +31,7 @@ import type { Paged, TimeWindow } from '../../http/cursor';
 import { assertWritableVerification } from '../../places/capabilityAuthority';
 import type { Database, DatabaseOrTransaction } from '../postgres';
 import { placeMedia, places } from '../schema';
+import { enqueueFileReferenceChanges } from '../oxyFiles/referenceChanges';
 import type { PlaceActor } from './placesRepository';
 import {
   changeOf,
@@ -234,16 +238,17 @@ export async function findLivePlaceMedia(
 
 /**
  * Withdraw one item: `removed`, terminally, with the place's logo or cover
- * cleared if it was either, and `media_removed` recorded. Returns the item
- * as it was, so the route can unlink its file; `null` when the place or a
- * live item of that id is gone.
+ * cleared if it was either, and `media_removed` recorded. The removal of its
+ * Oxy reference is queued in the same transaction. Returns the item as it was
+ * and the queued change, for the route to deliver at once; `null` when the
+ * place or a live item of that id is gone.
  */
 export async function removePlaceMedia(
   db: Database,
   placeId: string,
   mediaId: string,
   author: RevisionAuthor,
-): Promise<MediaRow | null> {
+): Promise<{ item: MediaRow; referenceChangeIds: string[] } | null> {
   return db.transaction(async (tx) => {
     const place = await lockPlace(tx, placeId);
     if (!place) return null;
@@ -274,7 +279,15 @@ export async function removePlaceMedia(
       ...(await releasePointers(tx, place, mediaId)),
     ];
     await recordRevision(tx, { placeId, action: 'media_removed', author, changes });
-    return before;
+    const referenceChangeIds = await enqueueFileReferenceChanges(tx, [
+      {
+        action: 'remove',
+        fileId: before.oxyFileId,
+        entityType: 'place',
+        entityId: before.oxyLinkPlaceId,
+      },
+    ]);
+    return { item: before, referenceChangeIds };
   });
 }
 
@@ -486,6 +499,11 @@ export async function moderatePlaceMedia(
  * and cover pointers stay on its row (a merged place's columns are never
  * rewritten), naming items that now belong to the survivor; a merged place is
  * never published, so they are never read.
+ *
+ * Each moved item's Oxy reference moves with it: a `move` from the place it
+ * names to the survivor is queued in the merge's transaction (Oxy adds the
+ * survivor's, then drops the old), and the item names the survivor from now
+ * on.
  */
 export async function moveMediaToSurvivor(
   tx: DatabaseOrTransaction,
@@ -510,10 +528,22 @@ export async function moveMediaToSurvivor(
   let position = await nextPosition(tx, survivorId);
   const now = new Date();
   const changes: PlaceRevisionChange[] = [];
+  await enqueueFileReferenceChanges(
+    tx,
+    moving
+      .filter((row) => row.oxyLinkPlaceId !== survivorId)
+      .map((row) => ({
+        action: 'move' as const,
+        fileId: row.oxyFileId,
+        entityType: 'place' as const,
+        fromEntityId: row.oxyLinkPlaceId,
+        entityId: survivorId,
+      })),
+  );
   for (const row of moving) {
     await tx
       .update(placeMedia)
-      .set({ placeId: survivorId, position, updatedAt: now })
+      .set({ placeId: survivorId, oxyLinkPlaceId: survivorId, position, updatedAt: now })
       .where(eq(placeMedia.id, row.id));
     changes.push({ field: mediaField(row.id), after: mediaSnapshot({ ...row, position }) });
     position += 1;

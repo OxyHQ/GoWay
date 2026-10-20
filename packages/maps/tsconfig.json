@@ -1,0 +1,24 @@
+{
+  // `@goway.to/maps`, built by `tsc` into `dist/`: one `.js` + `.d.ts` per
+  // source file, so the web forks (`*.web.js`) sit beside the native ones and
+  // `index.web.js` names them explicitly. Consumers' bundlers (Metro, Vite,
+  // webpack) take it from there; nothing here is Node-only.
+  "compilerOptions": {
+    "target": "ES2022",
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "types": ["geojson"],
+    "jsx": "react-jsx",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "strict": true,
+    "noImplicitOverride": true,
+    "isolatedModules": true,
+    "verbatimModuleSyntax": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true,
+    "declaration": true,
+    "rootDir": "src",
+    "outDir": "dist"
+  },
+  "include": ["src/**/*.ts", "src/**/*.tsx"]
+}

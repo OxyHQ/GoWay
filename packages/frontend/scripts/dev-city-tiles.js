@@ -9,7 +9,7 @@
  * It only ever runs inside the Metro dev server — an `expo export` serves
  * nothing — so it cannot reach production.
  *
- * It reads the archive with `worker/pmtiles.js`, the reader the production
+ * It reads the archive with `map-service/src/pmtiles.js`, the reader the production
  * Worker serves the basemap with and would serve these tiles with, and it
  * answers the way that Worker answers a tile: the stored gzip bytes with
  * `content-encoding: gzip`, and 204 for a tile the archive does not have. So
@@ -20,7 +20,7 @@
  *
  * A REGIONAL archive (the planet build's, `scripts/build-city-region.ts`)
  * carries the tiles it owns in its metadata (`goway:ownership`); the route
- * then answers as the production Worker does (`worker/city.js`): a tile from
+ * then answers as the production Worker does (`map-service/src/city.js`): a tile from
  * the first archive that owns it, 204 when that archive has nothing there,
  * and — when every building archive is regional — the production coverage
  * document, the union of their ownership at z14. To look at the production
@@ -91,8 +91,8 @@ function withDevCityTiles(config) {
   const archives = () => {
     if (!archivesPromise) {
       archivesPromise = (async () => {
-        const { PMTiles } = await import('../worker/pmtiles.js');
-        trees = await import('../worker/coverageTree.js');
+        const { PMTiles } = await import('@goway/map-service/pmtiles.js');
+        trees = await import('@goway/map-service/coverageTree.js');
         return Promise.all(
           paths.map(async (file) => {
             const handle = await open(file, 'r');
@@ -130,7 +130,7 @@ function withDevCityTiles(config) {
     return null;
   };
 
-  /** Every building archive regional: the production document (`worker/city.js`). */
+  /** Every building archive regional: the production document (`map-service/src/city.js`). */
   const regionalCoverage = (list) => {
     const buildings = list.filter((entry) => entry.kind === 'city');
     if (buildings.length === 0 || !buildings.every((entry) => entry.tree)) return null;

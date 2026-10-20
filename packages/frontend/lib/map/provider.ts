@@ -48,7 +48,7 @@ import {
   mapStyleThumbnailPath,
   presetAppearance,
 } from './style/catalogue';
-import { OPENMAPTILES_SOURCE_LAYERS } from './style/schema';
+import { OPENMAPTILES_SOURCE_LAYERS } from '@goway.to/sdk';
 
 /** Which of the two cartographic appearances a style document is for. */
 export type MapAppearance = 'light' | 'dark';
@@ -156,7 +156,7 @@ export interface MapSourceConfig {
  * where `openfreemap.org` is written down. Two consumers read it and neither
  * of them is the app:
  *
- *  1. `worker/index.js`, GoWay's Cloudflare Worker. Tiles now come from
+ *  1. `map-service/src/index.js`, GoWay's Cloudflare Worker. Tiles now come from
  *     GoWay's own PMTiles archive in R2, and `MAP_TILE_UPSTREAM` is reached
  *     only as a ROLLBACK — when the R2 binding is absent, which is the state
  *     of any deployment made before the bucket exists. `MAP_GLYPH_UPSTREAM` is
@@ -176,7 +176,7 @@ export interface MapSourceConfig {
  * document carries the current planet build's date-stamped tile path (today
  * `…/planet/20260913_164504_pt/{z}/{x}/{y}.pbf`), so nothing pins a build that
  * will later be deleted. The Worker resolves it at request time and caches the
- * resolution; see `worker/index.js`.
+ * resolution; see `map-service/src/index.js`.
  */
 export const OPENFREEMAP_ENDPOINTS = {
   tileJson: 'https://tiles.openfreemap.org/planet',
@@ -219,7 +219,7 @@ export const OPENFREEMAP_ENDPOINTS = {
  *    and a non-US-centric road shield both require. Kilobytes.
  *  - **Tiles** (`/map/tiles/{z}/{x}/{y}.pbf`) — BUILT BY US and served out of
  *    GoWay's own **PMTiles archive in Cloudflare R2**, read by byte range by
- *    `worker/index.js`. The seam the proxy bought is the seam this went
+ *    `map-service/src/index.js`. The seam the proxy bought is the seam this went
  *    through: not one line of app code, style document or public contract
  *    changed, because the client only ever knew a `goway.to` URL.
  *
@@ -259,7 +259,7 @@ export const GOWAY_MAP_PATHS = {
   terrain: '/map/terrain/{z}/{x}/{y}.webp',
   /**
    * Contour lines, traced by the Worker from the elevation tiles above and
-   * cached at the edge (`worker/contours.js`, z9–14). Named by the Outdoors
+   * cached at the edge (`map-service/src/contours.js`, z9–14). Named by the Outdoors
    * style documents.
    */
   contours: '/map/contours/{z}/{x}/{y}.pbf',

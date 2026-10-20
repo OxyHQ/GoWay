@@ -4,7 +4,7 @@
  * ## The hole this module exists to close
  *
  * MapLibre asks for glyphs in fixed 256-codepoint range files, and it asks for
- * ONE file per range. `worker/index.js` answers `/map/fonts/{stack}/{range}.pbf`
+ * ONE file per range. `map-service/src/index.js` answers `/map/fonts/{stack}/{range}.pbf`
  * from the committed assets when the file exists and proxies upstream Noto when
  * it does not — an ALL-OR-NOTHING choice, made per range, on the file's
  * existence alone.

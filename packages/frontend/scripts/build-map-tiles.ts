@@ -20,7 +20,7 @@
  *
  * ## Why GoWay builds its own tiles
  *
- * Until this script, `worker/index.js` PROXIED `tiles.openfreemap.org`. That
+ * Until this script, `map-service/src/index.js` PROXIED `tiles.openfreemap.org`. That
  * removed the third-party origin from the browser and bought a seam, and its
  * own header said plainly what it did not buy: "If OpenFreeMap is down,
  * GoWay's map is down, exactly as it was before." A map platform whose map has
@@ -36,7 +36,7 @@
  *
  * ## Why Planetiler, and why the schema does not change
  *
- * `lib/map/style/schema.ts` records the OpenMapTiles v3 vocabulary the style
+ * `@goway.to/sdk`'s tile schema (`packages/contracts/src/map-tiles.ts`) records the OpenMapTiles v3 vocabulary the style
  * speaks, and `build-map-style.ts` fails on a `source-layer` or a `class` that
  * no tile carries. Changing the schema would mean changing the cartography in
  * the same breath, so the question is whether a self-hosted build can keep it.
@@ -73,10 +73,10 @@
  * decode to nothing exits 0 and prints nothing alarming. So nothing may
  * replace the live archive until this has opened it, walked its directories,
  * gunzipped real tiles and asserted on what is inside — using
- * `worker/pmtiles.js`, the same reader the edge serves with, so that "the
+ * `map-service/src/pmtiles.js`, the same reader the edge serves with, so that "the
  * archive is readable" and "GoWay can read the archive" are the same claim.
  *
- * @see `worker/pmtiles.js` — the reader, shared with the Worker.
+ * @see `map-service/src/pmtiles.js` — the reader, shared with the Worker.
  * @see `packages/frontend/README.md` — R2, the one-time human setup, the cost.
  */
 import { spawn } from 'node:child_process';
@@ -85,7 +85,7 @@ import { mkdir, open, stat, writeFile } from 'node:fs/promises';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { PMTiles, COMPRESSION, TILE_TYPE } from '../worker/pmtiles.js';
+import { PMTiles, COMPRESSION, TILE_TYPE } from '@goway/map-service/pmtiles.js';
 import {
   decodeVectorTile,
   osmElementFor,
@@ -93,10 +93,7 @@ import {
   OSM_ID_MULTIPLIER,
   type VectorTileLayer,
 } from './mapgen/mvt';
-import {
-  OPENMAPTILES_SOURCE_LAYER_NAMES,
-  OPENMAPTILES_SOURCE_LAYERS,
-} from '../lib/map/style/schema';
+import { OPENMAPTILES_SOURCE_LAYER_NAMES, OPENMAPTILES_SOURCE_LAYERS } from '@goway.to/sdk';
 
 const FRONTEND_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -120,7 +117,7 @@ const PLANETILER_URL = `https://github.com/onthegomap/planetiler/releases/downlo
  * already assumes.
  *
  * `buildTileJson()` in `build-map-style.ts` declares 14 so MapLibre overzooms
- * rather than requesting z15, and `worker/index.js` refuses a higher zoom
+ * rather than requesting z15, and `map-service/src/index.js` refuses a higher zoom
  * without touching storage. Raising it is a three-file change and roughly a
  * four-fold increase in both the archive and the build, so it is stated here
  * once and asserted against the finished archive.
@@ -531,7 +528,7 @@ export async function verify(archivePath: string, area: string): Promise<Verific
   const worldCovering = header.bounds[0] <= -179 && header.bounds[2] >= 179;
   const missing = OPENMAPTILES_SOURCE_LAYER_NAMES.filter((name) => !vectorLayers.includes(name));
   for (const name of missing) {
-    const message = `the archive has no "${name}" layer, which lib/map/style/schema.ts promises`;
+    const message = `the archive has no "${name}" layer, which the tile schema (packages/contracts/src/map-tiles.ts) promises`;
     if (worldCovering) problems.push(message);
     else console.log(`  note            ${message} (extract, not the planet)`);
   }

@@ -969,7 +969,8 @@ async function mergePlaces(
 
   // The gallery moves wherever the survivor does not already show the same
   // file; reviews all move, with one person's older review set aside when
-  // they wrote one on each. Neither re-links an Oxy file (`oxy/placeFiles`).
+  // they wrote one on each. A moved item's Oxy reference moves with it, queued
+  // in this transaction (`moveMediaToSurvivor`, `oxy/fileReferences`).
   received.push(...(await moveMediaToSurvivor(tx, survivorId, absorbedId)));
   await moveReviewsToSurvivor(tx, survivorId, absorbedId, author);
   // Saved lists are personal and not part of the place's history: the saves just follow the place.

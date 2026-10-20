@@ -25,7 +25,10 @@ import {
   apiRateLimit,
   liveShapeRateLimit,
   contributionRateLimit,
+  fileReferences,
   optionalAuth,
+  organizationAuthority,
+  organizationListWriteRateLimit,
   placeFiles,
   reportRateLimit,
   requireAuth,
@@ -40,6 +43,7 @@ import { createLiveRouter } from './routes/live';
 import { createTransitRouter } from './routes/transit';
 import { createModerationRouter } from './routes/moderation';
 import { createOpenApiRouter } from './routes/openapi';
+import { createOrganizationListsRouter } from './routes/organizationLists';
 import { createPlaceMediaRouter } from './routes/placeMedia';
 import { createPlaceReviewsRouter } from './routes/placeReviews';
 import { createPlacesRouter } from './routes/places';
@@ -138,11 +142,18 @@ export function createApp(options: CreateAppOptions = {}): Express {
 
   const v1: Router = Router();
   v1.use(createOpenApiRouter());
+  v1.use(
+    createOrganizationListsRouter({
+      requireAuth,
+      authorize: organizationAuthority,
+      writeRateLimit: organizationListWriteRateLimit,
+    }),
+  );
   v1.use(createCategoriesRouter());
   v1.use(createPlacesRouter({ optionalAuth, requireAuth, accountRoles, reportRateLimit }));
   /**
    * A place's gallery and reviews. Images are Oxy files the client uploaded;
-   * GoWay checks and links them with Oxy (`oxy/placeFiles`) and never touches
+   * GoWay checks and references them with Oxy (`oxy/placeFiles`) and never touches
    * the bytes.
    */
   v1.use(
@@ -151,6 +162,7 @@ export function createApp(options: CreateAppOptions = {}): Express {
       requireAuth,
       accountRoles,
       placeFiles,
+      fileReferences,
       reportRateLimit,
       contributionRateLimit,
     }),

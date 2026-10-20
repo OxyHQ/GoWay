@@ -5,7 +5,7 @@
  * directory is held in memory.
  *
  * The archive is CLUSTERED — tiles in tile-id (Hilbert) order — like every
- * archive GoWay writes, and read by the same reader (`worker/pmtiles.js`).
+ * archive GoWay writes, and read by the same reader (`map-service/src/pmtiles.js`).
  * Identical tiles (open sea, a blank field) are stored once. Image tiles are
  * stored as they are (`tileCompression: NONE`): the codec is the compression.
  */
@@ -14,7 +14,7 @@ import { createWriteStream } from 'node:fs';
 import { readdir, readFile, stat } from 'node:fs/promises';
 import { join } from 'node:path';
 
-import { COMPRESSION, TILE_TYPE, zxyToTileId } from '../../worker/pmtiles.js';
+import { COMPRESSION, TILE_TYPE, zxyToTileId } from '@goway/map-service/pmtiles.js';
 import { type PmtilesEntry, pmtilesPrelude, pushEntry } from '../citygen/pmtilesWriter';
 
 export interface PackedArchive {

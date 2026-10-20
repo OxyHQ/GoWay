@@ -14,6 +14,8 @@ import {
   densityFactor,
   STEP_S,
 } from '../engine/cityLife/sim/simulation';
+import { CAR_MODELS } from '../engine/cityLife/sim/fleet';
+import { modelBit } from '../engine/cityLife/sim/vehicleAccess';
 import { holds, IDM, idmAcceleration, ROUTE_LENGTH } from '../engine/cityLife/sim/traffic';
 import { drivingSideAt } from '../engine/roads/drivingSide';
 import { offsetPolyline, simFrame } from '../engine/roads/roadGraph';
@@ -677,5 +679,91 @@ describe('driving side', () => {
     expect(drivingSideAt(77.2, 28.6)).toBe('left'); // Delhi
     expect(drivingSideAt(100.5, 13.75)).toBe('left'); // Bangkok
     expect(drivingSideAt(18.42, -33.92)).toBe('left'); // Cape Town
+  });
+});
+
+describe('who may drive where', () => {
+  const car = modelBit('sedan');
+  const bus = modelBit('bus');
+
+  /** A cross whose east-west road has a recorded bus lane at each kerb. */
+  const busLaneCross = () =>
+    build(
+      cross({
+        ew: {
+          lanes: 4,
+          lanesForward: 2,
+          lanesBackward: 2,
+          busLanesForward: [false, true],
+          busLanesBackward: [false, true],
+        },
+      }),
+    );
+
+  test("a recorded bus lane is the buses' alone; the lanes beside it are the road's", () => {
+    const network = busLaneCross();
+    const ew = lanesOf(network).filter((lane) => lane.users === bus);
+    // One bus lane per direction on each of the two east-west pieces' links.
+    expect(ew.length).toBeGreaterThanOrEqual(2);
+    for (const lane of ew) expect(lane.laneIndex).toBe(0);
+    const open = lanesOf(network).filter((lane) => lane.users & car && lane.laneIndex === 1);
+    expect(open.length).toBeGreaterThanOrEqual(2);
+  });
+
+  test('a road shut to cars but open to buses carries buses and nothing else', () => {
+    const network = build(
+      cross({ ew: { access: { car: 'no', taxi: 'no', van: 'no', hgv: 'no', bus: 'designated' } } }),
+    );
+    const busOnly = lanesOf(network).filter((lane) => lane.users === bus);
+    expect(busOnly.length).toBeGreaterThan(0);
+    // The north-south road stays the cars'; the bus street is no one else's.
+    expect(lanesOf(network).some((lane) => lane.users & car)).toBe(true);
+    for (const lane of lanesOf(network))
+      expect(lane.users === bus || lane.users & car).toBeTruthy();
+  });
+
+  test('over thousands of steps no vehicle is ever in a lane its class may not drive', () => {
+    const sim = new CitySimulation({ cars: 200, people: 0 }, 9);
+    sim.setNetwork(busLaneCross());
+    sim.setView(view);
+    let checked = 0;
+    for (let step = 0; step < 1800; step++) {
+      sim.step();
+      for (let slot = 0; slot < sim.cars.capacity; slot++) {
+        if (!sim.cars.alive[slot]) continue;
+        const path = sim.network?.paths[sim.cars.path[slot]];
+        if (path?.kind !== 'lane') continue;
+        const bit = modelBit(CAR_MODELS[sim.cars.model[slot]]);
+        expect((path.users | path.local) & bit).toBeTruthy();
+        checked++;
+      }
+    }
+    expect(checked).toBeGreaterThan(1000);
+  });
+
+  test("a service lane carries a fraction of an avenue's traffic", () => {
+    const avenue = lanesOf(build(cross({ ew: { highway: 'primary' } }))).find(
+      (lane) => lane.weight > 0,
+    );
+    const service = lanesOf(build(cross({ ew: { highway: 'service' } }))).find(
+      (lane) => lane.weight > 0,
+    );
+    expect(avenue?.weight).toBe(1);
+    expect(service?.weight).toBeLessThan(0.1);
+  });
+
+  test("a service road in a park keeps a tenth of a service road's traffic", () => {
+    const weightOf = (park: boolean) =>
+      lanesOf(build(cross({ ew: { highway: 'service', park } }))).find((lane) => lane.weight > 0)
+        ?.weight;
+    expect(weightOf(false)).toBe(0.06);
+    expect(weightOf(true)).toBeCloseTo(0.006, 6);
+  });
+
+  test('a destination-only street admits cars to arrive, never to pass', () => {
+    const network = build(cross({ ew: { highway: 'living_street' } }));
+    const lanes = lanesOf(network).filter((lane) => lane.local & car);
+    expect(lanes.length).toBeGreaterThan(0);
+    for (const lane of lanes) expect(lane.users & car).toBe(0);
   });
 });

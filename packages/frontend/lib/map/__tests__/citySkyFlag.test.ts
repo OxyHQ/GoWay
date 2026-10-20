@@ -23,11 +23,14 @@ describe('maxPitchFor', () => {
     const { join } = await import('node:path');
     const root = join(import.meta.dir, '..', '..', '..');
     const canvas = readFileSync(join(root, 'components/map/MapCanvas.web.tsx'), 'utf8');
+    const plugin = readFileSync(join(root, 'components/map/gowayEngine.web.ts'), 'utf8');
     const adapter = readFileSync(join(root, 'components/map/city3dLayer.web.ts'), 'utf8');
-    const calls = canvas.match(/setMaxPitch\(([^;]*)\);/g) ?? [];
-    expect(calls).toEqual([
-      'setMaxPitch(maxPitchFor({ pitchAllowed: gestures.pitch, skyActive }));',
+    // The canvas hands the ceiling to the map, which is its one setter.
+    const ceilings = canvas.match(/maxPitch=\{[^}]*\}\)\}/g) ?? [];
+    expect(ceilings).toEqual([
+      'maxPitch={maxPitchFor({ pitchAllowed: interaction?.pitch ?? true, skyActive })}',
     ]);
-    expect(adapter.includes('setMaxPitch(')).toBe(false);
+    for (const source of [canvas, plugin, adapter])
+      expect(source.includes('setMaxPitch(')).toBe(false);
   });
 });

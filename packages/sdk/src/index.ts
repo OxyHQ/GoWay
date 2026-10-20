@@ -15,12 +15,8 @@
  * renderer and no provider client; its one dependency is `zod`.
  */
 
-export {
-  createGoWayClient,
-  DEFAULT_GOWAY_API_BASE_URL,
-  DEFAULT_GOWAY_TIMEOUT_MS,
-  DEFAULT_GOWAY_WEB_BASE_URL,
-} from './client';
+export { createGoWayClient, DEFAULT_GOWAY_API_BASE_URL, DEFAULT_GOWAY_TIMEOUT_MS } from './client';
+export { DEFAULT_GOWAY_WEB_BASE_URL, styleDocumentUrl } from './styleDocument';
 export type {
   GoWayCapturesApi,
   GoWayCategoriesApi,
@@ -284,9 +280,26 @@ export {
   mapStyleDefinition,
   mapStylePath,
   resolveMapStyle,
+  GOWAY_STYLE_URL_PREFIX,
+  gowayStyleUrl,
+  parseGoWayStyleUrl,
+  // GoWay's tile schema (OpenMapTiles v3)
+  OPENMAPTILES_SOURCE_LAYERS,
+  OPENMAPTILES_SOURCE_LAYER_NAMES,
+  TRANSPORTATION_CLASSES,
+  LANDCOVER_CLASSES,
+  LANDUSE_CLASSES,
+  PLACE_CLASSES,
+  WATER_CLASSES,
+  POI_CLASSES,
+  AVAILABLE_FONTS,
+  FONT_STACKS,
 } from './contract';
 
 export type {
+  // GoWay's tile schema
+  AvailableFont,
+  OpenMapTilesSourceLayer,
   // Map styles
   MapLightPreset,
   MapStyleDefinition,
@@ -588,3 +601,15 @@ export type {
   ModelPlacement,
   ModelPlacementInput,
 } from './contract';
+
+export type {
+  OrganizationList,
+  OrganizationListEntry,
+  OrganizationListInput,
+  OrganizationListUpdate,
+  OrganizationListEntryInput,
+  OrganizationListQuery,
+  OrganizationListEntryQuery,
+  OrganizationListOrderInput,
+} from './contract';
+export type { GoWayOrganizationListsApi } from './organizationLists';

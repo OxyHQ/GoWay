@@ -222,6 +222,23 @@ export {
   // Geography, language, paging
   boundingBoxWidth,
   toGeoCoordinate,
+  // Geographic arithmetic (`@goway.to/sdk/geo`)
+  EARTH_CIRCUMFERENCE_M,
+  MERCATOR_MAX_LATITUDE,
+  WORLD_TILE_SIZE,
+  boundsCenter,
+  boundsOf,
+  distanceMeters,
+  isDegenerateBounds,
+  isValidCoordinate,
+  latitudeFromMercatorY,
+  longitudeFromMercatorX,
+  mercatorX,
+  mercatorY,
+  metersPerPixel,
+  metersToPixels,
+  projectToPixels,
+  unwrappedEast,
   toGeoPosition,
   baseLanguageTag,
   normalizeLanguageTag,
@@ -246,9 +263,26 @@ export {
   mapStyleDefinition,
   mapStylePath,
   resolveMapStyle,
+  GOWAY_STYLE_URL_PREFIX,
+  gowayStyleUrl,
+  parseGoWayStyleUrl,
+  // GoWay's tile schema (OpenMapTiles v3)
+  OPENMAPTILES_SOURCE_LAYERS,
+  OPENMAPTILES_SOURCE_LAYER_NAMES,
+  TRANSPORTATION_CLASSES,
+  LANDCOVER_CLASSES,
+  LANDUSE_CLASSES,
+  PLACE_CLASSES,
+  WATER_CLASSES,
+  POI_CLASSES,
+  AVAILABLE_FONTS,
+  FONT_STACKS,
 } from '@goway/contracts';
 
 export type {
+  // GoWay's tile schema
+  AvailableFont,
+  OpenMapTilesSourceLayer,
   // Map styles
   MapLightPreset,
   MapStyleDefinition,
@@ -702,4 +736,29 @@ export {
   liveSnapshotSchema,
   liveSubscriptionSchema,
   liveSubscriptionStateSchema,
+} from '@goway/contracts';
+
+export {
+  organizationListPathSchema,
+  organizationListEntryPathSchema,
+  organizationListQuerySchema,
+  organizationListEntryQuerySchema,
+  organizationListInputSchema,
+  organizationListUpdateSchema,
+  organizationListEntryInputSchema,
+  organizationListOrderInputSchema,
+  organizationListSchema,
+  organizationListPageSchema,
+  organizationListEntrySchema,
+  organizationListEntryPageSchema,
+} from '@goway/contracts';
+export type {
+  OrganizationList,
+  OrganizationListEntry,
+  OrganizationListInput,
+  OrganizationListUpdate,
+  OrganizationListEntryInput,
+  OrganizationListQuery,
+  OrganizationListEntryQuery,
+  OrganizationListOrderInput,
 } from '@goway/contracts';

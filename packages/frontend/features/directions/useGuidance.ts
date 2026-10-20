@@ -2,7 +2,7 @@
  * Guided navigation: follows a traveller along the planned route.
  *
  * It does not own a position. The map canvas is the one observer of the
- * device's position (`MapCanvasProps.onUserFix`), and the screen hands the fix
+ * device's position (`useUserFix` from `@goway.to/maps`), and the screen hands the fix
  * here; guidance is arithmetic on it (`guidance.ts`). Starting is a user action
  * that has already asked for the location — nothing here prompts.
  *
@@ -15,7 +15,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { GeoCoordinate, Route } from '@goway.to/sdk';
 import type { NavigationBannerState } from '@oxy.so/bloom/navigation-banner';
 
-import type { UserFix } from '@/lib/map/userPuck';
+import type { UserFix } from '@goway.to/maps';
 
 import { type Guidance, guidanceAt } from './guidance';
 import type { RouteStep } from './maneuvers';

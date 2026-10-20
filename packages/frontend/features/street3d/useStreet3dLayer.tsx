@@ -13,7 +13,7 @@ import { useRouter } from 'expo-router';
 import { useTheme } from '@oxy.so/bloom/theme';
 import type { StreetCoverageArea } from '@goway.to/sdk';
 
-import type { GeoBounds, MapMarker, MapOverlay, MapViewportChange } from '@/components/map';
+import type { GeoBoundingBox, MapMarker, MapOverlay, MapCameraChange } from '@/components/map';
 import { useTranslation } from '@/lib/i18n';
 import { useMapFeature } from '@/lib/map/useMapFeatures';
 import { useDebouncedValue } from '@/lib/useDebouncedValue';
@@ -39,7 +39,7 @@ export interface Street3dLayer {
   markers: readonly MapMarker[];
   /** Areas in view where another photo is what is missing. */
   wantingCapture: readonly StreetCoverageArea[];
-  onViewportChange: (change: MapViewportChange) => void;
+  onViewportChange: (change: MapCameraChange) => void;
   /** `true` when the marker is this layer's, and it handled the press. */
   handleMarkerPress: (marker: MapMarker) => boolean;
   /** This layer's marker body, or `null` for any other marker. */
@@ -47,7 +47,7 @@ export interface Street3dLayer {
 }
 
 interface SettledView {
-  bounds: GeoBounds;
+  bounds: GeoBoundingBox;
   zoom: number;
 }
 
@@ -68,7 +68,7 @@ export function useStreet3dLayer({ enabled }: { enabled: boolean }): Street3dLay
   const data = visible && !coverage.isError ? coverage.data : undefined;
 
   const onViewportChange = useCallback(
-    (change: MapViewportChange) => {
+    (change: MapCameraChange) => {
       if (!on || !change.isFinal) return;
       setView({ bounds: change.bounds, zoom: change.viewport.zoom });
     },

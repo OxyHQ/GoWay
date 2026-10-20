@@ -18,7 +18,7 @@
 # flag.
 name = "goway"
 compatibility_date = "2026-09-09"
-main = "./worker/index.js"
+main = "../map-service/src/index.js"
 
 # There IS a `main` now, and the argument that used to be here against one was
 # right and is preserved, because it still governs every path the Worker does
@@ -39,12 +39,12 @@ main = "./worker/index.js"
 # without this Worker executing a line, so the failure mode the old comment
 # warned about is bought only for `/map/tiles/*`, `/map/fonts/*`,
 # `/map/terrain/*`, `/map/contours/*`, `/map/city/*` and `/map/city-roads/*`,
-# not for the app. The `env.ASSETS.fetch` at the bottom of `worker/index.js` is a safety
+# not for the app. The `env.ASSETS.fetch` at the bottom of `map-service/src/index.js` is a safety
 # net for a misconfiguration here, not the normal path.
 #
 # Consequence worth knowing before someone goes looking: the SPA fallback below
 # can answer a *stale hashed asset* URL with `index.html`, which is why Mention
-# and Clarity carry a `worker/index.js` of their own. The exposure here is one
+# and Clarity carry a `map-service/src/index.js` of their own. The exposure here is one
 # already-open tab across a deploy, because Workers Assets serves HTML with
 # `must-revalidate` and every asset URL in a freshly-fetched `index.html` is
 # current. That is still not what this Worker is for, and widening
@@ -102,7 +102,7 @@ binding = "ASSETS"
 # `name:latin`). It asks `env.ASSETS` first and only proxies on a miss, so the
 # committed ranges are still served by the asset pipeline.
 #
-# Detecting that miss is subtler than it looks, and `worker/index.js` says so
+# Detecting that miss is subtler than it looks, and `map-service/src/index.js` says so
 # at length: with `not_found_handling = "single-page-application"`,
 # `env.ASSETS.fetch()` answers a path it does not have with 200 and
 # `index.html`, not with a 404. Anything here that changes the fallback must be
@@ -117,13 +117,13 @@ binding = "ASSETS"
 # production today.
 #
 # `/map/city/*` and `/map/city-roads/*` are GoWay's 3D city tiles and their
-# road graph (`worker/city.js`, `docs/MAP_CITY_PLANET.md`): no asset either.
+# road graph (`map-service/src/city.js`, `docs/MAP_CITY_PLANET.md`): no asset either.
 # Listed so that the SPA fallback never answers a tile path with
 # `index.html` (a 200 the client would try to decode). With
 # `MAP_CITY_MANIFEST` below unset the Worker answers every one of them 404
 # and the coverage document covers nothing.
 #
-# `/map/satellite/*` is GoWay's satellite imagery (`worker/satellite.js`,
+# `/map/satellite/*` is GoWay's satellite imagery (`map-service/src/satellite.js`,
 # `docs/MAP_SATELLITE.md`): tiles, the coverage document, the manifest and its
 # receipts. No asset either; with `MAP_SATELLITE_MANIFEST` below unset every
 # tile is 404 and the coverage document lists no sets.
@@ -139,7 +139,7 @@ run_worker_first = [
 
 # GoWay's OWN tiles: one PMTiles archive in R2, read by byte range.
 #
-# `worker/index.js` serves `/map/tiles/{z}/{x}/{y}.pbf` out of this bucket, and
+# `map-service/src/index.js` serves `/map/tiles/{z}/{x}/{y}.pbf` out of this bucket, and
 # `scripts/build-map-tiles.ts` is what puts an archive in it. There is no tile
 # server: R2 hands back byte ranges and PMTiles is the format that makes a
 # planet addressable that way. R2 charges nothing for egress, which for a map
@@ -166,7 +166,7 @@ run_worker_first = [
 # more cycle as the rollback, and step 5 remains:
 #
 #   Once this has been live long enough to trust, delete `MAP_TILE_UPSTREAM`
-#   below, the fallback in `worker/index.js`, and `OPENFREEMAP_ENDPOINTS` from
+#   below, the fallback in `map-service/src/index.js`, and `OPENFREEMAP_ENDPOINTS` from
 #   `lib/map/provider.ts` — in the same commit, because each of them exists
 #   only for the others.
 #
@@ -211,7 +211,7 @@ MAP_TERRAIN_UPSTREAM = "https://tiles.mapterhorn.com/{z}/{x}/{y}.webp"
 
 # The city tiles' MANIFEST: its object key in `MAP_TILES`. The manifest names
 # one dated archive per region (buildings and roads) and which tiles each
-# owns (`worker/city.js`, `docs/MAP_CITY_PLANET.md`). Written after the
+# owns (`map-service/src/city.js`, `docs/MAP_CITY_PLANET.md`). Written after the
 # archives it names are uploaded — by `.github/workflows/build-city-tiles.yml`,
 # or by hand for the first regions (Catalonia, Madrid and New York State,
 # stamp 20261012-1, with the Catastro and NYC 3D model merged).

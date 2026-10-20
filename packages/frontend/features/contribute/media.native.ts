@@ -16,7 +16,7 @@ export async function hashMedia(media: SelectedMedia, signal: AbortSignal): Prom
     try {
       for (let remaining = media.byteSize; remaining > 0; ) {
         signal.throwIfAborted();
-        const chunk = file.readBytes(Math.min(remaining, 1024 * 1024));
+        const chunk = await file.readBytes(Math.min(remaining, 1024 * 1024));
         if (chunk.length === 0) throw new MediaError('contribute.error.unreadable');
         remaining -= chunk.length;
         yield chunk;

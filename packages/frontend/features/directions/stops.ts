@@ -22,7 +22,7 @@
 import { placeDisplayName } from '@goway.to/sdk';
 import type { GeoCoordinate, Place, PlaceId, RouteLocation, SearchResult } from '@goway.to/sdk';
 
-import { isValidCoordinate } from '@/lib/map/geo';
+import { isValidCoordinate } from '@goway.to/sdk/geo';
 
 /**
  * Where a stop came from, which is the only thing that licenses the sentence

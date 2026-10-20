@@ -71,7 +71,7 @@
 import type { Place, SearchResult } from '@goway.to/sdk';
 
 import type { MapLabelFeature, MapMarker } from '@/components/map';
-import { distanceMeters, projectToPixels } from '@/lib/map/geo';
+import { distanceMeters, projectToPixels } from '@goway.to/sdk/geo';
 
 /**
  * How far a reconciled search result may be from the tapped label and still be
@@ -191,7 +191,7 @@ export function declutterMarkerLabels(input: DeclutterInput): readonly MapMarker
 
   let changed = false;
   const next = markers.map((marker) => {
-    if (!marker.label || marker.selected || (marker.count != null && marker.count > 1)) {
+    if (!marker.label || marker.selected) {
       return marker;
     }
     const at = projectToPixels(marker.coordinate, zoom);

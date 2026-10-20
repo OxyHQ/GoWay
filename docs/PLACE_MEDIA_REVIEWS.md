@@ -23,10 +23,10 @@ nothing else: no bytes, no proxy, no thumbnail, no fetch.
 
 ### What GoWay checks, and how
 
-`POST /places/{placeId}/media` asks Oxy three questions on a client built for
+`POST /places/{placeId}/media` asks Oxy two questions on a client built for
 the request with the **caller's own bearer** and disposed after it — the
 `oxy/accountRoles` shape, because what is being established is about this
-caller:
+caller — and then records the place's use of the file **as GoWay**:
 
 1. `GET /assets/:id` — the file exists, is `active`, is one of
    `PLACE_MEDIA_MIME_TYPES`, and its `ownerUserId` is the session's account or
@@ -35,32 +35,79 @@ caller:
    whole of the check**: without it anybody could publish a file id they saw.
 2. `POST /assets/batch-access` — the file's `visibility` is `public`. The
    record above does not carry visibility.
-3. `POST /assets/:id/links` with `{ app: 'goway', entityType: 'place',
-   entityId: placeId }` and `visibility: 'public'` restated. Oxy's link call
-   SETS the visibility it is given, and infers `private` for a non-avatar entity
-   when given none — so restating what (2) established is what keeps linking
-   from changing it.
+3. `OxyServer#assets.references.add([{ fileId, entityType: 'place',
+   entityId: placeId }])` — `POST /assets/service/references` with GoWay's
+   **own service token** (Oxy ADR 0043 D4, scope `files:references:write`).
+   The application is the token's, never sent. A reference never changes the
+   file's visibility; GoWay sets none.
 
 A missing, foreign, trashed, non-image or non-public file is refused
 (`validation_failed` or `forbidden`, naming `fileId`, never quoting Oxy's
-record). A `401` from Oxy is `unauthorized`. **Anything else fails closed with
-`503`** and records nothing. The row is written after the link; if writing it
-fails the link is dropped again. A file already live in the gallery is a `409`
-naming the item, and its link is left alone.
+record). A `401` on the caller's session is `unauthorized`. **Anything else
+fails closed with `503`** and records nothing — including Oxy refusing GoWay's
+own token (a missing grant is GoWay's problem, never the caller's). A
+`not_found` for the reference (the file went private or into the trash since
+the check) is the same refusal as (1). The row is written after the reference;
+if writing it fails the reference is dropped again. A file already live in the
+gallery is a `409` naming the item, and its reference is left alone.
+
+GoWay holds no Oxy key pair: in a deployment its service token is the ECS task
+role's attested workload identity (Oxy ADR 0026), the identity
+`platformActivity` already publishes with, and the binding must carry
+`files:references:write`. Where the process cannot mint one (a laptop against a
+remote Oxy), adding to a gallery answers `503`.
 
 The app re-encodes a picked photo before uploading it
 (`features/explore/placePhoto.ts`): a phone photo's EXIF block carries where it
 was taken, and a gallery is public.
 
-### Unlinking, and why a merge does not re-link
+### Every other reference change is durable: the outbox
 
-Withdrawing an item drops its Oxy link after the withdrawal commits, best
-effort — a link Oxy still holds costs the owner nothing but the file staying
-alive. `place_media.oxy_link_place_id` remembers which place id the link
-names, because a merge MOVES the item but leaves its link: re-linking would
-call Oxy's link route, which rewrites the file's visibility, on an operator's
-session, on a file that is somebody else's. The absorbed id is a permanent
-alias of the survivor, so the stale entity id misleads nobody.
+Only the add is synchronous. Every other change GoWay owes Oxy is written to
+`oxy_file_reference_changes` **in the transaction of the write that caused
+it** and delivered by `oxy/fileReferences` with GoWay's token:
+
+- **Withdrawing an item** (its contributor or the business) queues a `remove`
+  with the withdrawal and delivers it right after the commit. That is the point
+  of the service path: Oxy lets a SESSION remove only a reference to a file it
+  owns or one it made, so a business withdrawing a customer's photo could not
+  drop the customer's reference with its own session (ADR 0043 D12).
+- **The rollback of an add** whose item could not be recorded queues a
+  `remove` and delivers it.
+- **A merge** queues a `move` for each gallery item it moves to the survivor
+  (Oxy adds the survivor's reference, then drops the absorbed place's — the
+  file is never unreferenced in between), and the item's
+  `place_media.oxy_link_place_id` names the survivor from then on. Items merged
+  before this kept naming the absorbed place; a real reconciliation re-points
+  them.
+
+A change that fails is retried by the in-process loop (every 30 s) with
+doubling backoff from 30 s to 6 h; one file's changes are delivered in the
+order they were made, so a retried older move cannot land after a newer one.
+After 14 attempts (about a day) a change is `dead`, logged at `error`, and
+waits for an operator. A delivered change is deleted. Hiding an item keeps its
+reference (hiding is reversible); places are never deleted.
+
+### Reconciliation
+
+Once a day the loop sends Oxy the full `place` inventory — every gallery item
+not withdrawn, under the place that shows it — and Oxy adds the references
+missing from it and removes the stale ones (ADR 0043 D6), catching anything a
+crash or an older bug lost. While `OXY_FILE_REFERENCES_POLICY.reconcileDryRun`
+holds (`config/oxyFileReferences.ts`; a constant, reviewed like code, not an
+environment switch) the nightly run is a DRY RUN that only reports Oxy's
+counts. Every run is logged in `oxy_file_reference_reconciliations`; one runs
+at a time across tasks. Read a dry run's counts before turning it off.
+
+### Operating it
+
+```
+bun run oxy-references:admin status            --target-database=goway   # outbox and recent runs
+bun run oxy-references:admin dead              --target-database=goway   # dead-lettered changes
+bun run oxy-references:admin retry-dead <id>   --target-database=goway   # or --all
+bun run oxy-references:admin drain             --target-database=goway
+bun run oxy-references:admin reconcile [--apply] --target-database=goway  # dry run unless --apply
+```
 
 ### Who may do what
 
@@ -196,7 +243,8 @@ takes a reason from `CONTENT_REPORT_REASONS` (`spam`, `offensive`, `privacy`,
 
 ## Deliberate debt
 
-- **Oxy's link webhooks are not consumed.** Oxy POSTs `visibility_changed` and
+- **Oxy's link webhooks are not consumed** (ADR 0043 D9 moves them to the
+  application). Oxy POSTs `visibility_changed` and
   `deleted` to a link's `webhookUrl`, but the call is unsigned and Oxy offers no
   verification helper, and the only way to re-check a file's visibility is a
   user session. A receiver would let anybody hide any photo by posting a fake

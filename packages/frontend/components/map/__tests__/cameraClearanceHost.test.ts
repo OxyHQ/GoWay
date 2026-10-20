@@ -17,7 +17,7 @@ import { join } from 'node:path';
 import { describe, expect, test } from 'bun:test';
 
 import { attachCameraClearance, type ClearanceMap } from '@/components/map/cameraClearance.web';
-import { PROGRAMMATIC } from '@/components/map/cameraReports.web';
+import { PROGRAMMATIC } from '@goway.to/maps/plugin';
 import type { ClearanceField } from '@/components/map/engine/camera/clearance';
 import { createAnimationClock } from '@/components/map/perf/animationClock';
 
@@ -395,14 +395,14 @@ describe('a still camera is eased clear, on the clock, as the map’s own move, 
   });
 });
 
-describe('the canvas wires it', () => {
-  const source = readFileSync(join(import.meta.dir, '../MapCanvas.web.tsx'), 'utf8');
+describe('the engine plugin wires it', () => {
+  const source = readFileSync(join(import.meta.dir, '../gowayEngine.web.ts'), 'utf8');
 
-  test('MapCanvas.web.tsx attaches it with the live field, the clock and the container', () => {
+  test('gowayEngine.web.ts attaches it with the live field, the clock and the container', () => {
     const call = source.match(/attachCameraClearance\(map, \{([\s\S]*?)\}\);/);
     expect(call).not.toBeNull();
     const body = call?.[1] ?? '';
-    expect(body).toMatch(/field: \(\) => city3dRef\.current\?\.clearance\(\) \?\? null/);
+    expect(body).toMatch(/field: \(\) => city\?\.clearance\(\) \?\? null/);
     expect(body).toMatch(/\bclock\b/);
     expect(body).toMatch(/\bcontainer\b/);
     expect(body).toMatch(/releaseTarget: window/);

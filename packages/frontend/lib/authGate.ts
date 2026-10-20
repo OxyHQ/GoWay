@@ -18,7 +18,7 @@
  *  - Sign-in stays the in-app `OxyAccountDialog`, never a redirect to an IdP.
  */
 import { useCallback } from 'react';
-import { useOxy } from '@oxy.so/services';
+import { useOxy } from '@oxy.so/services/ui/client';
 
 export interface AuthGate {
   /** Whether a private (identity-bound) API call may be made right now. */

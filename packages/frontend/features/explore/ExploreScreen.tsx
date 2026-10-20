@@ -55,29 +55,29 @@ import { Text } from '@oxy.so/bloom/typography';
 import { MapSearchAreaButton } from '@oxy.so/bloom/map-marker';
 import { useBottomEdgeInset, useTopEdgeInset, windowEdgeGap } from '@oxy.so/bloom/layout';
 
-import { BrandedChromeProvider } from '@/components/brand';
-import { type MapChromeLift, MapChromeLiftContext } from '@/components/map/chromeLift';
-import { MapCreditHeightContext } from '@/components/map/creditHeight';
+import { BrandedChromeProvider } from '@goway.to/maps';
+import { type MapChromeLift, MapChromeLiftContext } from '@goway.to/maps';
+import { MapCreditHeightContext, useUserFix } from '@goway.to/maps';
 import {
   MAP_CREDIT_CLEARANCE,
   MapCanvas,
-  type GeoBounds,
+  type GeoBoundingBox,
   type MapApi,
-  type MapCanvasError,
+  type MapError,
   type MapFitOptions,
   type MapLiveLayer,
   type MapMarker,
   type MapModel,
   type MapPressEvent,
   type MapViewport,
-  type MapViewportChange,
+  type MapCameraChange,
 } from '@/components/map';
 import { MAP_SHEET_HALF_RATIO, MapSheet, type MapSheetSnap } from '@/components/sheet/MapSheet';
 import { SidePanel } from '@/components/sheet/SidePanel';
 import { PANEL_WIDTH, useLayoutMode } from '@/lib/useLayoutMode';
 import { useAuthGate } from '@/lib/authGate';
 import { chromeLift } from '@/lib/map/chromeLift';
-import { creditRise } from '@/lib/map/creditRise';
+import { creditRise } from '@goway.to/maps';
 import {
   INITIAL_TIME_OF_DAY,
   timeOfDayButtonShown,
@@ -85,12 +85,11 @@ import {
 } from '@/lib/map/timeOfDayControl';
 import { useMapFeature } from '@/lib/map/useMapFeatures';
 import { useTranslation } from '@/lib/i18n';
-import type { LocationErrorReason } from '@/lib/map/useUserLocation';
+import type { LocationErrorReason } from '@goway.to/maps';
 
 import { GuidanceBanner } from '@/features/directions/GuidanceBanner';
 import { slotName } from '@/features/directions/stops';
 import { useGuidance } from '@/features/directions/useGuidance';
-import type { UserFix } from '@/lib/map/userPuck';
 import { takeReturnBounds } from '@/features/street3d/handoff';
 import { useStreet3dLayer } from '@/features/street3d/useStreet3dLayer';
 
@@ -300,7 +299,7 @@ export default function ExploreScreen({
     longitude: number;
   } | null>(null);
 
-  const pendingFit = useRef<GeoBounds | null>(null);
+  const pendingFit = useRef<GeoBoundingBox | null>(null);
   const mapReady = useRef(false);
   const applyPendingFit = useCallback(() => {
     const bounds = pendingFit.current;
@@ -355,7 +354,7 @@ export default function ExploreScreen({
   const flyover = useMapFeature('flyover');
   const landmarks = useMapFeature('landmarks');
   const live = useMapFeature('live');
-  const [mapError, setMapError] = useState<MapCanvasError | null>(null);
+  const [mapError, setMapError] = useState<MapError | null>(null);
   // While the flyover flies, the sheet, the panel and the floating controls
   // step aside; the vehicle is a model on the canvas.
   const [flying, setFlying] = useState(false);
@@ -404,9 +403,9 @@ export default function ExploreScreen({
   // canvas refuses to draw the dot without a granted permission anyway; not
   // arming it until then keeps the two rules independent of each other.
   const [followingLocation, setFollowingLocation] = useState(false);
-  // The position the canvas is drawing, for guided navigation. The canvas is
-  // the one observer of the device; transient, never stored.
-  const [userFix, setUserFix] = useState<UserFix | null>(null);
+  // The position the map is drawing, for guided navigation: the SDK's one
+  // watcher, read only once the reader has asked to be found. Transient.
+  const userFix = useUserFix(followingLocation);
   // The camera follows the traveller until they move the map themselves.
   const [followGuide, setFollowGuide] = useState(true);
   const guidance = useGuidance({
@@ -440,7 +439,7 @@ export default function ExploreScreen({
   const areaTop = topEdge > 0 ? topEdge + windowEdgeGap(0) : windowEdgeGap(insets.top);
 
   const handleViewportChange = useCallback(
-    (change: MapViewportChange) => {
+    (change: MapCameraChange) => {
       cameraReadout.report(change.viewport.bearing);
       setTilted(change.viewport.pitch >= TILTED_EPSILON);
       if (change.source === 'user') for (const listener of userMoveListeners.current) listener();
@@ -604,7 +603,6 @@ export default function ExploreScreen({
               // second chip over it. See `lib/goway/basemapLabels.ts`.
               onLabelsChange={explore.onLabelsChange}
               showUserLocation={followingLocation}
-              onUserFix={setUserFix}
               onViewportChange={handleViewportChange}
               onError={setMapError}
               models={flyoverModels}

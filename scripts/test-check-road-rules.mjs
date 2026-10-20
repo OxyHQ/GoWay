@@ -20,7 +20,8 @@ import { fileURLToPath } from 'node:url';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const script = resolve(here, 'check-road-rules.mjs');
-const { decideAccess } = await import(resolve(here, '../packages/contracts/dist/index.js'));
+// From the source, not `dist`: the gates job installs but does not build.
+const { decideAccess } = await import(resolve(here, '../packages/contracts/src/road-rules.ts'));
 const failures = [];
 
 const source = {

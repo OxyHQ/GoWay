@@ -8,7 +8,7 @@
  *
  * The source-layer name is NOT spelled here: it is OpenMapTiles' `building`,
  * passed in by the caller from `OPENMAPTILES_SOURCE_LAYERS`, so a schema rename
- * is one edit in `lib/map/style/schema.ts`.
+ * is one edit in `@goway.to/sdk`'s tile schema (`packages/contracts/src/map-tiles.ts`).
  */
 import { VectorTile } from '@mapbox/vector-tile';
 import { PbfReader } from 'pbf';

@@ -83,10 +83,10 @@ import {
 } from '@/lib/map/style/catalogue';
 import { styleTheme } from '@/lib/map/style/themes';
 import { streetPaletteInput } from '@/lib/map/style/streetPalette';
-import { OPENMAPTILES_SOURCE_LAYERS } from '@/lib/map/style/schema';
+import { OPENMAPTILES_SOURCE_LAYERS } from '@goway.to/sdk';
 import type { QualityProfile } from '@/lib/map/quality/profile';
 import { sunPosition } from '@/lib/map/sun';
-import { mercatorX, mercatorY } from '@/lib/map/geo';
+import { mercatorX, mercatorY } from '@goway.to/sdk/geo';
 
 import { followTerrain } from './city3dGround.web';
 import { cityLightFromSpec, sameCityLight } from './city3dLight';
@@ -114,7 +114,7 @@ import { type CityLifeLabel, cityLifeReporter } from './cityLifeLabel';
 import { type StreetNameBlockers, mountStreetNameBlockers } from './streetNameBlockers.web';
 import { mountStreetOwnership } from './streetOwnership.web';
 import type { AnimationClock } from './perf/animationClock';
-import { reportMapDefect } from './shared';
+import { reportMapDefect } from '@goway.to/maps/plugin';
 
 /**
  * Which tiles to mesh: always the basemap's own `building` layer, and — when
@@ -190,7 +190,7 @@ function coverageTree(value: unknown): CityCoverageTiles | null {
  * coverage: the layer then draws the basemap's buildings everywhere rather
  * than a flat map, and asks for no road tile. Exported for tests.
  *
- * The production document (`worker/city.js`) carries owned-tile sets, passed
+ * The production document (`map-service/src/city.js`) carries owned-tile sets, passed
  * on ENCODED; the engine decodes them (`engine/city3d/coverageIndex.ts`), so
  * the decoder ships in the engine's chunk only. The shape is checked here all
  * the same, so a document that is neither form is "no coverage" and reported,

@@ -6,7 +6,7 @@ const APP_ID = IS_DEV ? 'to.goway.app.dev' : 'to.goway.app';
 const APP_NAME = IS_DEV ? 'GoWay (Dev)' : 'GoWay';
 
 // GoWay's icons, rendered from the ONE piece of artwork in
-// `components/brand/artwork.ts` — the same geometry the map badge draws, so an
+// `packages/maps/src/brand/artwork.ts` — the same geometry the map badge draws, so an
 // icon can never be a different logo from the one in the product.
 //
 // These four are PNG because Expo's image pipeline is PNG: `icon` becomes the
@@ -90,7 +90,10 @@ module.exports = {
       favicon: FAVICON,
     },
     plugins: [
-      'expo-router',
+      // SDK 58 splits every web route into its own async chunk by default;
+      // GoWay keeps SDK 57's synchronous web routes, the bundle shape the
+      // deploy's shell check and the chunk tests are written against.
+      ['expo-router', { asyncRoutes: { web: false } }],
       [
         'expo-splash-screen',
         {
@@ -105,8 +108,8 @@ module.exports = {
           dark: { image: SPLASH_ICON, backgroundColor: '#100d10' },
         },
       ],
-      // MapLibre Native — the iOS/Android map renderer behind
-      // `components/map/MapCanvas.native.tsx`.
+      // MapLibre Native — the iOS/Android map renderer behind `@goway.to/maps`,
+      // added by its config plugin.
       //
       // THIS IS WHAT MAKES GOWAY REQUIRE A DEVELOPMENT BUILD. The plugin adds
       // the `org.maplibre.gl` Android artifacts and the MapLibre Swift package
@@ -119,8 +122,8 @@ module.exports = {
       // `locationEngine` stays on MapLibre's default rather than Google Play
       // Services: the default keeps the Android build F-Droid-compatible and
       // GoWay does not need sub-metre fusion to centre a map.
-      ['@maplibre/maplibre-react-native', {}],
-      // Location is requested CONTEXTUALLY (see `lib/map/useUserLocation.ts`),
+      '@goway.to/maps',
+      // Location is requested CONTEXTUALLY (`useUserLocation` from `@goway.to/maps`),
       // never at launch. These strings are what iOS shows in that prompt, so
       // they say why at the moment the user asked — matching the in-app hint.
       [
@@ -149,10 +152,29 @@ module.exports = {
             'GoWay reads which way your phone is tilted while you record a street capture. It does not count your steps or track your activity.',
         },
       ],
+      // Dictation and voice calls with Alia (`@alia.onl/sdk`) recognise speech on
+      // the device; the plugin writes the two iOS purpose strings and the
+      // Android RECORD_AUDIO permission.
+      [
+        'react-native-audio-api',
+        {
+          iosMicrophonePermission: 'Allow GoWay to hear what you dictate and say to Alia.',
+          iosBackgroundMode: false,
+          androidForegroundService: false,
+          androidPermissions: ['android.permission.RECORD_AUDIO'],
+        },
+      ],
       // Shared Oxy native config: the iOS keychain group, expo-build-properties
       // defaults, and withOxySharedPermissions (GoWay runs on its own Android
       // UID and reaches the Commons/Accounts providers over signature IPC).
       ['@oxy.so/app-preset', {}],
+      // Release-signs with the ONE Oxy ecosystem key (OXY_UPLOAD_* Gradle
+      // properties) and swaps in the optimising ProGuard file. The preset above
+      // does not apply it, and without it a local release build is debug-signed,
+      // which Commons' signature-level permissions refuse. Falls back to debug
+      // signing when the properties are absent, so verify the shipped
+      // certificate (`apksigner verify --print-certs`).
+      '@oxy.so/app-preset/plugin/withOxyAndroidRelease',
     ],
     extra: {
       router: {},

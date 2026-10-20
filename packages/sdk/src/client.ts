@@ -1,3 +1,4 @@
+import { createOrganizationListsApi, type GoWayOrganizationListsApi } from './organizationLists';
 import {
   accountClaimListQuerySchema,
   assetPathSchema,
@@ -260,12 +261,11 @@ import {
   type QueryValue,
   type TransportConfig,
 } from './transport';
+import { DEFAULT_GOWAY_WEB_BASE_URL, styleDocumentUrl } from './styleDocument';
 import { validInput } from './validate';
 
 /** The public API origin a client talks to unless told otherwise. */
 export const DEFAULT_GOWAY_API_BASE_URL = 'https://api.goway.to';
-/** The web origin canonical links are built on unless told otherwise. */
-export const DEFAULT_GOWAY_WEB_BASE_URL = 'https://goway.to';
 /** How long one request may take, token acquisition and body included. */
 export const DEFAULT_GOWAY_TIMEOUT_MS = 15_000;
 
@@ -870,6 +870,15 @@ export interface GoWayLinks {
   /** The catalogue of every published style and its documents (`parseMapStyleIndex` reads it). */
   mapStyleIndex(): string;
   /**
+   * The document a style URL names, ready for an engine.
+   *
+   * A `goway://styles/<id>` name resolves to its document in `light` (the
+   * name's own `?light=` wins when it has one), exactly as {@link mapStyle};
+   * any other URL is returned unchanged. A `goway://` name that is not a
+   * published style throws `GoWayValidationError`.
+   */
+  styleUrl(url: string, light?: MapLightPreset): string;
+  /**
    * The embeddable map (`<iframe src>`), framed on a viewport, in a GoWay
    * style and light: `https://goway.to/frame?lat=…&lng=…&zoom=…&style=…`.
    */
@@ -985,6 +994,7 @@ export interface GoWayRoadsApi {
 }
 
 export interface GoWayClient {
+  readonly organizationLists: GoWayOrganizationListsApi;
   readonly places: GoWayPlacesApi;
   readonly categories: GoWayCategoriesApi;
   readonly claims: GoWayClaimsApi;
@@ -1227,6 +1237,13 @@ function createLinks(webBaseUrl: string): GoWayLinks {
     mapStyle: (style: MapStyleId, light?: MapLightPreset) =>
       `${webBaseUrl}${mapStylePath(styleSelection(style, light))}`,
     mapStyleIndex: () => `${webBaseUrl}${MAP_STYLE_INDEX_PATH}`,
+    styleUrl: (url: string, light?: MapLightPreset) => {
+      const document = styleDocumentUrl(url, light, webBaseUrl);
+      if (document === null) {
+        throw new GoWayValidationError(`not a published GoWay style or light: ${url} (${light})`);
+      }
+      return document;
+    },
     embed: (
       viewport: MapViewport,
       options: { style?: MapStyleId; light?: MapLightPreset } = {},
@@ -2475,6 +2492,7 @@ export function createGoWayClient(options: GoWayClientOptions = {}): GoWayClient
   });
 
   return Object.freeze({
+    organizationLists: createOrganizationListsApi(config),
     places,
     categories,
     claims,

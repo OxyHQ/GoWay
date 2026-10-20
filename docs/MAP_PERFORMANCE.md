@@ -364,6 +364,49 @@ engine's zoom gate); `__common` and `global.css` identical. Lazy:
 offer), `simWorker` +1,381 B gz (the coverage decoder), `MapSettingsModal`
 +61 B gz.
 
+## The street on the terrain's facets, on a real GPU (2026-10-13)
+
+What #210 (the street detail cut to MapLibre's terrain facets,
+`MAP_TERRAIN_GLOBE.md` → "Everything on the drawn ground") costs where it is
+drawn: production exports served with `serve-map-build.ts
+--upstream=https://goway.to`, `bench:map --gpu=real` — Chromium on ANGLE's GL
+backend with `GALLIUM_DRIVER=d3d12`, i.e. **the host's real GPU (NVIDIA
+GeForce RTX 5090) through WSLg's D3D12 driver**, renderer string checked in
+every result — two rounds, order A B C then C B A, values per round. Builds:
+**A** `main` before #198 (a078b93), **B0** `main` with the cut switched off
+(5ad2f65, the street meshed uncut), **B** `main` (5ad2f65). GPU milliseconds are
+the map's own timer queries; the host GPU is a desktop one, so they bound
+nothing for a phone.
+
+| Scene | Preset (device) | Build | GPU ms p50 | Draws | Triangles p50 | GL buffers MB |
+| --- | --- | --- | --- | ---: | ---: | ---: |
+| traffic (z18, 55°) | low (Pixel 6a profile) | A | 1.21, 3.43 | 137 | 2.851 M | 92.5 |
+| | | B0 | 3.22, 3.52 | 144 | 2.869 / 2.851 M | 92.6 |
+| | | B | 1.23, 3.51 | 135 | 2.877 M | 88.9 / 94.4 |
+| | high (desktop) | A | 1.90, 1.85 | 239 | 4.662 M | 100.8 |
+| | | B0 | 2.01, 2.07 | 274 | 4.664 M | 100.9 |
+| | | B | 2.04, 2.11 | 274 | 5.532 M | 122.6 |
+| eixample (z16.3, 62°) | low (Pixel 6a profile) | A | 1.34, 1.38 | 133 | 2.48 / 2.47 M | 92.7 |
+| | | B0 | 1.36, 1.42 | 130 | 2.468 M | 92.1 |
+| | | B | 2.79, 1.52 | 127 | 2.603 M | 97.4 / 105.8 |
+| | high (desktop) | A | 3.97, 3.81 | 334 | 6.10 / 6.26 M | 281.7 |
+| | | B0 | 3.73, 3.70 | 334 | 5.92 / 6.04 M | 281.8 |
+| | | B | 3.55, 3.95 | 332 | 6.70 / 6.94 M | 324.7 |
+
+- **Frame time: no change measurable on this GPU** — every difference is
+  inside the run-to-run spread (the low runs are bimodal, 1.2 or 3.5 ms, in
+  every build).
+- **High pays in triangles and buffers:** +0.87 M triangles (+19%) and
+  +22 MB buffers at traffic, +0.8 M (+13%) and +43 MB at eixample.
+- **Low barely pays, because its budget caps the street detail:**
+  +0.03–0.13 M triangles (+1–5%), buffers −4 to +13 MB; instead the street
+  detail covers less — the same 400 k street triangles hold fewer cut tiles
+  (draws 135 against 144 at traffic). That is the cost on a phone: coverage,
+  not frames.
+- A phone GPU's milliseconds are still unmeasured: that needs a device —
+  Android Chrome over USB (`chrome://inspect`, the benchmark's script pointed
+  at the device's DevTools endpoint) or a device farm.
+
 ## The QualityProfile contract
 
 Every feature that draws on the map honours this (`AGENTS.md`):

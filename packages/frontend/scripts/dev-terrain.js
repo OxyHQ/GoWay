@@ -23,7 +23,7 @@ function withDevTerrain(config) {
             response.end();
             return;
           }
-          adapter ??= import('../worker/index.js');
+          adapter ??= import('@goway/map-service/index.js');
           adapter
             .then(async ({ serveTerrain }) => {
               const result = await serveTerrain(

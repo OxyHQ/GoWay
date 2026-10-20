@@ -208,3 +208,25 @@ export type RoadRuleEventAction = (typeof ROAD_RULE_EVENT_ACTIONS)[number];
 /** The kinds of road rule an event can be about. */
 export const ROAD_RULE_SUBJECTS = ['rule_set', 'zone', 'country'] as const;
 export type RoadRuleSubject = (typeof ROAD_RULE_SUBJECTS)[number];
+
+/**
+ * The entity types GoWay references Oxy files from (Oxy ADR 0043 D4). One today:
+ * a place's gallery. Internal — Oxy's `file_references` is the published record.
+ */
+export const OXY_FILE_REFERENCE_ENTITY_TYPES = ['place'] as const;
+export type OxyFileReferenceEntityType = (typeof OXY_FILE_REFERENCE_ENTITY_TYPES)[number];
+
+/**
+ * What one queued reference change asks of Oxy: add one, remove one, or MOVE
+ * one from an entity to another (add the new, then remove the old — a merge).
+ */
+export const OXY_FILE_REFERENCE_ACTIONS = ['add', 'remove', 'move'] as const;
+export type OxyFileReferenceAction = (typeof OXY_FILE_REFERENCE_ACTIONS)[number];
+
+/**
+ * Where a queued change is. A delivered change is DELETED, so there is no
+ * `done`: `pending` is waiting or retrying, `dead` exhausted its attempts and
+ * waits for an operator (`oxy-references:admin`).
+ */
+export const OXY_FILE_REFERENCE_CHANGE_STATES = ['pending', 'dead'] as const;
+export type OxyFileReferenceChangeState = (typeof OXY_FILE_REFERENCE_CHANGE_STATES)[number];

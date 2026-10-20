@@ -69,7 +69,7 @@ import {
 import { globeNightFor } from '@/lib/map/style/globeNight';
 import { styleNightSky } from '@/lib/map/style/nightSky';
 import { STYLE_HILLSHADE_LAYER_ID } from '@/lib/map/style/layers';
-import { reportMapDefect } from './shared';
+import { reportMapDefect } from '@goway.to/maps/plugin';
 
 export interface AttachReliefOptions {
   addProtocol?: (name: string, action: AddProtocolAction) => void;

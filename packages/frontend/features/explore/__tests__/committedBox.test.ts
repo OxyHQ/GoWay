@@ -12,18 +12,14 @@ import { join } from 'node:path';
 
 import { describe, expect, test } from 'bun:test';
 
-import { PROGRAMMATIC } from '@/components/map/cameraReports.web';
-import type { MapViewportChange } from '@/components/map/types';
+import { PROGRAMMATIC } from '@goway.to/maps/testing';
+import type { MapCameraChange } from '@/components/map/types';
 import {
   type CommittedBox,
   createOpeningFraming,
   nextBoxStep,
 } from '@/features/explore/committedBox';
-import {
-  attachToFake,
-  type FakeCameraEngine,
-  fakeCameraEngine,
-} from '@/components/map/__tests__/fakeCameraEngine';
+import { attachToFake, type FakeCameraEngine, fakeCameraEngine } from '@goway.to/maps/testing';
 
 const BARCELONA_Z11 = { lat: 41.3874, lng: 2.1686, zoom: 11, bearing: 0, pitch: 0, span: 0.2 };
 const TOKYO_PLACE = { lat: 35.6812, lng: 139.7671, zoom: 16 };
@@ -44,7 +40,7 @@ function explore(engine: FakeCameraEngine, options: { deepLink: boolean }) {
   let seen = 0;
   const pump = () => {
     for (; seen < reports.changes.length; seen += 1) {
-      const change = reports.changes[seen] as MapViewportChange;
+      const change = reports.changes[seen] as MapCameraChange;
       const step = nextBoxStep(state.committed, change, {
         awaitingOpeningFraming: opening.awaiting,
       });

@@ -13,7 +13,7 @@ import {
   FULL,
   MIXED,
   type CoverageNode,
-} from '../../worker/coverageTree.js';
+} from '@goway/map-service/coverageTree.js';
 
 /** Half the web-mercator world's width, in metres (EPSG:3857). */
 export const MERCATOR_HALF = 20037508.342789244;

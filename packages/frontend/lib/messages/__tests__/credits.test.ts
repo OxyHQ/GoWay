@@ -49,7 +49,7 @@ describe('the attribution page', () => {
 
   test('the city tiles’ database is offered where the page says so (ODbL)', () => {
     const cityData = CREDIT_SECTIONS.find((section) => section.id === 'cityData');
-    // The Worker's own route (`worker/city.js` → `serveCityManifest`).
+    // The Worker's own route (`map-service/src/city.js` → `serveCityManifest`).
     expect(cityData?.links.map((link) => link.href)).toEqual([
       'https://goway.to/map/city/manifest.json',
     ]);

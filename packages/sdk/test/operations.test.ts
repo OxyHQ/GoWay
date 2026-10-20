@@ -14,6 +14,8 @@ import { defined } from './helpers';
 
 /** The value each path parameter is called with below. */
 const PATH_VALUES: Readonly<Record<string, string>> = {
+  listId: 'l1',
+  entryId: 'le1',
   placeId: 'p1',
   key: 'payments.faircoin.accepted',
   exceptionId: 'e1',
@@ -25,7 +27,6 @@ const PATH_VALUES: Readonly<Record<string, string>> = {
   reportId: 'r1',
   mediaId: 'm1',
   reviewId: 'v1',
-  listId: 'l1',
   itemId: 'i1',
   language: 'es',
   sourceId: 'renfe-cercanias',
@@ -66,7 +67,24 @@ async function callEverything(): Promise<Set<string>> {
     location: [{ origin: 'device_capture', coordinate: { latitude: 0, longitude: 0 } }],
   } as const;
 
+  const activity = {
+    placeId: 'p1',
+    activity: 'Collection',
+    startsAt: '2030-01-01T09:00:00Z',
+    endsAt: '2030-01-01T10:00:00Z',
+  };
   const calls: Promise<unknown>[] = [
+    goway.organizationLists.list(),
+    goway.organizationLists.get('l1'),
+    goway.organizationLists.create({ oxyAccountId: 'org', title: 'List' }),
+    goway.organizationLists.update('l1', { title: 'Updated' }),
+    goway.organizationLists.delete('l1'),
+    goway.organizationLists.entries('l1'),
+    goway.organizationLists.addEntry('l1', activity),
+    goway.organizationLists.updateEntry('l1', 'le1', activity),
+    goway.organizationLists.completeEntry('l1', 'le1'),
+    goway.organizationLists.deleteEntry('l1', 'le1'),
+    goway.organizationLists.order('l1', { revision: 0, entryIds: [] }),
     goway.places.get('p1'),
     goway.places.getMany(['p1', 'p2']),
     goway.places.nearby({ latitude: 0, longitude: 0, radiusMeters: 10 }),

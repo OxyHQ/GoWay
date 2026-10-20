@@ -4,6 +4,53 @@ All notable changes to `@goway.to/sdk`. The package follows semantic versioning
 with the 0.x rule: while the major version is 0, a MINOR release may break the
 API or the contract, and a PATCH release never does.
 
+## 0.7.0
+
+A map no longer carries GoWay's whole contract into an app. Additive.
+
+### Added
+
+- **`@goway.to/sdk/map`**, a new entry point for a renderer, with no HTTP
+  client and no schema — no zod at all (the release smoke test holds `/map`
+  and `/geo` to importing nothing): the style names and catalogue
+  (`gowayStyleUrl`, `parseGoWayStyleUrl`, `MAP_STYLE_IDS`, `resolveMapStyle`,
+  …), GoWay's tile schema (`OPENMAPTILES_SOURCE_LAYERS` and the class
+  vocabularies) and `localizedLabel`. About 12 KB, where the root entry and
+  zod are several hundred.
+- **`styleDocumentUrl(url, light?, webBaseUrl?)`** (root and `/map`): the
+  document a `goway://styles/<id>` name stands for — the rule
+  `client.links.styleUrl` applies, now shared — or the URL unchanged when it
+  is not a GoWay name, or `null` for a name or light that is not published.
+
+`@goway.to/maps` 0.1.2 resolves its style through `/map`; in Homiio's web
+bundle that was the difference between the map fitting its size budget and not.
+
+## 0.6.0
+
+What `@goway.to/maps` is built on: GoWay's style names, its tile schema and its
+geographic arithmetic, in the SDK so the map package, GoWay's app and its map
+workers share one copy. Additive.
+
+### Added
+
+- **`goway://` style names**, as Mapbox's `mapbox://styles/...`:
+  `gowayStyleUrl(style, light?)` → `goway://styles/<id>[?light=<preset>]`,
+  `parseGoWayStyleUrl(url)` reads one back (`null` for anything else), and
+  `client.links.styleUrl(url, light?)` resolves a name to its style document on
+  the client's web origin in the light asked for — the name's own `?light=`
+  wins — and passes any other URL through unchanged. `GOWAY_STYLE_URL_PREFIX`.
+- **`@goway.to/sdk/geo`**, a new entry point with no schema and no HTTP client:
+  Web Mercator (`mercatorX`/`mercatorY` and their inverses, `projectToPixels`,
+  `metersPerPixel`, `metersToPixels`), boxes (`boundsOf`, `boundsCenter`,
+  `isDegenerateBounds`, `unwrappedEast` — a box that crosses the antimeridian is
+  the strip it describes), `distanceMeters` and `isValidCoordinate`.
+- **GoWay's tile schema** (OpenMapTiles v3, as `https://goway.to/map/tiles.json`
+  serves it): `OPENMAPTILES_SOURCE_LAYERS` and `OPENMAPTILES_SOURCE_LAYER_NAMES`
+  (what a layer or a query can name), the `class` vocabularies
+  (`TRANSPORTATION_CLASSES`, `LANDCOVER_CLASSES`, `LANDUSE_CLASSES`,
+  `PLACE_CLASSES`, `WATER_CLASSES`, `POI_CLASSES`) and the glyph font stacks GoWay
+  serves (`AVAILABLE_FONTS`, `FONT_STACKS`).
+
 ## 0.4.0 — unreleased
 
 Two changes to how GoWay names places' kinds. The place category taxonomy

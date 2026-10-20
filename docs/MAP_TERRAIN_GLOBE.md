@@ -357,9 +357,36 @@ against the profile's `streets.drawTriangles` (farther tiles fall back to the
 simplified level, then out, sooner), meshed in the worker (~0.15–0.25 s a
 tile). Each tile's ground slot is a layer of one array texture, uploaded on
 its own (69 KB); a tile's two meshes go to the GPU in separate frames within
-the profile's upload budget. Cutting only where facets are not coplanar would
-win most of it back on a smooth DEM, and nothing on this one; that needs the
-ground in the worker, and is not done here.
+the profile's upload budget. What the cut costs on a real GPU, per preset:
+`MAP_PERFORMANCE.md` → "The street on the terrain's facets, on a real GPU".
+
+**Cutting only where the facets bend does not pay, measured.** The obvious
+saving — merge the facets wherever the street ground is a plane and cut only
+where it bends — was built and measured (2026-10-13): a right-triangulated
+irregular network (RTIN, Martini's 4-8 mesh) over each tile's street ground,
+exact to its facets at full refinement, every triangle's error the TRUE
+largest gap over the grid points it covers, propagated for conformity, the
+tile's edge kept at full detail so tiles meet, and the street raised by the
+error so it stays above the ground. On the real road tiles and DEMs:
+
+| Tile (z15) | `main` facets (#210) | network at 1 cm | at 3 cm | at 10 cm | at 20 cm |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| Mallorca–Marina, Barcelona | 247.6 k street triangles | 44.2 k network triangles: no fewer street triangles (262 k) | 42.3 k (256 k) | 28.2 k | 15.7 k |
+| Rockefeller, Manhattan | 257.0 k | 40.7 k (267 k) | 37.9 k (258 k) | | |
+| Gran Vía, Madrid | 205.0 k | 44.7 k (221 k) | 42.9 k (217 k) | | |
+| Filbert St, San Francisco | 273.2 k | 45.9 k (299 k) | 44.5 k (293 k) | | |
+| Louvre, Paris | 158.6 k | 37.3 k (160 k) | 34.9 k (155 k) | | |
+
+Unsimplified, a tile's network is ~42 k triangles (two a mesh square plus the
+edge); at errors a street could carry it barely shrinks, and by the time it
+halves (10–20 cm) the street floats 20–40 cm. The ground is not smooth at
+this scale anywhere measured: Mapterhorn stores heights to **0.5 m at z12**
+(1 m at z11, 0.25 m at z13, halving with each zoom — every pixel of the
+Barcelona and Manhattan tiles decodes to a multiple), so the terrain MapLibre
+draws is a staircase smoothed over 14 m pixels; and the finer z13/z14 tiles
+(0.25 / 0.125 m, 7 / 3.6 m pixels) measured the same — a city's bare earth has
+kerbs, crowns and gutters at the centimetre scale. A coplanarity cut would
+pay only on a DEM with no such texture; none of GoWay's is one.
 
 ## Buildings on terrain
 

@@ -358,6 +358,256 @@ export const LIVE_PROVIDERS: readonly LiveProvider[] = [
       pollIntervalSeconds: 60,
     }),
   ),
+  // The Lyft-operated systems share Citi Bike's Bikeshare Data License
+  // Agreement word for word on the clauses that matter (diffed 2026-10-13): the
+  // names and marks are the operators', so names and credits stay generic, and
+  // the open question about the public socket is the one `nyc-bikeshare` has.
+  ...(
+    [
+      [
+        'cabi',
+        'Washington DC area',
+        'Capital Bikeshare',
+        'https://gbfs.capitalbikeshare.com/gbfs/2.3/gbfs.json',
+        { west: -77.45, south: 38.7, east: -76.8, north: 39.14 },
+        'https://capitalbikeshare.com/data-license-agreement',
+      ],
+      [
+        'divvy',
+        'Chicago',
+        'Divvy',
+        'https://gbfs.divvybikes.com/gbfs/2.3/gbfs.json',
+        { west: -87.87, south: 41.63, east: -87.5, north: 42.08 },
+        'https://divvybikes.com/data-license-agreement',
+      ],
+      [
+        'baywheels',
+        'San Francisco Bay Area',
+        'Bay Wheels',
+        'https://gbfs.lyftbikes.com/gbfs/2.3/gbfs.json',
+        { west: -122.54, south: 37.29, east: -121.84, north: 37.9 },
+        'https://baywheels-assets.s3.amazonaws.com/data-license-agreement.html',
+      ],
+      [
+        'bluebikes',
+        'Boston area',
+        'Bluebikes',
+        'https://gbfs.bluebikes.com/gbfs/gbfs.json',
+        { west: -71.28, south: 42.23, east: -70.84, north: 42.55 },
+        'https://www.bluebikes.com/data-license-agreement',
+      ],
+    ] as const
+  ).map(
+    ([slug, place, system, url, coverage, agreement]): LiveProvider => ({
+      id: `${slug}-bikeshare`,
+      place,
+      country: 'US',
+      name: `Bike share — ${place}`,
+      operator: `${place} bike share`,
+      kind: 'bikeshare',
+      format: 'gbfs',
+      url,
+      defaultMode: 'bus',
+      coverage,
+      completeness: 'network',
+      attribution: { label: `${place} bike share data`, href: agreement },
+      licence: { label: 'Bikeshare Data License Agreement', href: agreement },
+      licenceCheck: {
+        verifiedOn: '2026-10-13',
+        source: agreement,
+        quote: `Bikeshare hereby grants to you a non-exclusive, royalty-free, limited, perpetual license to access, reproduce, analyze, copy, modify, distribute in your product or service and use the Data for any lawful purpose (${system})`,
+      },
+      auth: { kind: 'none' },
+      awaiting:
+        'Lyft\'s answer on the "stand-alone dataset" clause (bike-data@lyft.com), asked once for every Lyft system',
+      pollIntervalSeconds: 60,
+    }),
+  ),
+  // JCDecaux's Cyclocity systems, under its Licence Ouverte (each feed's own
+  // `license_url`): the source and the update date are the credit. The v2.3
+  // documents, which is what was measured on 2026-10-13.
+  ...(
+    [
+      [
+        'valenbisi',
+        'Valencia',
+        'ES',
+        'valence',
+        'Valenbisi',
+        { west: -0.43, south: 39.44, east: -0.32, north: 39.5 },
+      ],
+      [
+        'dublinbikes',
+        'Dublin',
+        'IE',
+        'dublin',
+        'dublinbikes',
+        { west: -6.32, south: 53.33, east: -6.23, north: 53.36 },
+      ],
+      [
+        'villo',
+        'Brussels',
+        'BE',
+        'bruxelles',
+        'Villo!',
+        { west: 4.26, south: 50.79, east: 4.47, north: 50.9 },
+      ],
+      [
+        'velov',
+        'Lyon',
+        'FR',
+        'lyon',
+        "Vélo'v",
+        { west: 4.77, south: 45.69, east: 4.98, north: 45.89 },
+      ],
+      [
+        'naolib-velo',
+        'Nantes',
+        'FR',
+        'nantes',
+        'Naolib vélo',
+        { west: -1.6, south: 47.18, east: -1.52, north: 47.25 },
+      ],
+      [
+        'velotoulouse',
+        'Toulouse',
+        'FR',
+        'toulouse',
+        'VélôToulouse',
+        { west: 1.0, south: 43.54, east: 1.52, north: 43.67 },
+      ],
+      [
+        'veloh',
+        'Luxembourg',
+        'LU',
+        'luxembourg',
+        "Vel'OH!",
+        { west: 5.98, south: 49.56, east: 6.26, north: 49.66 },
+      ],
+      [
+        'cyclocity-vilnius',
+        'Vilnius',
+        'LT',
+        'vilnius',
+        'Cyclocity Vilnius',
+        { west: 25.25, south: 54.67, east: 25.31, north: 54.72 },
+      ],
+    ] as const
+  ).map(
+    ([id, place, country, contract, system, coverage]): LiveProvider => ({
+      id,
+      place,
+      country,
+      name: `Bike share — ${system}`,
+      operator: system,
+      kind: 'bikeshare',
+      format: 'gbfs',
+      url: `https://api.cyclocity.fr/contracts/${contract}/gbfs/gbfs.json`,
+      defaultMode: 'bus',
+      coverage,
+      completeness: 'network',
+      attribution: {
+        label: `Source: JCDecaux / ${system}`,
+        href: 'https://developer.jcdecaux.com',
+      },
+      licence: {
+        label: 'Licence Ouverte (JCDecaux)',
+        href: 'https://developer.jcdecaux.com/files/Open-Licence-fr.pdf',
+      },
+      licenceCheck: {
+        verifiedOn: '2026-10-13',
+        source: 'https://developer.jcdecaux.com/files/Open-Licence-fr.pdf',
+        quote:
+          "Exploiter « l'Information » à titre commercial, par exemple en la combinant avec d'autres « Informations », ou en l'incluant dans votre propre produit ou application.",
+      },
+      auth: { kind: 'none' },
+      // `station_status` has a ttl of 1 s.
+      pollIntervalSeconds: 30,
+    }),
+  ),
+  {
+    id: 'lille-vlille',
+    place: 'Lille',
+    country: 'FR',
+    name: "Bike share — V'Lille",
+    operator: "V'Lille",
+    kind: 'bikeshare',
+    format: 'gbfs',
+    url: 'https://media.ilevia.fr/opendata/gbfs.json',
+    defaultMode: 'bus',
+    coverage: { west: 2.97, south: 50.59, east: 3.21, north: 50.75 },
+    completeness: 'network',
+    attribution: {
+      label: 'Source: ilévia / Métropole Européenne de Lille',
+      href: 'https://www.data.gouv.fr/datasets/ilevia-vlille-disponibilite-en-temps-reel/',
+    },
+    licence: LICENCE_OUVERTE,
+    licenceCheck: {
+      verifiedOn: '2026-10-13',
+      source: 'https://www.etalab.gouv.fr/wp-content/uploads/2018/11/open-licence.pdf',
+      quote:
+        'The "Grantor" grants the "Reuser" the free, non-exclusive right to "Reuse" the "Information" for commercial or non-commercial purposes, worldwide and for an unlimited period.',
+    },
+    auth: { kind: 'none' },
+    // The feed's ttl is 0; the dataset says it updates every minute.
+    pollIntervalSeconds: 60,
+  },
+  {
+    id: 'tampere-nysse',
+    place: 'Tampere',
+    country: 'FI',
+    name: 'Public transport — Tampere (Nysse)',
+    operator: 'Nysse',
+    kind: 'transit',
+    format: 'gtfs-rt-vp',
+    url: 'https://data.itsfactory.fi/journeys/api/1/gtfs-rt/vehicle-positions',
+    defaultMode: 'other',
+    coverage: { west: 23.3, south: 61.25, east: 24.35, north: 61.72 },
+    completeness: 'network',
+    attribution: {
+      label:
+        'Source: Tampere Public Transport Realtime API, Tampereen seudun joukkoliikenne, CC BY 4.0',
+      href: 'https://data.tampere.fi/data/en_GB/dataset/tampereen-joukkoliikenteen-reaaliaikainen-rajapinta',
+    },
+    licence: CC_BY_4,
+    licenceCheck: {
+      verifiedOn: '2026-10-13',
+      source:
+        'https://data.tampere.fi/data/en_GB/dataset/tampereen-joukkoliikenteen-reaaliaikainen-rajapinta',
+      quote:
+        'Use is free of charge. Distribution and re-use of the data is allowed. For client connections using SIRI XML or JSON interfaces, the data is available without registration through data.itsfactory.fi API Proxy.',
+    },
+    auth: { kind: 'none' },
+    pollIntervalSeconds: 15,
+    staticGtfs: { zip: 'http://data.itsfactory.fi/journeys/files/gtfs/latest/gtfs_tampere.zip' },
+  },
+  {
+    id: 'lehavre-lia',
+    place: 'Le Havre',
+    country: 'FR',
+    name: 'Public transport — Le Havre (LIA)',
+    operator: 'LIA',
+    kind: 'transit',
+    format: 'gtfs-rt-vp',
+    url: 'https://opendata.transports-lia.fr/gtfs-rt/VehiclePosition.pb',
+    defaultMode: 'other',
+    coverage: { west: 0.05, south: 49.46, east: 0.28, north: 49.56 },
+    completeness: 'network',
+    attribution: {
+      label: 'Source: Le Havre Seine Métropole (LIA), ODbL 1.0',
+      href: 'https://opendata.transports-lia.fr',
+    },
+    licence: { label: 'ODbL 1.0', href: 'https://opendatacommons.org/licenses/odbl/1-0/' },
+    licenceCheck: {
+      verifiedOn: '2026-10-13',
+      source: 'https://opendatacommons.org/licenses/odbl/1-0/',
+      quote:
+        'These rights explicitly include commercial use, and do not exclude any field of endeavour.',
+    },
+    auth: { kind: 'none' },
+    pollIntervalSeconds: 30,
+    staticGtfs: { zip: 'https://opendata.transports-lia.fr/gtfs/GTFS.zip' },
+  },
   {
     id: 'prague-pid',
     place: 'Prague and Central Bohemia',

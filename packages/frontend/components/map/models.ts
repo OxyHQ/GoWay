@@ -15,7 +15,7 @@ import { parseModelPlacement, type ModelPlacement } from '@goway.to/sdk';
 
 import { resolveModelAssetUrl } from '@/lib/map/modelCatalogue';
 
-import { reportMapDefect } from './shared';
+import { reportMapDefect } from '@goway.to/maps/plugin';
 import type { MapMarker, MapModel } from './types';
 
 /** Fallback markers live in the marker registry under this prefix. */

@@ -5,7 +5,7 @@
  * `building:part`, refusing an unclosed ring, assigning each building whole to
  * the tile of its representative point — then the MVT encoder against the
  * CLIENT's decoder (`osmTiles.ts`) and the PMTiles writer against the
- * Worker's reader (`worker/pmtiles.js`). The same code paths a real extract
+ * Worker's reader (`map-service/src/pmtiles.js`). The same code paths a real extract
  * takes; only the bytes are small.
  */
 import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
@@ -19,7 +19,7 @@ import { PbfWriter } from 'pbf';
 import { decodeCityTile } from '../../components/map/engine/city3d/osmTiles';
 import { decodeMappedTrees } from '../../components/map/engine/city3d/treeSources';
 import { CITY_TILE_EXTENT, CITY_TILE_ZOOM, CITY_TREE_LAYER } from '../../lib/map/cityTiles';
-import { PMTiles, zxyToTileId } from '../../worker/pmtiles.js';
+import { PMTiles, zxyToTileId } from '@goway/map-service/pmtiles.js';
 import { compile, representativePoint } from '../citygen/compile';
 import { assembleRings } from '../citygen/rings';
 import {
@@ -596,7 +596,7 @@ describe('PMTiles writer', () => {
     expect(encodeDirectory(entries).length).toBeGreaterThan(0);
   });
 
-  test('every tile reads back through worker/pmtiles.js, with leaf directories', async () => {
+  test('every tile reads back through map-service/src/pmtiles.js, with leaf directories', async () => {
     // Enough scattered tiles to force leaves: the root must fit the reader's
     // first 16 KiB, and a dense run of neighbours compresses too well to.
     const tiles = [];

@@ -62,7 +62,7 @@ import type {
   StructuredAddress,
 } from '@goway.to/sdk';
 
-import { distanceMeters } from '@/lib/map/geo';
+import { distanceMeters } from '@goway.to/sdk/geo';
 
 import {
   FIXTURE_CATEGORIES,

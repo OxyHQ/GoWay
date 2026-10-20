@@ -11,7 +11,7 @@ import { assignSources } from '@/components/map/engine/city3d/sources';
 import { coverageCovers } from '@/components/map/engine/city3d/coverageIndex';
 import type { CityCoverageBox } from '@/lib/map/cityTiles';
 import type { PreparedLandmark } from '@/lib/map/landmarks/load';
-import { mercatorX, mercatorY } from '@/lib/map/geo';
+import { mercatorX, mercatorY } from '@goway.to/sdk/geo';
 
 const SAGRADA = { latitude: 41.403589, longitude: 2.174347 };
 

@@ -11,9 +11,9 @@
  *
  * A client uploads the image to Oxy and sends the file id. This router asks
  * Oxy — on the caller's own session, `oxy/placeFiles` — whether the file is a
- * public image the caller owns, links it to the place, and stores the id.
- * GoWay never fetches, proxies or stores an image; Oxy's CDN serves it. An Oxy
- * outage is a `503` and nothing is recorded.
+ * public image the caller owns, references it from the place as GoWay, and
+ * stores the id. GoWay never fetches, proxies or stores an image; Oxy's CDN
+ * serves it. An Oxy outage is a `503` and nothing is recorded.
  *
  * ## Who may do what
  *
@@ -65,7 +65,10 @@ import { cursorBinding, decodeCursor, pageOf } from '../http/cursor';
 import { parseBody, parsePath, parseQuery } from '../http/validation';
 import type { AccountRoleResolver } from '../oxy/accountRoles';
 import { requiredOxyCaller } from '../oxy/caller';
+import { enqueueFileReferenceChanges } from '../db/oxyFiles/referenceChanges';
+import { failureOf, type FileReferenceWorker } from '../oxy/fileReferences';
 import type { PlaceFileStore } from '../oxy/placeFiles';
+import { logger } from '../utils/logger';
 import { assertableVerification, withdrawableVerification } from '../places/capabilityAuthority';
 import { standingOn } from '../places/claimAuthority';
 import { assertPublished } from '../places/placeLifecycle';
@@ -85,8 +88,10 @@ export interface PlaceMediaRouterDependencies {
   optionalAuth: RequestHandler;
   requireAuth: RequestHandler;
   accountRoles: AccountRoleResolver;
-  /** Checks, links and unlinks the Oxy files a gallery references. */
+  /** Checks the Oxy files a gallery shows, and references them as GoWay. */
   placeFiles: PlaceFileStore;
+  /** Delivers the reference changes a gallery write queued (`oxy/fileReferences`). */
+  fileReferences: Pick<FileReferenceWorker, 'deliver'>;
   /** Applied to reports, in addition to the API-wide limit. */
   reportRateLimit: RequestHandler;
   /** Applied to gallery writes, in addition to the API-wide limit. */
@@ -99,10 +104,27 @@ export function createPlaceMediaRouter(dependencies: PlaceMediaRouterDependencie
     requireAuth,
     accountRoles,
     placeFiles,
+    fileReferences,
     reportRateLimit,
     contributionRateLimit,
   } = dependencies;
   const router: Router = Router();
+
+  /**
+   * Drop the reference an add just made, when its item could not be recorded:
+   * queued, then delivered. Never throws over the error being answered — if
+   * even queueing fails, the nightly reconciliation removes the reference.
+   */
+  async function unreference(fileId: string, placeId: string): Promise<void> {
+    try {
+      const ids = await enqueueFileReferenceChanges(getDb(), [
+        { action: 'remove', fileId, entityType: 'place', entityId: placeId },
+      ]);
+      await fileReferences.deliver(ids);
+    } catch (error) {
+      logger.warn({ failure: failureOf(error) }, 'Could not queue the rollback of a reference');
+    }
+  }
 
   /** `GET /places/{placeId}/media` — the visible gallery, in the business's order. Public. */
   router.get(
@@ -134,7 +156,7 @@ export function createPlaceMediaRouter(dependencies: PlaceMediaRouterDependencie
   /**
    * `POST /places/{placeId}/media` — add an image the caller uploaded to Oxy as
    * public. Oxy is asked first and the item recorded after; if recording
-   * fails, the link Oxy just made is dropped again.
+   * fails, the reference Oxy just made is dropped again.
    */
   router.post(
     '/places/:placeId/media',
@@ -180,13 +202,13 @@ export function createPlaceMediaRouter(dependencies: PlaceMediaRouterDependencie
           actor,
         );
       } catch (error) {
-        // A file already in the gallery keeps the link it was relying on.
+        // A file already in the gallery keeps the reference it was relying on.
         if (!(error instanceof ApiError && error.code === 'conflict'))
-          await placeFiles.detach(caller, file.fileId, placeId);
+          await unreference(file.fileId, placeId);
         throw error;
       }
       if (!item) {
-        await placeFiles.detach(caller, file.fileId, placeId);
+        await unreference(file.fileId, placeId);
         throw new ApiError('not_found', 'No place has that id.');
       }
       response
@@ -233,7 +255,9 @@ export function createPlaceMediaRouter(dependencies: PlaceMediaRouterDependencie
    * Its contributor may — the account it was added as, or the person who added
    * it — and so may whoever acts for an approved claim. The contributor is
    * asked about first, so withdrawing your own photo never waits on Oxy. The
-   * place's Oxy link to the file is dropped after the withdrawal commits.
+   * removal of the place's Oxy reference is queued with the withdrawal and
+   * delivered as GoWay after it commits — the business's session could not
+   * drop a customer's reference — and retried while Oxy does not answer.
    */
   router.delete(
     '/places/:placeId/media/:mediaId',
@@ -265,7 +289,8 @@ export function createPlaceMediaRouter(dependencies: PlaceMediaRouterDependencie
 
       const removed = await removePlaceMedia(db, placeId, mediaId, revisionAuthor(caller, 'api'));
       if (!removed) throw new ApiError('not_found', 'This place has no gallery item with that id.');
-      await placeFiles.detach(caller, removed.oxyFileId, removed.oxyLinkPlaceId);
+      // Queued with the removal; delivered now when Oxy answers, retried when not.
+      await fileReferences.deliver(removed.referenceChangeIds);
       response.status(204).end();
     }),
   );

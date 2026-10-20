@@ -76,7 +76,7 @@
  *    meter: the read surface is public. Adding a key would be adding a way for
  *    the embed to stop working.
  */
-import { MERCATOR_MAX_LATITUDE } from './geo';
+import { MERCATOR_MAX_LATITUDE } from '@goway.to/sdk/geo';
 import {
   isMapLightPreset,
   isMapStyleId,
@@ -84,7 +84,7 @@ import {
   type MapLightPreset,
   type MapStyleId,
 } from './style/catalogue';
-import type { GeoBounds, GeoCoordinate, MapViewport } from '@/components/map/types';
+import type { GeoBoundingBox, GeoCoordinate, MapViewport } from '@/components/map/types';
 import { DEFAULT_VIEWPORT } from '@/components/map/types';
 
 /**
@@ -129,7 +129,7 @@ export interface EmbedParams {
    * Present only when `span` parsed AND a centre was given — a span with no
    * centre describes a size and no location, which is not a view.
    */
-  bounds?: GeoBounds;
+  bounds?: GeoBoundingBox;
   /** `marker=LAT,LON`, in the order given, capped at {@link MAX_MARKERS}. */
   markers: readonly GeoCoordinate[];
   /** `place=` — a GoWay place id to select, trimmed and length-checked. */
@@ -262,7 +262,7 @@ function wrapLongitude(longitude: number): number {
 function parseSpan(
   raw: string | undefined,
   center: GeoCoordinate | undefined,
-): GeoBounds | undefined {
+): GeoBoundingBox | undefined {
   if (raw === undefined || center === undefined) return undefined;
   const parts = raw.split(',');
   if (parts.length !== 2) return undefined;

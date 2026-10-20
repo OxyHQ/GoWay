@@ -43,7 +43,7 @@ import { GOWAY_LABEL_ANCHOR_LAYER_ID } from '../provider';
 import { BUILDING_3D_LAYER_ID, buildBuildings3dLayer } from './buildings3d';
 import type { CartographyPalette, RoadTier, RoadTone } from './palette';
 import { STANDARD_OPTIONS, type StyleOptions } from './options';
-import { FONT_STACKS, OPENMAPTILES_SOURCE_LAYERS as SL } from './schema';
+import { FONT_STACKS, OPENMAPTILES_SOURCE_LAYERS as SL } from '@goway.to/sdk';
 import { LOCAL_ROAD_FILL, SHOW_BASEMAP_POIS, SHOW_ROAD_AND_POI_LABELS } from './tuning';
 
 /**
@@ -65,13 +65,13 @@ export const LABEL_ANCHOR_LAYER_ID = GOWAY_LABEL_ANCHOR_LAYER_ID;
 /**
  * The two sources only Outdoors declares: GoWay's elevation tiles (for the
  * hillshade) and the contour lines traced from them at the edge
- * (`worker/contours.js`). Ids in GoWay's namespace, apart from the relief
+ * (`map-service/src/contours.js`). Ids in GoWay's namespace, apart from the relief
  * prototype's own (`relief.ts`), which adds and removes its sources at
  * runtime and must never take these away with it.
  */
 export const TERRAIN_SOURCE_ID = 'goway-terrain';
 export const CONTOUR_SOURCE_ID = 'goway-contours';
-/** The contour tiles' one source-layer (`worker/contours.js`). */
+/** The contour tiles' one source-layer (`map-service/src/contours.js`). */
 export const CONTOUR_SOURCE_LAYER = 'contours';
 /** The hillshade a style document carries itself (`relief.ts` adds none over it). */
 export const STYLE_HILLSHADE_LAYER_ID = 'hillshade';

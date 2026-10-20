@@ -12,7 +12,7 @@
  * OpenStreetMap/OpenMapTiles credit an ODbL obligation, gone the moment the
  * file leaves the page. So each frame is composited onto a 2D canvas and the
  * mark and the credit are painted INTO it, from the same sources the DOM uses:
- * the logo's geometry (`components/brand/artwork.ts`, through `Path2D`) and
+ * the logo's geometry (`packages/maps/src/brand/artwork.ts`, through `Path2D`) and
  * the credit text (`resolveMapAttribution`). Unlike the DOM badge, the
  * exported mark never stands down for `BrandedChromeProvider`: a video has no
  * surrounding chrome to carry the logo for it.
@@ -25,7 +25,7 @@
  * as the device renders it; a tile still loading is a tile still loading in
  * the video too (play the tour once first to warm the cache).
  */
-import { GOWAY_INK, GOWAY_WORDMARK } from '@/components/brand/artwork';
+import { GOWAY_INK, GOWAY_WORDMARK } from '@goway.to/maps/brand';
 import type { MapApi } from '@/components/map';
 import { MAP_BRAND_WIDTH } from '@/components/map';
 import { resolveMapAttribution } from '@/lib/map/provider';

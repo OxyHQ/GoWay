@@ -80,7 +80,7 @@ function ReviewRow({ review, author }: { review: PlaceReview; author: User | und
         <View className="flex-1">
           <Text className="text-bodySmall text-foreground">{name}</Text>
           <View className="flex-row items-center gap-space-8">
-            <Rating value={review.rating} variant="stars" size="small" />
+            <Rating value={review.rating} variant="stars" size="sm" />
             <Text className="text-caption text-muted-foreground">
               {reviewAge(review.editedAt ?? review.createdAt)}
               {review.editedAt ? ' · edited' : ''}
@@ -203,7 +203,7 @@ export function PlaceReviews({ place }: PlaceReviewsProps) {
               count={place.rating.count}
               countStyle="reviews"
               variant="stars"
-              size="small"
+              size="sm"
             />
           </View>
         ) : null}

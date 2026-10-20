@@ -24,11 +24,11 @@
  *     far enough to be a different question. An app move (opening a result,
  *     fitting a cluster) never does, and never replaces the box.
  */
-import type { GeoBounds, GeoCoordinate, MapViewportChange } from '@/components/map';
-import { boundsCenter, distanceMeters } from '@/lib/map/geo';
+import type { GeoBoundingBox, GeoCoordinate, MapCameraChange } from '@/components/map';
+import { boundsCenter, distanceMeters } from '@goway.to/sdk/geo';
 
 export interface CommittedBox {
-  bounds: GeoBounds;
+  bounds: GeoBoundingBox;
   /** The box's own centre, for ordering a list by distance. */
   center: GeoCoordinate;
   /** The camera's centre when it was committed — with a tilt, not the box's. */
@@ -71,7 +71,7 @@ export interface BoxContext {
 }
 
 /** The committed box a settled camera stands for. */
-export function boxOf(change: Pick<MapViewportChange, 'bounds' | 'viewport'>): CommittedBox {
+export function boxOf(change: Pick<MapCameraChange, 'bounds' | 'viewport'>): CommittedBox {
   return {
     bounds: change.bounds,
     center: boundsCenter(change.bounds),
@@ -85,7 +85,7 @@ export function boxOf(change: Pick<MapViewportChange, 'bounds' | 'viewport'>): C
 /** What a reported camera does to the committed box. */
 export function nextBoxStep(
   committed: CommittedBox | null,
-  change: MapViewportChange,
+  change: MapCameraChange,
   context: BoxContext,
 ): BoxStep {
   if (!change.isFinal) return { kind: 'none' };
@@ -117,7 +117,7 @@ export interface OpeningFraming {
   /** The framing is still to come: an app-reported camera is held, not committed. */
   readonly awaiting: boolean;
   /** Keep a camera reported while the framing is awaited. */
-  hold(change: MapViewportChange): void;
+  hold(change: MapCameraChange): void;
   /**
    * Issue the framing with `move`, which answers whether a move was really
    * issued (`MapApi.moveTo`). Returns the box to commit NOW: the held camera
@@ -131,7 +131,7 @@ export interface OpeningFraming {
 
 export function createOpeningFraming(deepLinked: boolean): OpeningFraming {
   let awaiting = deepLinked;
-  let held: MapViewportChange | null = null;
+  let held: MapCameraChange | null = null;
   const release = () => {
     const box = held ? boxOf(held) : null;
     held = null;
@@ -167,7 +167,7 @@ export function createOpeningFraming(deepLinked: boolean): OpeningFraming {
  * A rotation or a tilt about the same centre (the 2D/3D toggle, reset north)
  * is a different framing, and a different box nobody asked the list about.
  */
-function sameFraming(committed: CommittedBox, change: MapViewportChange): boolean {
+function sameFraming(committed: CommittedBox, change: MapCameraChange): boolean {
   return (
     Math.abs(change.viewport.zoom - committed.zoom) < SAME_ZOOM &&
     angleBetween(change.viewport.bearing, committed.bearing) < SAME_ANGLE_DEG &&
@@ -182,6 +182,6 @@ function angleBetween(a: number, b: number): number {
   return turn > 180 ? 360 - turn : turn;
 }
 
-function sameBounds(a: GeoBounds, b: GeoBounds): boolean {
+function sameBounds(a: GeoBoundingBox, b: GeoBoundingBox): boolean {
   return a.west === b.west && a.south === b.south && a.east === b.east && a.north === b.north;
 }

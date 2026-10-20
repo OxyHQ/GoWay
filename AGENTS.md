@@ -10,7 +10,7 @@ An env variable is only what differs per deployment (secrets, origins, buckets, 
 
 ## Oxy SDK (do not deviate)
 
-- ONE `OxyProvider` from `@oxy.so/services` (web + native) with the registered `clientId` (`EXPO_PUBLIC_OXY_CLIENT_ID`); sign-in is the in-app `OxyAccountDialog`, never a redirect to an IdP.
+- ONE `OxyProvider` from `@oxy.so/services/ui/client` (not the root; web + native) with the registered `clientId` (`EXPO_PUBLIC_OXY_CLIENT_ID`); sign-in is the in-app `OxyAccountDialog`, never a redirect to an IdP.
 - All Expo config comes from `@oxy.so/app-preset`; fix the preset, never copy config back into the app.
 - Theming is NativeWind via `BloomThemeProvider`; never hardcode brand colors and never restate a token `@oxy.so/bloom/design-tokens/theme.css` already defines.
 - Gate private API calls on `useAuth().canUsePrivateApi`; the root `Stack` alone swaps route groups.
@@ -28,7 +28,7 @@ An env variable is only what differs per deployment (secrets, origins, buckets, 
 
 ## Packages
 
-- `packages/*` only, never `apps/`. Bun workspaces are `contracts`, `sdk`, `frontend`, `backend`.
+- `packages/*` only, never `apps/`. Bun workspaces are `contracts`, `sdk`, `maps`, `map-service` (the `goway.to/map/*` Worker), `frontend`, `backend`.
 - `packages/reconstruction-worker` is Python/CUDA and deliberately **not** a Bun workspace; drive it through the root `worker:setup|doctor|run` scripts, which delegate to its `Makefile`/`uv`.
 - Street 3D capture and contribution UI live in `packages/frontend`. There is no second consumer app.
 
@@ -41,19 +41,18 @@ An env variable is only what differs per deployment (secrets, origins, buckets, 
 - Never publish an internal Drizzle/PostGIS row shape as an SDK contract, and never let a Python worker implementation detail become one.
 - MapLibre, OpenFreeMap, Photon, Nominatim, Valhalla, COLMAP and gsplat are replaceable adapters behind GoWay interfaces. Feature code imports the GoWay abstraction, never the provider.
 - Mercaria is read through `packages/frontend/lib/mercaria` over `@mercaria.co/sdk`; feature code never imports the SDK, and GoWay stores none of Mercaria's data. A place's `commerce.mercaria.store` only decides whether to ask; render only what Mercaria returns.
-- Every map GoWay draws carries the mark bottom-left and the data credit bottom-right, both rendered by `MapCanvas` with no prop to disable — the embed included. The credit is OSMF-compact: spelled out at load, folded into its ⓘ only after 5 s or the reader's first pan/zoom/tap (`lib/map/compactCredit.ts`).
-- 3D city tiles (`lib/map/cityTiles.ts`) are an internal format and an ODbL Derivative Database: draw only what OSM or a licence-reviewed official model records (storeys only from `building:levels`, roofs only from `roof:shape` or the model), credit a model while drawn, and publish the archive + receipt before serving them. Served per region by manifest (`worker/city.js`); archive keys are dated, never overwritten. Notes: `docs/MAP_3D_CITY.md`, `docs/MAP_3D_SOURCES.md`, `docs/MAP_CITY_PLANET.md`.
+- Every map carries the GoWay mark bottom-left and the data credit bottom-right, drawn by `@goway.to/maps`'s `MapView` with no prop to disable — the embed included; the credit is OSMF-compact (`packages/maps/src/compactCredit.ts`).
+- 3D city tiles (`lib/map/cityTiles.ts`) are an internal format and an ODbL Derivative Database: draw only what OSM or a licence-reviewed official model records (storeys only from `building:levels`, roofs only from `roof:shape` or the model), credit a model while drawn, and publish the archive + receipt before serving them. Served per region by manifest (`map-service/src/city.js`); archive keys are dated, never overwritten. Notes: `docs/MAP_3D_CITY.md`, `docs/MAP_3D_SOURCES.md`, `docs/MAP_CITY_PLANET.md`.
 - A route is only ever a routing engine's answer: no fixture, fallback or client draws one, and no engine is an error state. `check:routing` proves every mode.
 - Imagery is only a source in `lib/map/imagerySources.ts` (licence allows hosting, re-serving, commercial display; never Google, Apple, Bing, Esri, Mapbox, Maxar, NC or scraped), served from GoWay's R2, credited while on screen. Note: `docs/MAP_SATELLITE.md`.
 - Every 3D vehicle and vessel drawn comes from the model library (`engine/vehicles/`, CC0 only); never a second model set. Note: `docs/MODEL_LIBRARY.md`.
-- Who may use a road is read only by `resolveRoadAccess` (`@goway.to/sdk/road-access`) from OSM tags, carried in the tiles as `access`; never a `car` boolean or a second reader of `access`/`motor_vehicle`/`bus`. Note: `docs/ROAD_RULES.md`.
-- Road rules (countries, zones, labels) are rows with `source`, kept by `roadrules:sync`; the one evaluation is `decideAccess`/`evaluateZone` in the contract. A vehicle profile is request data, never stored. Note: `docs/ROAD_RULES.md`.
+- Road rules: `resolveRoadAccess`, `decideAccess` only. Note: `docs/ROAD_RULES.md`.
 - City life is SIMULATED traffic: labelled whenever drawn, never read by routing, ETAs or any feature (`cityLifeIsolation.test.ts`). Note: `docs/MAP_CITY_LIFE.md`.
 - A basemap style is one `MAP_STYLES` entry (`lib/map/style/catalogue.ts`) and its recipe in `themes.ts`, drawn by the one layer list; never a hand-written style JSON or a second layer list. Note: `docs/MAP_STYLES.md`.
 - An optional map feature is one `MAP_FEATURES` entry (`lib/map/mapFeatures.ts`), labelled in `mapFeatureLabels.ts`, read via `useMapFeature`; never a build variable or `lib/config.ts` flag (unserved yet: `offer: 'development'`). Its choice stays on the device. Note: `docs/MAP_FEATURES.md`.
 - A map layer's budgets come from the `QualityProfile` (`lib/map/quality/profile.ts`) and it animates only through the map's animation clock; a new cost is a profile knob, never a budget of its own. Note: `docs/MAP_PERFORMANCE.md`.
 - The map's eye never enters a building or the ground: every camera change goes through `engine/camera/clearance.ts` (eye raised, centre and bearing kept); never a second camera rule. Note: `docs/MAP_CAMERA_CLEARANCE.md`.
-- The logo is geometry (`packages/frontend/components/brand/artwork.ts`), drawn and never fetched; `public/brand/*` is generated from it and gated by `brand:check`. Its blue is ink (`--color-brand-goway`), never Bloom's `--primary`.
+- The logo is geometry (`packages/maps/src/brand/artwork.ts`), drawn and never fetched; `public/brand/*` is generated from it and gated by `brand:check`. Its blue is ink (`--color-brand-goway`), never Bloom's `--primary`.
 - Every GoWay-enriched place gets a stable GoWay Place ID independent of provider IDs; deep links use it (`https://goway.to/place/<placeId>`). Preserve source provenance and never destructively overwrite a source fact.
 - The OpenStreetMap import writes only `openstreetmap`-sourced rows, never deletes a place, and changes a `places` column only while it still holds what that source last said.
 - The category taxonomy is data (`place_categories`, labels, OSM tags), edited via `/moderation/categories`; never put a copy in code. `places.categories` holds active keys (trigger-enforced), never an ancestor beside its child; keys are immutable. Note: `docs/PLACE_DATA.md`.
@@ -68,7 +67,7 @@ An env variable is only what differs per deployment (secrets, origins, buckets, 
 - A business is an Oxy organization: a claim stores its `oxyAccountId` and Oxy decides who acts for it (`places/claimAuthority`, asked with the caller's bearer). Never keep a member list or brand id; fail closed with 503 when Oxy cannot answer. Design note: `docs/BUSINESS_OWNERSHIP.md`.
 - Every place write records exactly one `place_revisions` row through `recordRevision`, inside the write's transaction. The public history never names an account or person; classify a new action in `PLACE_REVISION_VISIBILITY`.
 - Claim decisions, `oxy_verified`, removal and merges are moderation acts behind `MODERATION_OPERATOR_OXY_USER_IDS` (matched on the person); no public route may produce them.
-- A place image is an Oxy file id, checked (owner, public, image) and linked via `oxy/placeFiles` on the caller's bearer; GoWay never fetches, proxies or stores image bytes. Design note: `docs/PLACE_MEDIA_REVIEWS.md`.
+- A place image is an Oxy file id: checked (owner, public, image) on the caller's bearer, referenced via `oxy/placeFiles` by GoWay's service token, not a session; no bytes kept. Design note: `docs/PLACE_MEDIA_REVIEWS.md`.
 - A review is by the person, never an org session or anyone with any role in an approved claimant; `place_review_aggregates` is recomputed in every review write, never incremented.
 - No revision holds an Oxy file id or a review's words.
 

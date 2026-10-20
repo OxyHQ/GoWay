@@ -15,6 +15,7 @@
 
 import '../../__tests__/testEnv';
 import { describe, expect, it } from 'bun:test';
+import type { GeoJsonPolygon } from '@goway/contracts';
 import { ApiError, isApiError } from '../../http/apiError';
 import { createValhallaProvider, type FetchLike, type ValhallaProviderOptions } from '../valhalla';
 
@@ -482,8 +483,8 @@ describe('failure mapping', () => {
 });
 
 describe('vehicles, exclusions and avoided areas', () => {
-  const polygon = {
-    type: 'Polygon' as const,
+  const polygon: GeoJsonPolygon = {
+    type: 'Polygon',
     coordinates: [
       [
         [2.1, 41.35],

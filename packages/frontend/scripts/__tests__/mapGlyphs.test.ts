@@ -6,7 +6,7 @@
  * `public/map/fonts/Inter Regular/3584-3839.pbf` was 599 bytes: one glyph, in a
  * range that holds 153 Thai code points upstream serves. It existed because the
  * build emitted a file for any range Inter's cmap touched AT ALL, and it was
- * fatal because `worker/index.js` decides between the asset and the upstream
+ * fatal because `map-service/src/index.js` decides between the asset and the upstream
  * proxy on the file's EXISTENCE. A short file is not a partial answer — it is
  * the whole answer, and MapLibre draws nothing for the code points it omits
  * without a 404, a warning or a log line anywhere.

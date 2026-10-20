@@ -1,3 +1,13 @@
+import {
+  organizationListInputSchema,
+  organizationListUpdateSchema,
+  organizationListSchema,
+  organizationListPageSchema,
+  organizationListEntryInputSchema,
+  organizationListEntrySchema,
+  organizationListEntryPageSchema,
+  organizationListOrderInputSchema,
+} from './organization-lists';
 /**
  * The named contract schemas, and the same contracts as JSON Schema.
  *
@@ -170,6 +180,14 @@ export const CONTRACT_SCHEMA_NAMES = [
   'PlaceWithDistancePage',
   'PlaceBatch',
   'PlaceClaimPage',
+  'OrganizationListInput',
+  'OrganizationListUpdate',
+  'OrganizationList',
+  'OrganizationListPage',
+  'OrganizationListEntryInput',
+  'OrganizationListEntry',
+  'OrganizationListEntryPage',
+  'OrganizationListOrderInput',
   'PlaceCreateInput',
   'PlaceUpdateInput',
   'PlaceCapabilityAssertion',
@@ -290,6 +308,14 @@ export const CONTRACT_SCHEMAS: Readonly<Record<ContractSchemaName, ContractSchem
   PlaceWithDistancePage: response(placeWithDistancePageSchema),
   PlaceBatch: response(placeBatchSchema),
   PlaceClaimPage: response(placeClaimPageSchema),
+  OrganizationListInput: request(organizationListInputSchema),
+  OrganizationListUpdate: request(organizationListUpdateSchema),
+  OrganizationList: response(organizationListSchema),
+  OrganizationListPage: response(organizationListPageSchema),
+  OrganizationListEntryInput: request(organizationListEntryInputSchema),
+  OrganizationListEntry: response(organizationListEntrySchema),
+  OrganizationListEntryPage: response(organizationListEntryPageSchema),
+  OrganizationListOrderInput: request(organizationListOrderInputSchema),
   PlaceCreateInput: request(placeCreateInputSchema),
   PlaceUpdateInput: request(placeUpdateInputSchema),
   PlaceCapabilityAssertion: request(placeCapabilityAssertionSchema),

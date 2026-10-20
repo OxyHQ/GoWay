@@ -47,6 +47,52 @@ env:
   DATABASE_URL: postgres://goway:goway@127.0.0.1:5432/goway_test
 
 jobs:
+  # Which areas a pull request touches, so the browser gates (`webexport`,
+  # `city3d`) run only when their inputs changed. The org shares one 20-job
+  # Actions concurrency cap across every repository, and those legs are this
+  # repository's longest jobs (27/21/10 min measured), so a backend- or
+  # docs-only pull request should not hold three slots for half an hour.
+  #
+  # It RUNS ON EVERY EVENT and is never skipped. On anything that is not a pull
+  # request the filter step is skipped and `web` is `true`, so push to main
+  # always runs the full suite. A skipped `changes` would be worse than
+  # wasteful: the deploy jobs below use the implicit `success()`, which a
+  # skipped ancestor anywhere up the chain turns into a skipped deploy.
+  #
+  # `web` lists every input of the development export and of the two gates
+  # that drive it: the frontend (app, scripts, fixtures, public/), the SDK and
+  # contracts it bundles, any workspace manifest, the root install inputs
+  # (manifest, lockfile, bunfig's linker, the solution tsconfig) and this
+  # workflow. `CI complete` accepts a skipped browser gate only on a pull
+  # request where this job SUCCEEDED and said `web=false`.
+  changes:
+    name: Detect affected areas
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      pull-requests: read
+    outputs:
+      web: ${{ github.event_name != 'pull_request' || steps.filter.outputs.web == 'true' }}
+    steps:
+      - uses: dorny/paths-filter@ceb8a2b8f2d89434be7ff52d3de7ec3738c5cc9d # v4.0.3
+        id: filter
+        if: github.event_name == 'pull_request'
+        with:
+          filters: |
+            web:
+              - 'packages/frontend/**'
+              - 'packages/sdk/**'
+              - 'packages/maps/**'
+              - 'packages/map-service/**'
+              - 'packages/contracts/**'
+              - 'packages/*/package.json'
+              - 'package.json'
+              - 'bun.lock'
+              - 'bunfig.toml'
+              - 'tsconfig.json'
+              - '.github/workflows/ci.yml'
+
   quality:
     name: Build, typecheck and lint
     runs-on: ubuntu-latest
@@ -65,6 +111,11 @@ jobs:
           # `FROM oven/bun:<ver>` disagrees with it, so CI, the image and the
           # lockfile gate cannot disagree about which bun wrote bun.lock.
           bun-version-file: package.json
+      # Expo SDK 58's CLI supports Node 22.13+ / 24.3+ only; pin a supported
+      # major instead of trusting the runner image's default Node.
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: '24'
       - name: Install exact dependency graph
         # --ignore-scripts because the root postinstall builds the contracts and
         # the SDK; both are built explicitly below, in dependency order.
@@ -85,9 +136,20 @@ jobs:
         # TS2307 on every importing file. Ordering matters here: the SDK bundles
         # @goway/contracts, so it must build after it.
         run: bun run build:sdk
+      - name: Build the maps SDK
+        # Same reason, one step on: packages/frontend imports @goway.to/maps by
+        # name (packages/maps/dist), and the maps SDK imports @goway.to/sdk.
+        run: bun run build:maps
 
       - name: Typecheck
         run: bun run typecheck
+      # The developer docs (docs/developers/) name every export of each package
+      # entry in its API reference, link only to pages and headings that exist,
+      # carry a generated HTTP operation reference that matches the contracts,
+      # and hold example code that compiles against this tree. After the builds
+      # above: the examples import @goway.to/maps and @goway.to/sdk by name.
+      - name: Verify the developer docs
+        run: bun run check:docs
       - name: Build the backend
         # `typecheck` runs `bun check` (TypeScript 7), which emits nothing. The
         # runtime image is still compiled by tsc 5.9, so this keeps that
@@ -186,7 +248,7 @@ jobs:
         # native module, no Expo runtime — so it needs none of the setup a
         # component test would, and it takes well under a second.
         #
-        # `worker/index.js` is the one that could not be checked any other way.
+        # `map-service/src/index.js` is the one that could not be checked any other way.
         # `tsc` does not read it, `expo export` does not bundle it, and its
         # first execution would otherwise be in production.
         run: bun run test:frontend
@@ -210,6 +272,10 @@ jobs:
 
       - name: Test the SDK
         run: bun run test:sdk
+      - name: Test the maps SDK
+        run: bun run test:maps
+      - name: Test the map origin's Worker
+        run: bun run test:map-service
 
       - name: Smoke-test the published SDK tarball
         # The build already ran above; this packs what it produced.
@@ -275,6 +341,56 @@ jobs:
       - name: Verify the production image's build inputs are reviewed
         run: python3 -B .github/scripts/reviewed-image.py check
 
+  # The DEVELOPMENT export both browser gates below drive, built ONCE per run
+  # and handed to every leg as an artifact. It was exported four times per run
+  # (each `city3d` leg and the former `devconsole` job), ~2 min each, from the
+  # same commit with the same command. A DEVELOPMENT build because only a dev
+  # build publishes what the engine drew (`__gowayCity3d`), which is what makes
+  # a blank screen fail rather than pass as "nothing to draw" — and only a dev
+  # build honours the `?city3d=1&cityTiles=1&citysky=1` the gate opens it with,
+  # and only a dev build reports gesture/worklet misuse at all.
+  #
+  # Artifacts are scoped to their own run, so no other pull request can supply
+  # this one; `retention-days: 1` because nothing reads it after the run.
+  webexport:
+    name: Export the web app (development build)
+    needs: changes
+    if: ${{ !cancelled() && !failure() && needs.changes.outputs.web == 'true' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        with:
+          bun-version-file: package.json
+      # Expo SDK 58's CLI supports Node 22.13+ / 24.3+ only; pin a supported
+      # major instead of trusting the runner image's default Node.
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: '24'
+      - name: Install exact dependency graph
+        run: bun install --frozen-lockfile --ignore-scripts
+      - name: Build the contracts
+        run: bun run build:contracts
+      - name: Build the SDK
+        run: bun run build:sdk
+      - name: Build the maps SDK
+        run: bun run build:maps
+      - name: Export the web app (development build)
+        working-directory: packages/frontend
+        run: bun run export:web --dev --output-dir "$RUNNER_TEMP/web-export-dev"
+      - name: Pack the export
+        # One tarball, not the tree: it keeps every file name, dotfile and mode
+        # exactly as Metro wrote them, and uploads as one file.
+        run: tar -C "$RUNNER_TEMP" -czf "$RUNNER_TEMP/web-export-dev.tgz" web-export-dev
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v4
+        with:
+          name: web-export-dev
+          path: ${{ runner.temp }}/web-export-dev.tgz
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 1
+
   # The 3D city's VISIBILITY gate (docs/MAP_NATIVE_3D.md, "The visibility
   # gate"): the real app, exported, in headless Chromium on SwiftShader, over a
   # committed synthetic city, with terrain held back until the city has drawn.
@@ -283,8 +399,23 @@ jobs:
   # buildings buried under the terrain (#152): the engine counted all of them
   # as drawn. Nothing comes from the network, and software GL is enough
   # because the assertions are coverage, not frame time.
+  #
+  # The `objects` leg also runs the DEVELOPMENT CONSOLE gate
+  # (`packages/frontend/scripts/check-dev-console.ts`), as its own step: the
+  # real app, the same development export, at phone size in headless Chromium,
+  # driven through map settings, the style picker, the sheet's drags and a
+  # place. React Native Gesture Handler, Reanimated and Worklets report their
+  # misuse only in a development build, at runtime, as a red toast
+  # ("[react-native-gesture-handler] Some of the callbacks in the gesture are
+  # worklets and some are not": the map sheet's body pan) — no type, unit
+  # test or production build sees it. Nothing from the stack may speak, and
+  # nothing may throw. Fixtures answer places; every other request is refused.
+  # It was a job of its own that spent ~2.5 of its ~3.5 min on setup and the
+  # export; on the shortest leg it adds ~41 s.
   city3d:
     name: 3D city visibility (${{ matrix.sky }})
+    needs: [changes, webexport]
+    if: ${{ !cancelled() && !failure() && needs.changes.outputs.web == 'true' }}
     runs-on: ubuntu-latest
     # One leg per sky, and one for what is not per sky (city life, models),
     # side by side: each runs its own views (`--skies`), so the wall time
@@ -306,26 +437,47 @@ jobs:
         run: bun run build:contracts
       - name: Build the SDK
         run: bun run build:sdk
+      - name: Build the maps SDK
+        run: bun run build:maps
       - name: Install Chromium for playwright-core
         run: bunx playwright-core install --with-deps chromium
-      # A DEVELOPMENT export: only a dev build publishes what the engine drew
-      # (`__gowayCity3d`), which is what makes a blank screen fail rather than
-      # pass as "nothing to draw" — and only a dev build honours the
-      # `?city3d=1&cityTiles=1&citysky=1` the gate opens it with.
-      - name: Export the web app (development build)
-        working-directory: packages/frontend
-        run: bun run export:web --dev --output-dir "$RUNNER_TEMP/city3d-gate"
+      - name: Fetch this run's development export
+        uses: actions/download-artifact@fa0a91b85d4f404e444e00e005971372dc801d16 # v4.1.8
+        with:
+          name: web-export-dev
+          path: ${{ runner.temp }}
+      - name: Unpack the development export
+        id: export
+        run: |
+          set -euo pipefail
+          tar -C "$RUNNER_TEMP" -xzf "$RUNNER_TEMP/web-export-dev.tgz"
+          test -f "$RUNNER_TEMP/web-export-dev/index.html"
       - name: What the engine drew is on the screen
+        id: city3d
         run: >-
           bun run --cwd packages/frontend check:city3d-visible
-          --dist="$RUNNER_TEMP/city3d-gate" --out="$RUNNER_TEMP/city3d-visible"
+          --dist="$RUNNER_TEMP/web-export-dev" --out="$RUNNER_TEMP/city3d-visible"
           --skies=${{ matrix.sky }}
       - name: Keep the screenshots of a failed run
-        if: failure()
+        if: ${{ !cancelled() && steps.city3d.outcome == 'failure' }}
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v4
         with:
           name: city3d-visible-${{ matrix.sky }}
           path: ${{ runner.temp }}/city3d-visible
+          retention-days: 14
+      # Runs even when the 3D check above failed, so each verdict is its own.
+      - name: "Development console: nothing from the gesture and animation stack, nothing uncaught"
+        id: devconsole
+        if: ${{ !cancelled() && matrix.sky == 'objects' && steps.export.outcome == 'success' }}
+        run: >-
+          bun run --cwd packages/frontend check:dev-console
+          --dist="$RUNNER_TEMP/web-export-dev" --out="$RUNNER_TEMP/dev-console-shots"
+      - name: Keep the development console screenshots of a failed run
+        if: ${{ !cancelled() && steps.devconsole.outcome == 'failure' }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v4
+        with:
+          name: dev-console
+          path: ${{ runner.temp }}/dev-console-shots
           retention-days: 14
 
   worker:
@@ -491,7 +643,7 @@ jobs:
   # required check reporting `skipped` — is never satisfied.
   ci-complete:
     name: CI complete
-    needs: [quality, gates, city3d, lockfile, test]
+    needs: [changes, quality, gates, webexport, city3d, lockfile, test]
     if: always()
     runs-on: ubuntu-latest
     timeout-minutes: 5
@@ -499,6 +651,7 @@ jobs:
       - name: Require every CI job to have passed
         env:
           NEEDS_JSON: ${{ toJSON(needs) }}
+          EVENT_NAME: ${{ github.event_name }}
         run: |
           set -euo pipefail
           # Gate on job NAMES, never on counts. "No checks reported" and
@@ -507,16 +660,34 @@ jobs:
           #
           # Every name is listed here AND in `needs:` above. A job missing from
           # NEEDS_JSON fails: unknown is not good news.
-          expected="quality gates city3d lockfile test"
+          expected="changes quality gates webexport city3d lockfile test"
+          # The ONLY jobs that may be skipped, and only by the `changes`
+          # filter: on a pull request, with `changes` itself a success that
+          # reported `web=false`. Push to main never filters (`web` is `true`),
+          # so a skip there fails like any other.
+          path_filtered="webexport city3d"
+          changes_result=$(printf '%s' "$NEEDS_JSON" | jq -r '.changes.result // "MISSING"')
+          web=$(printf '%s' "$NEEDS_JSON" | jq -r '.changes.outputs.web // "MISSING"')
+          web_skip_allowed=false
+          if [ "$EVENT_NAME" = "pull_request" ] && [ "$changes_result" = "success" ] && [ "$web" = "false" ]; then
+            web_skip_allowed=true
+          fi
+          echo "event=$EVENT_NAME changes=$changes_result web=$web web_skip_allowed=$web_skip_allowed"
           verdict=0
           for job in $expected; do
             result=$(printf '%s' "$NEEDS_JSON" | jq -r --arg j "$job" '.[$j].result // "MISSING"')
             printf '%-12s %s\n' "$job" "$result"
             # `cancelled` fails. A cancelled job verified nothing, and
             # cancellation is common precisely when several pushes race — the
-            # moment this gate matters most. `skipped` fails too: no job above
-            # declares a job-level `if:`, so a skip means somebody disarmed one.
-            if [ "$result" != "success" ]; then verdict=1; fi
+            # moment this gate matters most. `skipped` fails too, except for a
+            # path-filtered job the `changes` filter legitimately turned off.
+            if [ "$result" = "success" ]; then continue; fi
+            if [ "$result" = "skipped" ] && [ "$web_skip_allowed" = "true" ] \
+              && printf '%s\n' $path_filtered | grep -qx "$job"; then
+              echo "  ^ skipped: this pull request changes none of its inputs"
+              continue
+            fi
+            verdict=1
           done
           # Coverage floor: the `needs` context must hold exactly the jobs named
           # above. A job added to `needs:` but not to `expected` would otherwise
@@ -539,7 +710,7 @@ jobs:
   # reusable workflow. The budget lives on the called workflow's own job.
   deploy:
     name: Deploy
-    needs: [quality, gates, city3d, worker, lockfile, test]
+    needs: [quality, gates, webexport, city3d, worker, lockfile, test]
     # GATED ON A REPOSITORY VARIABLE, because the AWS side does not exist yet.
     #
     # `deploy-aws.yml` assumes an IAM role `oxy-goway-github-deploy`, an ECR
@@ -589,7 +760,7 @@ jobs:
   # token from `secrets`, not to AWS over OIDC, so it needs no `id-token`.
   deploy-frontend:
     name: Deploy frontend
-    needs: [quality, gates, city3d, lockfile, test]
+    needs: [quality, gates, webexport, city3d, lockfile, test]
     if: >-
       ${{ vars.OXY_1519_ROLLOUT_HOLD != 'true' && (github.event_name == 'push' && github.ref == 'refs/heads/main') }}
     permissions:

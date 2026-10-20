@@ -23,7 +23,7 @@
  */
 import type { GeoCoordinate, Route, RouteManeuver } from '@goway.to/sdk';
 
-import { isValidCoordinate } from '@/lib/map/geo';
+import { isValidCoordinate } from '@goway.to/sdk/geo';
 
 export interface RouteStep {
   /** Position in the flattened list — the selection key. */

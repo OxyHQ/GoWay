@@ -52,7 +52,7 @@ export { CARTOGRAPHY_PALETTES, DARK_PALETTE, LIGHT_PALETTE } from './palette';
 export * from './catalogue';
 export { styleTheme, type StyleTheme } from './themes';
 export type { CartographyPalette, PoiPalette, RoadTone } from './palette';
-export * from './schema';
+export * from '@goway.to/sdk';
 
 /**
  * Everything about the tile host the style needs to name, supplied by the
@@ -96,7 +96,7 @@ export interface MapStyleEndpoints {
 /**
  * The two sources a style with its own relief declares: the elevation tiles
  * the hillshade reads (`RELIEF_DEM`'s shape) and the contour tiles the Worker
- * traces from them (`worker/contours.js`: z9–14, over-zoomed above).
+ * traces from them (`map-service/src/contours.js`: z9–14, over-zoomed above).
  */
 function reliefSources(terrain: NonNullable<MapStyleEndpoints['terrain']>) {
   return {

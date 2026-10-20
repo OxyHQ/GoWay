@@ -29,7 +29,7 @@
  *   the blurrier base.
  *
  * Within a tier the Worker picks, per tile, the best published set that has
- * it (`worker/satellite.js`). Tiles are 512 px WebP with alpha, so the edge
+ * it (`map-service/src/satellite.js`). Tiles are 512 px WebP with alpha, so the edge
  * of an orthophoto is a pixel edge, not a tile edge.
  *
  * Pure and dependency-free: it is in the first-paint bundle, because the map
@@ -66,7 +66,7 @@ export function isImageryId(id: string | undefined): boolean {
 /** Pixels a side of every imagery tile. */
 export const IMAGERY_TILE_SIZE = 512;
 
-/** What the client reads to know which sets are published, and where (`worker/satellite.js`). */
+/** What the client reads to know which sets are published, and where (`map-service/src/satellite.js`). */
 export const IMAGERY_COVERAGE_PATH = '/map/satellite/coverage.json';
 
 /** A tier's `{z}/{x}/{y}` path on GoWay's origin. */

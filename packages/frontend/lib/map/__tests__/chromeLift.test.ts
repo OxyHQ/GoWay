@@ -69,8 +69,11 @@ describe('wired', () => {
   });
 
   test('the credit reads it, and falls back to its own spot without it', () => {
-    const credit = read('components/map/MapAttribution.tsx');
+    // The credit is `@goway.to/maps`'s; the lift reaches it through its context.
+    const credit = read('../maps/src/MapAttribution.tsx');
     expect(credit).toContain('useMapChromeLift()');
-    expect(credit).toMatch(/if \(!lift\) \{/);
+    expect(credit).toContain('<LiftedBox');
+    // The box is shared with the scale bar; the fallback lives there.
+    expect(read('../maps/src/LiftedBox.tsx')).toMatch(/if \(!lift\) \{/);
   });
 });

@@ -86,7 +86,7 @@ import { useTheme } from '@oxy.so/bloom/theme';
 import { Text } from '@oxy.so/bloom/typography';
 
 import { MapCanvas, type MapApi, type MapMarker } from '@/components/map';
-import { isDegenerateBounds } from '@/lib/map/geo';
+import { isDegenerateBounds } from '@goway.to/sdk/geo';
 import {
   initialViewportFrom,
   parseEmbedParams,
