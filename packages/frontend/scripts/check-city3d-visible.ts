@@ -1087,7 +1087,13 @@ async function panSteps(
     await drainGpu(page);
   };
   await still();
-  await page.addStyleTag({ content: '[data-goway-perf-hud] { display: none !important; }' });
+  // The map's own chrome stays put while the map moves under it: the floating
+  // controls (`map-controls`, `map-top-right-stack`) inside the clip are not
+  // the map, and would read as a change on every step (~1%, measured).
+  await page.addStyleTag({
+    content:
+      '[data-goway-perf-hud], [data-testid="map-controls"], [data-testid="map-top-right-stack"] { display: none !important; }',
+  });
   const shot = (i: number) =>
     page.screenshot({ clip: CLIP, path: join(outDir, `pan-${i}.png`), timeout: SETTLE_TIMEOUT_MS });
   const x = CLIP.x + CLIP.width / 2;
