@@ -851,7 +851,7 @@ const NIGHT_MAX_SPECKLE_PCT = 0.1;
 /**
  * The view with only the 3D city drawn over a flat `colour`: every other
  * layer hidden, the sky off, the colour behind the map's canvas. Two of
- * these give each pixel's coverage by the city ({@link layeredPct}).
+ * these give each pixel's coverage by the city ({@link fadeCoverage}).
  */
 async function overBackdrop(page: Page, colour: string, path: string): Promise<Buffer> {
   await page.evaluate(async (fill) => {
@@ -886,18 +886,38 @@ async function overBackdrop(page: Page, colour: string, path: string): Promise<B
   return page.screenshot({ clip: CLIP, path, timeout: SETTLE_TIMEOUT_MS });
 }
 
+/** What the city alone over black and over white says about the zoom fade. */
+interface FadeCoverage {
+  /** % of the view the city covers FULLY (coverage ≥ 0.95): it is drawn at all. */
+  fullPct: number;
+  /**
+   * Of the pixels the city touches (coverage ≥ 0.05), the % it covers only
+   * partly, between {@link FADE_PARTIAL_FROM} and 0.95: a surface blended over
+   * whatever is behind it, so a wall or a street shows through a building.
+   * Below that band are the trees' contact shadows, blended by design
+   * (`treeMaterial.ts` → `TREE_SHADOW_ALPHA`).
+   */
+  partialPct: number;
+  /**
+   * The screen door's density where the city stands: over 8 × 8-pixel blocks
+   * with at least a quarter of their pixels fully covered, the median share
+   * of fully covered pixels. A dither at the zoom's share leaves that share
+   * inside every building; no fade at all leaves 1.
+   */
+  density: number;
+}
+
+/** Below this, a partly covered pixel is a tree's blended contact shadow, not a surface. */
+const FADE_PARTIAL_FROM = 0.3;
+
 /**
- * Of the pixels the city covers, the share (%) where it covers only PARTLY
- * but more than {@link FADE_MID_COVERAGE} would: more than one surface of it
- * blended over the pixel, so a wall or a street behind a building shows
- * through it. From the city alone over black and over white: a pixel's
- * coverage is 1 − (white − black) / 255. A solid layer covers each pixel
- * fully or not at all (a dither), or by the fade's one share (an alpha).
+ * Each pixel's coverage by the city, 1 − (white − black) / 255, from the city
+ * alone over a black and a white backdrop ({@link overBackdrop}), measured.
  */
-async function layeredPct(browser: Browser, black: Buffer, white: Buffer): Promise<number> {
+async function fadeCoverage(browser: Browser, black: Buffer, white: Buffer): Promise<FadeCoverage> {
   const page = await browser.newPage();
   const value = await page.evaluate(
-    async ([b, w, mid]) => {
+    async ([b, w, partialFrom]) => {
       const pixels = async (data: string) => {
         const img = new Image();
         img.src = `data:image/png;base64,${data}`;
@@ -905,33 +925,68 @@ async function layeredPct(browser: Browser, black: Buffer, white: Buffer): Promi
         const canvas = new OffscreenCanvas(img.width, img.height);
         const g = canvas.getContext('2d') as OffscreenCanvasRenderingContext2D;
         g.drawImage(img, 0, 0);
-        return g.getImageData(0, 0, img.width, img.height).data;
+        return { data: g.getImageData(0, 0, img.width, img.height).data, width: img.width, height: img.height };
       };
       const [x, y] = await Promise.all([pixels(b), pixels(w)]);
-      let covered = 0;
-      let layered = 0;
-      for (let i = 0; i < x.length; i += 4) {
-        const through = (y[i] - x[i] + (y[i + 1] - x[i + 1]) + (y[i + 2] - x[i + 2])) / (3 * 255);
+      const { width, height } = x;
+      const full = new Uint8Array(width * height);
+      let touched = 0;
+      let partial = 0;
+      let fullCount = 0;
+      for (let p = 0; p < width * height; p++) {
+        const i = p * 4;
+        const through =
+          (y.data[i] - x.data[i] + (y.data[i + 1] - x.data[i + 1]) + (y.data[i + 2] - x.data[i + 2])) /
+          (3 * 255);
         const coverage = 1 - through;
         if (coverage < 0.05) continue;
-        covered++;
-        if (coverage > mid + 0.1 && coverage < 0.95) layered++;
+        touched++;
+        if (coverage >= 0.95) {
+          full[p] = 1;
+          fullCount++;
+        } else if (coverage >= partialFrom) partial++;
       }
-      return covered === 0 ? 0 : (100 * layered) / covered;
+      const shares: number[] = [];
+      for (let by = 0; by + 8 <= height; by += 8) {
+        for (let bx = 0; bx + 8 <= width; bx += 8) {
+          let n = 0;
+          for (let j = 0; j < 8; j++) for (let k = 0; k < 8; k++) n += full[(by + j) * width + bx + k];
+          if (n >= 16) shares.push(n / 64);
+        }
+      }
+      shares.sort((u, v) => u - v);
+      return {
+        fullPct: (100 * fullCount) / (width * height),
+        partialPct: touched === 0 ? 0 : (100 * partial) / touched,
+        density: shares.length === 0 ? 0 : shares[Math.floor(shares.length / 2)],
+      };
     },
-    [black.toString('base64'), white.toString('base64'), FADE_MID_COVERAGE] as const,
+    [black.toString('base64'), white.toString('base64'), FADE_PARTIAL_FROM] as const,
   );
   await page.close();
-  return Number(value.toFixed(2));
+  return {
+    fullPct: Number(value.fullPct.toFixed(2)),
+    partialPct: Number(value.partialPct.toFixed(2)),
+    density: Number(value.density.toFixed(3)),
+  };
 }
 
 /**
- * Mid-fade, the most of the city's pixels that may show a surface through
- * another, %. Measured on SwiftShader at z16: 37% on main @52dde03 (every
- * surface blended at the fade's alpha: coverage 0.5, 0.8, 0.9 by the
- * surfaces behind), 0.3% with the fade dithered (coverage 0 or 1).
+ * Mid-fade, the limits (`BUILDINGS_3D_FADE` at z16, the city alone, trees
+ * on). Measured on SwiftShader, the synthetic city at the low preset:
+ * - the dithered fade: full 42.5%, partial 0.46%, density 0.5;
+ * - the discard removed: full 83.4%, density 1;
+ * - the zoom fade reverted: full 83.4%, density 1;
+ * - alpha 0.5 back: full 3.8%, partial 95%, density 0.66.
  */
-const FADE_MAX_LAYERED_PCT = 2;
+const FADE_LIMITS = {
+  /** The city is drawn: at least this % of the view fully covered. */
+  minFullPct: 5,
+  /** At most this % of the city's pixels blended over what is behind them. */
+  maxPartialPct: 2,
+  /** The screen door's density within this of the zoom's share. */
+  densityTolerance: 0.15,
+};
 
 /** The zoom fade's share at the mid-fade view's zoom (`BUILDINGS_3D_FADE`). */
 const FADE_MID_COVERAGE =
@@ -1350,17 +1405,17 @@ try {
   }
   if (!DEBUG && (skies.includes('nosky') || skies.includes('fade'))) {
     // Mid-fade, at a resting zoom inside `BUILDINGS_3D_FADE`: the city must
-    // draw as ONE solid layer, never a wall or a street behind a building
-    // showing through it. Born of main @cd11022: every surface was blended at
-    // the fade's alpha, so walls and streets showed through the blocks. Without
-    // the sky, whose passes draw over the backdrop; trees off (their contact
-    // shadows are blended by design).
+    // be drawn, as ONE solid layer behind a screen door at the zoom's share,
+    // buildings and trees alike. Never a wall or a street showing through a
+    // building (main @cd11022 blended every surface at the fade's alpha), and
+    // never no fade at all. Without the sky, whose passes draw over the
+    // backdrop.
     const { flags, choices } = SKIES.nosky;
     // Street detail off: it starts above this zoom, and would never settle.
     const mid = await view(
       browser,
       origin,
-      `${flags.replace('&cityStreets=1', '')}&city3dTrees=0`,
+      flags.replace('&cityStreets=1', ''),
       choices,
       outDir,
       'fade-mid',
@@ -1378,14 +1433,24 @@ try {
       16,
     );
     const [black, white] = mid.backdrops ?? [mid.png, mid.png];
-    const layered = await layeredPct(browser, black, white);
-    results.fade = { triangles: mid.triangles, layeredPct: layered };
-    console.error(`fade: ${layered}% of the city's pixels show a surface behind another`);
-    if (mid.triangles === 0)
-      failures.push('fade: the engine drew no buildings mid-fade (the fixture is not reaching it)');
-    else if (layered > FADE_MAX_LAYERED_PCT)
+    const fade = await fadeCoverage(browser, black, white);
+    results.fade = { triangles: mid.triangles, trees: mid.trees, ...fade };
+    console.error(`fade: ${JSON.stringify(results.fade)} (the zoom's share ${FADE_MID_COVERAGE})`);
+    if (mid.triangles === 0 || mid.trees === 0)
       failures.push(
-        `fade: ${layered}% of the city's pixels show a surface behind another (over ${FADE_MAX_LAYERED_PCT}%): walls and streets show through the buildings`,
+        `fade: mid-fade the engine drew ${mid.triangles} building triangles and ${mid.trees} trees (the fixture is not reaching it)`,
+      );
+    else if (fade.fullPct < FADE_LIMITS.minFullPct)
+      failures.push(
+        `fade: the city fully covers ${fade.fullPct}% of the view mid-fade (under ${FADE_LIMITS.minFullPct}%): it is not drawn`,
+      );
+    if (fade.partialPct > FADE_LIMITS.maxPartialPct)
+      failures.push(
+        `fade: ${fade.partialPct}% of the city's pixels are blended over what is behind them (over ${FADE_LIMITS.maxPartialPct}%): walls and streets show through the buildings`,
+      );
+    if (Math.abs(fade.density - FADE_MID_COVERAGE) > FADE_LIMITS.densityTolerance)
+      failures.push(
+        `fade: the screen door covers ${fade.density} of the city's pixels mid-fade, the zoom's share is ${FADE_MID_COVERAGE} (±${FADE_LIMITS.densityTolerance}): the fade is not drawn`,
       );
   }
   if (!DEBUG && skies.includes('objects')) {

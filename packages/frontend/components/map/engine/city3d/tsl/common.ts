@@ -23,9 +23,11 @@ import {
   dot,
   float,
   Fn,
+  floor,
   fract,
   max,
   mix,
+  mod,
   screenCoordinate,
   select,
   uniform,
@@ -152,9 +154,13 @@ export function dithered(color: Node<'vec4'>): Node<'vec4'> {
   const fadeFrom = perObject(FADE_USERDATA_KEY, (fade) => (fade as FadeRefs).uFadeFrom.value, 0);
   const fadeTo = perObject(FADE_USERDATA_KEY, (fade) => (fade as FadeRefs).uFadeTo.value, 1);
   return Fn(() => {
-    const noise = fract(
-      fract(dot(screenCoordinate.xy, vec2(0.06711056, 0.00583715))).mul(52.9829189),
-    );
+    // A 4 × 4 ordered (Bayer) threshold: at any share an even mesh, never
+    // the diagonal streaks a hash leaves at one device pixel per CSS pixel.
+    const pixel = floor(screenCoordinate.xy);
+    const bayer2 = (p: Node<'vec2'>) => mod(p.x.mul(2).add(p.y.mul(3)), 4);
+    const fine = bayer2(mod(pixel, 2));
+    const coarse = bayer2(mod(floor(pixel.div(2)), 2));
+    const noise = fine.mul(4).add(coarse).add(0.5).div(16);
     Discard(noise.lessThan(fadeFrom).or(noise.greaterThanEqual(fadeTo)));
     return color;
   })();

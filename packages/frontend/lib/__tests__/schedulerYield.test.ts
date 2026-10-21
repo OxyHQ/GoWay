@@ -11,11 +11,30 @@ type Scope = Parameters<typeof installSchedulerYield>[0] & object;
 const scope = globalThis as Record<string, unknown>;
 
 describe('installSchedulerYield', () => {
-  test('a native scheduler.yield is left alone (Chrome, Edge, Firefox)', async () => {
-    const native = { yield: () => Promise.resolve() };
-    const target: Scope = { scheduler: native };
-    await installSchedulerYield(target);
-    expect(target.scheduler).toBe(native);
+  test('a native scheduler.yield is left alone, on the web and on Hermes alike', async () => {
+    const channel = scope.MessageChannel;
+    const idle = scope.requestIdleCallback;
+    try {
+      // The web (MessageChannel) and Hermes (none, requestIdleCallback):
+      // whichever fallback a platform would get, a native API wins. On
+      // Hermes the fallback writes `scope.scheduler`, so a native check
+      // made after it would replace the native yield, and this fails.
+      for (const hermes of [false, true]) {
+        if (hermes) {
+          scope.MessageChannel = undefined;
+          scope.requestIdleCallback = () => 0;
+        }
+        const nativeYield = () => Promise.resolve();
+        const native = { yield: nativeYield };
+        const target: Scope = { scheduler: native };
+        await installSchedulerYield(target);
+        expect(target.scheduler, hermes ? 'Hermes' : 'web').toBe(native);
+        expect(target.scheduler?.yield, hermes ? 'Hermes' : 'web').toBe(nativeYield);
+      }
+    } finally {
+      scope.MessageChannel = channel;
+      scope.requestIdleCallback = idle;
+    }
   });
 
   test('on Hermes (no MessageChannel): yield() is a requestIdleCallback task', async () => {
