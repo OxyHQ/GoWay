@@ -391,7 +391,8 @@ async function serveTile(url, request, env, ctx) {
  * The same two backends as the vector tiles, in the same order, for the same
  * reasons. An R2 archive when one is configured (`MAP_TERRAIN_ARCHIVE` in the
  * `MAP_TILES` bucket — Mapterhorn's own `planet.pmtiles`, z0–12, 356 GB),
- * because then no viewer's request leaves Cloudflare. Otherwise a proxy of
+ * because then no viewer's request leaves Cloudflare. Otherwise, and for a
+ * tile the archive does not hold (the regional tiles above its z12), a proxy of
  * `MAP_TERRAIN_UPSTREAM`, Mapterhorn's public endpoint: it publishes no usage
  * policy and logs every caller's IP, referrer and user agent, so the browser
  * must not talk to it directly — through here it sees Cloudflare, and the

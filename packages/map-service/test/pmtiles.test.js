@@ -503,7 +503,8 @@ describe('serving an elevation tile from R2', () => {
   const env = (archive) => ({
     MAP_TILES: bucketOver(archive),
     MAP_TERRAIN_ARCHIVE: 'terrain/test.pmtiles',
-    // Present, and must NOT be used while the archive is configured.
+    // Present: asked only for a tile the archive does not hold (the regional
+    // tiles above the worldwide archive's z12).
     MAP_TERRAIN_UPSTREAM: 'https://upstream.example/{z}/{x}/{y}.webp',
   });
   const terrainRequest = (z, x, y) =>
@@ -523,10 +524,28 @@ describe('serving an elevation tile from R2', () => {
     expect(new Uint8Array(await response.arrayBuffer())).toEqual(TILE_BODY);
   });
 
-  test('a tile the archive does not hold is a 404: flat ground, not an error', async () => {
+  test('a tile the archive does not hold is asked of the regional upstream', async () => {
+    const asked = [];
+    globalThis.fetch = async (input) => {
+      asked.push(String(input));
+      return new Response(TILE_BODY, { status: 200, headers: { 'content-type': 'image/webp' } });
+    };
     const e = env(buildArchive(new Map([['12/2069/1525', TILE_BODY]])));
-    const request = terrainRequest(12, 2070, 1525);
+    const request = terrainRequest(14, 8280, 6100);
     const response = await serveTerrain(new URL(request.url), request, e, ctx);
+    expect(response.status).toBe(200);
+    expect(asked).toEqual(['https://upstream.example/14/8280/6100.webp']);
+  });
+
+  test('with no upstream, a tile the archive does not hold is a 404: flat ground, not an error', async () => {
+    globalThis.fetch = () => {
+      throw new Error('there is no upstream to ask');
+    };
+    const { MAP_TERRAIN_UPSTREAM: _unused, ...archiveOnly } = env(
+      buildArchive(new Map([['12/2069/1525', TILE_BODY]])),
+    );
+    const request = terrainRequest(12, 2070, 1525);
+    const response = await serveTerrain(new URL(request.url), request, archiveOnly, ctx);
     expect(response.status).toBe(404);
   });
 });
