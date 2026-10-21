@@ -10,7 +10,8 @@ Rules on top of the root `AGENTS.md`. Places rules: `src/places/AGENTS.md`.
 - Declare columns camelCase; `DATABASE_CASING` names them in SQL. Never spell snake_case by hand or use `column.name`: use `sqlColumnName()` from `@oxy.so/db`.
 - `oxyUserId` carries no foreign key and there is no `users` table; Oxy owns identity.
 - Extensions go in `REQUIRED_EXTENSIONS` in `src/db/migrate.ts`, not in a migration — **PostGIS included**.
-- A phase is ONE transaction: never rewrite a big table in a migration (batch it first with an operator command that reads the migration's own SQL, like `places:convert-legacy`), put lock-taking DDL last, and add a CHECK to a big table `NOT VALID`.
+- Each migration is ONE transaction under a 120 s statement timeout: never rewrite a big table in one (batch it first with an operator command that reads the migration's own SQL, like `places:convert-legacy`), put lock-taking DDL last, and add a CHECK to a big table `NOT VALID`.
+- An index on an existing table is `CREATE INDEX IF NOT EXISTS` (edit it in after `db:generate`): the migrator builds it CONCURRENTLY first (`src/db/indexBuilds.ts`); `check:migration-locks` enforces it on the big tables.
 
 ## Live and Street 3D
 

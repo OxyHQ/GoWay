@@ -60,17 +60,22 @@
  * and `IF NOT EXISTS` short-circuits before the privilege check, so on a NEW
  * database a privileged role must run it once by hand first; `./extensions` has
  * the full explanation.
+ *
+ * ## An index on an existing table is built CONCURRENTLY, before its migration
+ *
+ * Every migration runs in a transaction under a 120 s `statement_timeout`
+ * (`@oxy.so/db`), where `CONCURRENTLY` is impossible and a plain build blocks
+ * every write to the table for as long as it takes. So an index on an existing
+ * table is `CREATE INDEX IF NOT EXISTS` in its migration, and this migrator
+ * builds it concurrently first, from the migration's own statement; the
+ * migration then finds it built. `./indexBuilds` has the rules and the outage
+ * (`0026`, 2026-10-21) they come from.
  */
 
-import {
-  MIGRATION_RUNS,
-  readTargetDatabase,
-  runMigrations,
-  type MigrationRun,
-} from '@oxy.so/db/migrate';
+import { MIGRATION_RUNS, readTargetDatabase, type MigrationRun } from '@oxy.so/db/migrate';
 import { config } from '../config';
 import { logger } from '../utils/logger';
-import { REQUIRED_EXTENSIONS } from './extensions';
+import { applyMigrations } from './applyMigrations';
 import { MIGRATIONS_FOLDER } from './migrationsFolder';
 
 /** Whether `DRY_RUN` asks for a report instead of an apply. */
@@ -110,10 +115,9 @@ async function main(): Promise<void> {
 
   // `config` has already parsed and validated DATABASE_URL at module load — an
   // absent or malformed one has failed the process before this line runs.
-  await runMigrations({
+  await applyMigrations({
     databaseUrl: config.databaseUrl,
     migrationsFolder: MIGRATIONS_FOLDER,
-    extensions: REQUIRED_EXTENSIONS,
     run,
     expectedDatabase,
     dryRun: isDryRun(),

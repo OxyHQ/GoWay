@@ -59,8 +59,11 @@ jobs:
     # long pole and runs well inside this. A job whose typical duration exceeds
     # roughly two-thirds of its timeout fails intermittently for reasons
     # unrelated to any diff — and a job-level timeout reports `cancelled`, which
-    # reads as a supersession rather than a failure.
-    timeout-minutes: 45
+    # reads as a supersession rather than a failure. It also outlasts the
+    # migration task's own deadline (MIGRATION_TASK_DEADLINE_SECONDS in
+    # deploy-backend.py, 3 h 20 min), which a release that builds an index on a
+    # large table concurrently can use; the typical run is still minutes.
+    timeout-minutes: 260
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 

@@ -14,6 +14,14 @@ TASK_FIELDS = (
     'ephemeralStorage', 'runtimePlatform',
 )
 
+# How long one migration task may run before the deploy stops it. The migrator first builds pending
+# indexes on existing tables CONCURRENTLY (packages/backend/src/db/indexBuilds.ts), within a budget of
+# INDEX_BUILD_BUDGET_MS (3 h; a trigram GIN measured 30-75 s per million rows on a developer machine,
+# and production holds ~13M places on a smaller, shared instance), and
+# only then applies the migrations, each under its own statement timeout. This outlasts both, so the
+# migrator's own timeouts are what stop a slow build, cleanly, never a stop-task mid-build.
+MIGRATION_TASK_DEADLINE_SECONDS = 3 * 60 * 60 + 20 * 60
+
 
 def aws(*args):
     result = subprocess.run(['aws', *args, '--output', 'json'], capture_output=True, text=True)
@@ -54,7 +62,7 @@ def migrate(cluster, service, registered, database, phase, launch, before, call,
     if response.get('failures') or len(response.get('tasks', [])) != 1:
         raise RuntimeError(f'Could not start the {phase} migration task; {outcome}')
     task = response['tasks'][0]['taskArn']
-    deadline = time.monotonic() + 1200
+    deadline = time.monotonic() + MIGRATION_TASK_DEADLINE_SECONDS
     while time.monotonic() < deadline:
         task_state = call('ecs', 'describe-tasks', '--cluster', cluster, '--tasks', task)
         if task_state.get('failures') or len(task_state.get('tasks', [])) != 1:
@@ -95,7 +103,7 @@ def deploy(cluster, service, image, database, restore_capacity=False, call=aws, 
     if len(primary) != 1:
         raise RuntimeError('New deployment ID was not returned')
     deployment_id = primary[0]['id']
-    deadline = time.monotonic() + 1200
+    deadline = time.monotonic() + MIGRATION_TASK_DEADLINE_SECONDS
     while time.monotonic() < deadline:
         current = snapshot(cluster, service)
         deployments = [d for d in current['deployments'] if d['id'] == deployment_id]
