@@ -117,9 +117,21 @@ export function latticeCells(tile: { z: number }, lattice: GroundLattice): numbe
 }
 
 /**
+ * DEM pixels a tile's grid holds past each edge. The street ground reaches
+ * furthest: its margin corners ({@link STREET_GROUND_MARGIN}, two mesh squares
+ * = one DEM pixel out) are each read on the COARSEST terrain mesh drawn over
+ * a street tile, z13's, whose square there spans four mesh squares — a corner
+ * two pixels out, read between the pixel centres 1.5 and 2.5 pixels out
+ * ({@link streetGround}). One pixel, as before, held the second ring of margin
+ * corners flat at the last sample: half a pixel off, ~0.5 m on a 7% slope.
+ */
+export const GROUND_GRID_PAD = 3;
+
+/**
  * One tile's ground: the DEM sampled at its pixel centres across the tile,
- * one pixel past each edge. Row-major from the north-west; sample `k` (column
- * or row) sits at `(k − ½) / cells` of the tile, so `size = cells + 2`.
+ * {@link GROUND_GRID_PAD} pixels past each edge. Row-major from the
+ * north-west; sample `k` (column or row) sits at `(k − PAD + ½) / cells` of
+ * the tile, so `size = cells + 2 · PAD`.
  */
 export interface GroundGrid {
   values: Float32Array;
@@ -154,12 +166,13 @@ export interface GroundTile {
 /** Sample the ground over a tile on its DEM lattice ({@link GroundGrid}). */
 export function sampleGroundGrid(tile: TileId, cells: number, sample: GroundSampler): GroundGrid {
   const n = 2 ** tile.z;
-  const size = cells + 2;
+  const pad = GROUND_GRID_PAD;
+  const size = cells + 2 * pad;
   const values = new Float32Array(size * size);
   const lngs = new Float64Array(size);
-  for (let i = 0; i < size; i++) lngs[i] = ((tile.x + (i - 0.5) / cells) / n) * 360 - 180;
+  for (let i = 0; i < size; i++) lngs[i] = ((tile.x + (i - pad + 0.5) / cells) / n) * 360 - 180;
   for (let j = 0; j < size; j++) {
-    const lat = latFromMercatorY((tile.y + (j - 0.5) / cells) / n);
+    const lat = latFromMercatorY((tile.y + (j - pad + 0.5) / cells) / n);
     for (let i = 0; i < size; i++) {
       const elevation = sample(lngs[i], lat);
       values[j * size + i] = Number.isFinite(elevation) ? elevation : 0;
@@ -245,12 +258,13 @@ export function createGround(
  */
 export function gridAt(grid: GroundGrid, u: number, v: number): number {
   const { values, cells, size } = grid;
-  // As far as the grid reaches — a pixel past each edge, where geometry owned
-  // by this tile overhangs it — and held at its last sample beyond.
-  const x = Math.max(0, Math.min(cells + 1, u * cells + 0.5));
-  const y = Math.max(0, Math.min(cells + 1, v * cells + 0.5));
-  const i = Math.min(cells, Math.floor(x));
-  const j = Math.min(cells, Math.floor(y));
+  // As far as the grid reaches — GROUND_GRID_PAD pixels past each edge, where
+  // geometry owned by this tile overhangs it and the coarser terrain meshes
+  // are read — and held at its last sample beyond.
+  const x = Math.max(0, Math.min(size - 1, u * cells + GROUND_GRID_PAD - 0.5));
+  const y = Math.max(0, Math.min(size - 1, v * cells + GROUND_GRID_PAD - 0.5));
+  const i = Math.min(size - 2, Math.floor(x));
+  const j = Math.min(size - 2, Math.floor(y));
   const fx = x - i;
   const fy = y - j;
   const a = values[j * size + i];
@@ -305,6 +319,18 @@ export function facetAt(grid: GroundGrid, u: number, v: number, cells: number): 
 export const STREET_GROUND_MARGIN = 2;
 
 /**
+ * The coarser terrain meshes the street ground also stays on or above, as
+ * squares of the street tile's mesh a side: the z14 terrain tile's (2) and
+ * z13's (4). At z19 and a 70° pitch MapLibre draws z14 terrain under
+ * full-detail streets (its tile selection, `city3dTerrainSampler.test.ts`),
+ * and z14's facets rose up to 16.5 cm above the z15 mesh — past the street's
+ * 6 cm lift. Every z15 triangle lies inside one z14 (and one z13) triangle,
+ * their diagonals running the same way, so a street corner at or above the
+ * coarser facets keeps the whole street triangle above them.
+ */
+export const STREET_COARSER_MESHES = [2, 4] as const;
+
+/**
  * The ground the street detail stands on, per corner of MapLibre's terrain
  * mesh over a street tile (`cells` squares a side, {@link STREET_GROUND_MARGIN}
  * past each edge), row-major from the north-west: each corner's height on
@@ -320,7 +346,9 @@ export const STREET_GROUND_MARGIN = 2;
  * squares round it; read facet-wise ({@link streetGroundAt}), the result is
  * at or above every square's rise, so the street is never under the terrain
  * MapLibre draws at street level (z15–z18 tiles; `city3dTerrainSampler.test.ts`),
- * and still flat on each facet, so the street's layers stay one plane.
+ * and still flat on each facet, so the street's layers stay one plane. Each
+ * corner is then raised, if need be, to the z14 and z13 meshes there
+ * ({@link STREET_COARSER_MESHES}), drawn under the streets at a steep pitch.
  * Measured on Barcelona street tiles: 1.6 cm at the median, 6–9 cm at p95.
  */
 export interface StreetGround {
@@ -366,30 +394,93 @@ export function streetGround(grid: GroundGrid, cells: number): StreetGround {
         if (ci < 0 || cj < 0 || ci >= size - 1 || cj >= size - 1) continue;
         most = Math.max(most, rise[cj * (size - 1) + ci]);
       }
-      values[j * size + i] = heights[j * size + i] + most;
+      // And never under the COARSER meshes drawn over a street tile: z14's
+      // and z13's squares are 2 × 2 and 4 × 4 of these, on the same DEM, and
+      // MapLibre draws them under full-detail streets at a steep pitch.
+      let value = heights[j * size + i] + most;
+      for (const coarse of STREET_COARSER_MESHES) {
+        if (cells % coarse !== 0) continue;
+        value = Math.max(value, facetAt(grid, (i - m) / cells, (j - m) / cells, cells / coarse));
+      }
+      values[j * size + i] = value;
     }
   }
   return { values, cells, size };
 }
 
-/** {@link StreetGround} at `u` east, `v` south across its tile: facet-wise, as the street's vertex shader reads it. */
+/**
+ * The arithmetic {@link streetGroundFacet} is written in: the CPU's numbers
+ * ({@link CPU_GROUND_MATH}), or the street's vertex shader's TSL nodes
+ * (`cityStreets/streetMaterials.ts`). ONE formula, two instances: what the
+ * tests measure against MapLibre's own terrain mesh on the CPU is the
+ * arithmetic the GPU runs.
+ */
+export interface GroundMath<N, B> {
+  constant(value: number): N;
+  add(a: N, b: N): N;
+  sub(a: N, b: N): N;
+  mul(a: N, b: N): N;
+  floor(a: N): N;
+  min(a: N, b: N): N;
+  clamp(a: N, low: N, high: N): N;
+  /** `a ≥ b`. */
+  atLeast(a: N, b: N): B;
+  select(condition: B, whenTrue: N, whenFalse: N): N;
+}
+
+export const CPU_GROUND_MATH: GroundMath<number, boolean> = {
+  constant: (value) => value,
+  add: (a, b) => a + b,
+  sub: (a, b) => a - b,
+  mul: (a, b) => a * b,
+  floor: Math.floor,
+  min: Math.min,
+  clamp: (a, low, high) => Math.max(low, Math.min(high, a)),
+  atLeast: (a, b) => a >= b,
+  select: (condition, whenTrue, whenFalse) => (condition ? whenTrue : whenFalse),
+};
+
+/**
+ * The street ground at `u` east, `v` south across its tile (0–1), read
+ * facet-wise from its corners ({@link StreetGround}: `cells` squares a side,
+ * {@link STREET_GROUND_MARGIN} past each edge, held at the last corner
+ * beyond): the corner square the point is in, split north-west to
+ * south-east as MapLibre splits its mesh, the point on its triangle's plane.
+ * `corner(i, j)` reads the corner at column `i`, row `j` (whole numbers).
+ */
+export function streetGroundFacet<N, B>(
+  math: GroundMath<N, B>,
+  u: N,
+  v: N,
+  cells: number,
+  corner: (i: N, j: N) => N,
+): N {
+  const { constant: c, add, sub, mul } = math;
+  const m = STREET_GROUND_MARGIN;
+  const size = cells + 1 + 2 * m;
+  const x = math.clamp(add(mul(u, c(cells)), c(m)), c(0), c(size - 1));
+  const y = math.clamp(add(mul(v, c(cells)), c(m)), c(0), c(size - 1));
+  const i = math.min(math.floor(x), c(size - 2));
+  const j = math.min(math.floor(y), c(size - 2));
+  const fx = sub(x, i);
+  const fy = sub(y, j);
+  const i1 = add(i, c(1));
+  const j1 = add(j, c(1));
+  const tl = corner(i, j);
+  const tr = corner(i1, j);
+  const bl = corner(i, j1);
+  const br = corner(i1, j1);
+  return math.select(
+    math.atLeast(fy, fx),
+    add(add(tl, mul(sub(bl, tl), fy)), mul(sub(br, bl), fx)),
+    add(add(tl, mul(sub(tr, tl), fx)), mul(sub(br, tr), fy)),
+  );
+}
+
+/** {@link StreetGround} at `u` east, `v` south across its tile: facet-wise, as the street's vertex shader reads it ({@link streetGroundFacet}). */
 export function streetGroundAt(ground: StreetGround, u: number, v: number): number {
   const { values, cells, size } = ground;
-  const m = STREET_GROUND_MARGIN;
-  const x = Math.max(0, Math.min(size - 1, u * cells + m));
-  const y = Math.max(0, Math.min(size - 1, v * cells + m));
-  const i = Math.min(size - 2, Math.floor(x));
-  const j = Math.min(size - 2, Math.floor(y));
-  const fx = x - i;
-  const fy = y - j;
-  const tl = values[j * size + i];
-  const br = values[(j + 1) * size + i + 1];
-  if (fy >= fx) {
-    const bl = values[(j + 1) * size + i];
-    return tl + (bl - tl) * fy + (br - bl) * fx;
-  }
-  const tr = values[j * size + i + 1];
-  return tl + (tr - tl) * fx + (br - tr) * fy;
+  return streetGroundFacet(CPU_GROUND_MATH, u, v, cells, (i, j) => values[j * size + i]);
 }
 
 export interface PolygonGround {

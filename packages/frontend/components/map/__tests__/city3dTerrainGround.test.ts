@@ -17,6 +17,7 @@ import { buildingFromProperties } from '@/components/map/engine/city3d/osmTiles'
 import {
   createGround,
   GROUND,
+  GROUND_GRID_PAD,
   type GroundGrid,
   type GroundTile,
   gridAt,
@@ -51,41 +52,43 @@ const groundOf = (sample: Parameters<typeof createGround>[0]) => createGround(sa
 
 /**
  * A grid of `cells` DEM pixels over the tile whose samples read `f(u, v)` — u
- * east, v south, 0–1 across the tile; sample k sits at (k − ½) / cells.
+ * east, v south, 0–1 across the tile; sample k sits at (k − PAD + ½) / cells.
  */
 function planeGrid(cells: number, f: (u: number, v: number) => number): GroundGrid {
-  const size = cells + 2;
+  const pad = GROUND_GRID_PAD;
+  const size = cells + 2 * pad;
   const values = new Float32Array(size * size);
   for (let j = 0; j < size; j++) {
-    for (let i = 0; i < size; i++) values[j * size + i] = f((i - 0.5) / cells, (j - 0.5) / cells);
+    for (let i = 0; i < size; i++) {
+      values[j * size + i] = f((i - pad + 0.5) / cells, (j - pad + 0.5) / cells);
+    }
   }
   return { values, cells, size };
 }
 
 describe('sampleGroundGrid', () => {
-  test('row-major from the north-west, at the pixel centres, one past each edge', () => {
-    const tile = { z: 2, x: 1, y: 1 };
+  test('row-major from the north-west, at the pixel centres, PAD past each edge', () => {
+    expect(GROUND_GRID_PAD).toBe(3);
+    const tile = { z: 3, x: 3, y: 3 };
     const seen: [number, number][] = [];
     const grid = sampleGroundGrid(tile, 1, (lng, lat) => {
       seen.push([lng, lat]);
       return seen.length;
     });
-    // One pixel across x=1 at z2 (−90° … 0°): its centre −45°, and the
-    // centres of its neighbours' pixels, −135° and 45°.
-    expect(grid.size).toBe(3);
+    // One pixel across x=3 at z3 (−45° … 0°): its centre −22.5°, and the
+    // centres of three neighbours' pixels each way, 45° apart.
+    expect(grid.size).toBe(7);
     expect(grid.cells).toBe(1);
-    expect(seen[0][0]).toBeCloseTo(-135, 9);
-    expect(seen[1][0]).toBeCloseTo(-45, 9);
-    expect(seen[2][0]).toBeCloseTo(45, 9);
-    expect(seen[0][1]).toBeCloseTo(latFromMercatorY(0.125), 9);
-    expect(seen[8][1]).toBeCloseTo(latFromMercatorY(0.625), 9);
-    expect(seen[0][1]).toBeGreaterThan(seen[8][1]);
-    expect([...grid.values]).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9]);
+    for (let i = 0; i < 7; i++) expect(seen[i][0]).toBeCloseTo(-22.5 + (i - 3) * 45, 9);
+    expect(seen[0][1]).toBeCloseTo(latFromMercatorY(0.0625), 9);
+    expect(seen[3 * 7][1]).toBeCloseTo(latFromMercatorY(0.4375), 9);
+    expect(seen[0][1]).toBeGreaterThan(seen[7][1]);
+    expect([...grid.values]).toEqual(Array.from({ length: 49 }, (_, k) => k + 1));
   });
 
   test('a sampler that answers nonsense is flat ground, not NaN', () => {
     const grid = sampleGroundGrid({ z: 14, x: 0, y: 0 }, 1, () => Number.NaN);
-    expect([...grid.values]).toEqual([0, 0, 0, 0, 0, 0, 0, 0, 0]);
+    expect([...grid.values]).toEqual(new Array(49).fill(0));
   });
 
   test("the grid's cells are the DEM's pixels across the tile, within the budget", () => {
@@ -105,9 +108,10 @@ describe('gridAt', () => {
     expect(gridAt(grid, 1, 0)).toBeCloseTo(10, 5);
     expect(gridAt(grid, 0, 1)).toBeCloseTo(100, 5);
     expect(gridAt(grid, 0.5, 0.5)).toBeCloseTo(55, 5);
-    // The grid reaches half a cell past each edge (its samples at −½ and 1½).
+    // The grid reaches PAD − ½ cells past each edge (its samples at −2½ … 3½).
     expect(gridAt(grid, -0.25, 0)).toBeCloseTo(-2.5, 5);
-    expect(gridAt(grid, -3, 9)).toBeCloseTo(-5 + 150, 5);
+    expect(gridAt(grid, -2.5, 0)).toBeCloseTo(-25, 5);
+    expect(gridAt(grid, -3, 9)).toBeCloseTo(-25 + 350, 5);
   });
 });
 
@@ -321,7 +325,7 @@ describe('one ground for everything standing on it', () => {
     });
     const sampled = calls;
     // GoWay's DEM over a z15 tile: 64 pixels across, one more each side.
-    expect(sampled).toBe(66 * 66);
+    expect(sampled).toBe((64 + 2 * GROUND_GRID_PAD) ** 2);
     // City life's read of the same tile: no new samples.
     expect(ground.hasGrid(tile)).toBe(true);
     expect(ground.grid(tile).values[0]).toBe(40);

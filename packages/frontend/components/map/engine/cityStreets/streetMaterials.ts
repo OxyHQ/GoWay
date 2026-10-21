@@ -65,7 +65,7 @@ import {
 
 import { mapBlending, perObject } from '../city3d/tsl/common';
 import type { SkyNodes } from '../city3d/tsl/skyNodes';
-import { STREET_GROUND_MARGIN } from '../city3d/terrainGround';
+import { type GroundMath, streetGroundFacet } from '../city3d/terrainGround';
 import { MIN_HALF_PX, STREET_LIFT_M } from './meshBuffers';
 import { ATLAS_SIZE, SDF_EDGE } from './streetAtlas';
 
@@ -120,6 +120,19 @@ const vec3Array = (values: Vector3[]) =>
 const tileValue = (read: (tile: StreetTile) => number, fallback: number) =>
   perObject(STREET_TILE_USERDATA_KEY, (tile) => read(tile as StreetTile), fallback);
 
+/** {@link streetGroundFacet}'s arithmetic in TSL nodes: the vertex shader's instance of the CPU's formula. */
+export const TSL_GROUND_MATH: GroundMath<Node<'float'>, Node<'bool'>> = {
+  constant: (value) => float(value),
+  add: (a, b) => a.add(b),
+  sub: (a, b) => a.sub(b),
+  mul: (a, b) => a.mul(b),
+  floor: (a) => floor(a),
+  min: (a, b) => min(a, b),
+  clamp: (a, low, high) => clamp(a, low, high),
+  atLeast: (a, b) => a.greaterThanEqual(b),
+  select: (condition, whenTrue, whenFalse) => select(condition, whenTrue, whenFalse),
+};
+
 export function createStreetMaterials(inputs: StreetMaterialInputs): StreetMaterials {
   const slot = tileValue((t) => t.slot, 0);
   const grounded = tileValue((t) => t.grounded, 0);
@@ -134,37 +147,25 @@ export function createStreetMaterials(inputs: StreetMaterialInputs): StreetMater
   );
   const depthBias = float(inputs.depthBias);
 
-  // The ground the street stands on (`terrainGround.ts` → `streetGround`,
-  // `streetGroundAt`, line for line): MapLibre's terrain mesh on this tile as
-  // a terrain tile, each corner raised by the most a finer terrain tile rises
-  // above it nearby, read facet-wise — each square two flat triangles split
-  // north-west to south-east, as MapLibre splits them. Every street piece
-  // lies inside one of them (`groundLattice.ts`), so every layer of the
-  // street lies on the same flat facet: the paint stays on the asphalt, and
-  // both above the terrain.
+  // The ground the street stands on (`terrainGround.ts` → `streetGround`):
+  // MapLibre's terrain mesh on this tile as a terrain tile, each corner raised
+  // by the most a finer — or a coarser — terrain tile rises above it nearby,
+  // read facet-wise by THE formula the CPU tests measure against MapLibre's
+  // own mesh (`streetGroundFacet`), in TSL here: each square two flat
+  // triangles split north-west to south-east, as MapLibre splits them. Every
+  // street piece lies inside one of them (`groundLattice.ts`), so every layer
+  // of the street lies on the same flat facet: the paint stays on the
+  // asphalt, and both above the terrain.
   const meshCells = inputs.groundMeshCells;
-  const size = meshCells + 1 + 2 * STREET_GROUND_MARGIN;
   const groundAt = (p: Node<'vec2'>) =>
     Fn(() => {
-      const mesh = clamp(
-        vec2(p.x, p.y.negate()).div(tileSize).mul(meshCells).add(STREET_GROUND_MARGIN),
-        0,
-        size - 1,
-      );
-      const corner = min(floor(mesh), vec2(size - 2));
-      const f = mesh.sub(corner);
-      const i = ivec2(corner);
       const layer = int(slot);
-      const at = (dx: number, dy: number) =>
-        textureLoad(inputs.groundAtlas, i.add(ivec2(dx, dy))).depth(layer).r;
-      const tl = at(0, 0);
-      const tr = at(1, 0);
-      const bl = at(0, 1);
-      const br = at(1, 1);
-      const h = select(
-        f.y.greaterThanEqual(f.x),
-        tl.add(bl.sub(tl).mul(f.y)).add(br.sub(bl).mul(f.x)),
-        tl.add(tr.sub(tl).mul(f.x)).add(br.sub(tr).mul(f.y)),
+      const h = streetGroundFacet(
+        TSL_GROUND_MATH,
+        p.x.div(tileSize),
+        p.y.negate().div(tileSize),
+        meshCells,
+        (i, j) => textureLoad(inputs.groundAtlas, ivec2(int(i), int(j))).depth(layer).r,
       );
       return select(grounded.greaterThan(0.5), h, float(0));
     })();

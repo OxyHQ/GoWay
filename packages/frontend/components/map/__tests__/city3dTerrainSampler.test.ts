@@ -23,9 +23,12 @@ import { describe, expect, test } from 'bun:test';
 import { dirname, join } from 'node:path';
 
 import { followTerrain } from '@/components/map/city3dGround.web';
+import { selectLodTiles } from '@/components/map/engine/city3d/lod';
 import {
   createGround,
   facetAt,
+  GROUND_GRID_PAD,
+  STREET_GROUND_MARGIN,
   streetGround,
   streetGroundAt,
   type GroundLattice,
@@ -33,6 +36,9 @@ import {
   gridAt,
 } from '@/components/map/engine/city3d/terrainGround';
 import { latFromMercatorY } from '@/components/map/engine/city3d/tileMath';
+import { streetLodPolicy } from '@/components/map/engine/cityStreets/streetRenderer';
+
+import { camera } from './fixtures/mapCamera';
 
 // MapLibre's own sources (the package ships them; its `exports` map does not,
 // so they are reached by path).
@@ -44,6 +50,8 @@ const { RGBAImage } = await import(join(SRC, 'util/image.ts'));
 const { LngLat } = await import(join(SRC, 'geo/lng_lat.ts'));
 const { Pos3dArray, TriangleIndexArray } = await import(join(SRC, 'data/array_types.g.ts'));
 const { StructArray } = await import(join(SRC, 'util/struct_array.ts'));
+const { MercatorTransform } = await import(join(SRC, 'geo/projection/mercator_transform.ts'));
+const { coveringTiles } = await import(join(SRC, 'geo/projection/covering_tiles.ts'));
 
 // Bun compiles MapLibre's sources with define-semantics class fields (its own
 // build does not): a field a class only DECLARES is set to `undefined` on the
@@ -211,9 +219,34 @@ describe('the drawn ground', () => {
     expect(coarse).toBeGreaterThan(0.1);
   });
 
-  test("a street tile's grid is the DEM on its own pixel centres: 64 across, one past each edge", () => {
+  test("a street tile's grid is the DEM on its own pixel centres: 64 across, three past each edge", () => {
     expect(grid.cells).toBe(64);
-    expect(grid.size).toBe(66);
+    expect(grid.size).toBe(64 + 2 * GROUND_GRID_PAD);
+  });
+
+  test('the margin corners are read off the DEM, not held flat at the last sample', () => {
+    // The outermost ring of the street ground is one DEM pixel past the edge;
+    // on a slope it lies on the slope's line through the corners inside.
+    const street = streetGround(grid, 128);
+    const n = street.size;
+    const m = STREET_GROUND_MARGIN;
+    let worst = 0;
+    for (let k = m; k < n - m; k += 7) {
+      for (const [i, j] of [
+        [0, k],
+        [n - 1, k],
+        [k, 0],
+        [k, n - 1],
+      ]) {
+        const u = (i - m) / 128;
+        const v = (j - m) / 128;
+        const n15 = 2 ** STREET_TILE.z;
+        const lng = ((STREET_TILE.x + u) / n15) * 360 - 180;
+        const lat = latFromMercatorY((STREET_TILE.y + v) / n15);
+        worst = Math.max(worst, Math.abs(gridAt(grid, u, v) - host.sample(lng, lat)));
+      }
+    }
+    expect(worst).toBeLessThan(1e-3);
   });
 
   for (const z of [15, 16, 17, 18]) {
@@ -285,13 +318,13 @@ describe('the drawn ground', () => {
     expect(gap).toBeLessThan(1e-3);
   });
 
-  test("the street's ground is never under MapLibre's terrain at street level, and on the z15 mesh where it is not twisted", () => {
+  test("the street's ground is never under MapLibre's terrain from z13 to z18", () => {
     const street = streetGround(grid, 128);
-    let raised = 0;
-    for (const z of [15, 16, 17, 18]) {
+    for (const z of [13, 14, 15, 16, 17, 18]) {
+      // The terrain tile at z holding the street tile's middle.
       const scale = 2 ** (z - STREET_TILE.z);
-      const tx = STREET_TILE.x * scale + (scale >> 1);
-      const ty = STREET_TILE.y * scale + (scale >> 1);
+      const tx = Math.floor((STREET_TILE.x + 0.5) * scale);
+      const ty = Math.floor((STREET_TILE.y + 0.5) * scale);
       const mesh = drawnMesh(terrain, z, tx, ty);
       let under = 0;
       for (let t = 0; t < mesh.indices.length; t += 3) {
@@ -308,20 +341,158 @@ describe('the drawn ground', () => {
             mesh.positions[a * 3 + 1] * wa +
             mesh.positions[b * 3 + 1] * wb +
             mesh.positions[c * 3 + 1] * wc;
-          const drawn = mesh.height[a] * wa + mesh.height[b] * wb + mesh.height[c] * wc;
           const [mx, my] = mercatorOf(z, tx, ty, px, py);
           const n = 2 ** STREET_TILE.z;
           const u = mx * n - STREET_TILE.x;
           const v = my * n - STREET_TILE.y;
-          const ours = streetGroundAt(street, u, v);
-          under = Math.max(under, drawn - ours);
-          raised = Math.max(raised, ours - facetAt(grid, u, v, 128));
+          // Only over the street tile (a z13/z14 terrain tile covers more).
+          if (u < 0 || u > 1 || v < 0 || v > 1) continue;
+          const drawn = mesh.height[a] * wa + mesh.height[b] * wb + mesh.height[c] * wc;
+          under = Math.max(under, drawn - streetGroundAt(street, u, v));
         }
       }
       expect(under).toBeLessThan(1e-3);
     }
-    // Raised by the twist alone: centimetres on this ground, never a constant.
-    expect(raised).toBeGreaterThan(0);
-    expect(raised).toBeLessThan(0.1);
+  });
+
+  test("each corner is EXACTLY the z15 mesh, raised by its squares' twist, or the z14 or z13 mesh where higher", () => {
+    // Built from MapLibre's own meshes, not from the grid: the z15 tile's
+    // vertices, and the z14 and z13 meshes over it read facet-wise.
+    const street = streetGround(grid, 128);
+    const m = STREET_GROUND_MARGIN;
+    const z15 = drawnMesh(terrain, 15, STREET_TILE.x, STREET_TILE.y);
+    const corner = (i: number, j: number) => z15.height[j * 129 + i];
+    const twistRise = (i: number, j: number) => {
+      if (i < 0 || j < 0 || i >= 128 || j >= 128) return 0;
+      const d = corner(i, j) + corner(i + 1, j + 1) - corner(i + 1, j) - corner(i, j + 1);
+      return Math.max(0, -d) / 4;
+    };
+    const coarse = [14, 13].map((z) => {
+      const scale = 2 ** (z - STREET_TILE.z);
+      const tile = { z, x: Math.floor(STREET_TILE.x * scale), y: Math.floor(STREET_TILE.y * scale) };
+      return { ...tile, mesh: drawnMesh(terrain, z, tile.x, tile.y) };
+    });
+    const facet = (c: (typeof coarse)[number], u: number, v: number) => {
+      // The street tile's (u, v) in the coarse tile's 128 squares.
+      const scale = 2 ** (c.z - STREET_TILE.z);
+      const x = ((STREET_TILE.x + u) * scale - c.x) * 128;
+      const y = ((STREET_TILE.y + v) * scale - c.y) * 128;
+      const i = Math.min(127, Math.floor(x));
+      const j = Math.min(127, Math.floor(y));
+      const fx = x - i;
+      const fy = y - j;
+      const h = (di: number, dj: number) => c.mesh.height[(j + dj) * 129 + i + di];
+      return fy >= fx
+        ? h(0, 0) + (h(0, 1) - h(0, 0)) * fy + (h(1, 1) - h(0, 1)) * fx
+        : h(0, 0) + (h(1, 0) - h(0, 0)) * fx + (h(1, 1) - h(1, 0)) * fy;
+    };
+    let worst = 0;
+    let raisedByTwist = 0;
+    let raisedByCoarse = 0;
+    for (let j = 0; j <= 128; j++) {
+      for (let i = 0; i <= 128; i++) {
+        const own = corner(i, j);
+        const rise = Math.max(
+          twistRise(i - 1, j - 1),
+          twistRise(i, j - 1),
+          twistRise(i - 1, j),
+          twistRise(i, j),
+        );
+        const coarser = Math.max(...coarse.map((c) => facet(c, i / 128, j / 128)));
+        const expected = Math.max(own + rise, coarser);
+        worst = Math.max(worst, Math.abs(street.values[(j + m) * street.size + i + m] - expected));
+        if (own + rise > coarser && rise > 0) raisedByTwist++;
+        if (coarser > own + rise) raisedByCoarse++;
+      }
+    }
+    expect(worst).toBeLessThan(1e-4);
+    // Both raises happen on this ground: the test measures both.
+    expect(raisedByTwist).toBeGreaterThan(100);
+    expect(raisedByCoarse).toBeGreaterThan(100);
+  });
+});
+
+describe("the street ground under MapLibre's own tile selection at a steep pitch", () => {
+  const terrain = mapLibreTerrain();
+  const host = hostGround(terrain);
+  const ground = createGround(host.sample, host.lattice);
+
+  test('z19 at 70°: MapLibre draws z14 terrain under full-detail streets, and the streets stay above it', () => {
+    // The camera over the DEM tile's middle, looking north.
+    const centre = {
+      lng: ((DEM_TILE.x + 0.5) / 2 ** DEM_ZOOM) * 360 - 180,
+      lat: latFromMercatorY((DEM_TILE.y + 0.55) / 2 ** DEM_ZOOM),
+    };
+    const width = 1280;
+    const height = 800;
+    const transform = new MercatorTransform({ maxPitch: 85 });
+    transform.resize(width, height);
+    transform.setZoom(19);
+    transform.setCenter(new LngLat(centre.lng, centre.lat));
+    transform.setPitch(70);
+    // The terrain's tiles, as its TerrainTileManager asks for them: 512 px DEM
+    // tiles at deltaZoom 1 are 1024 px render tiles.
+    const terrainTiles = coveringTiles(transform, {
+      tileSize: DEM_SIZE * 2,
+      minzoom: 0,
+      maxzoom: 22,
+      reparseOverscaled: false,
+    }) as { canonical: { z: number; x: number; y: number } }[];
+    // The street tiles GoWay draws at full detail in the same view.
+    const c = camera({ ...centre, zoom: 19, pitch: 70, bearing: 0, width, height });
+    const streets = selectLodTiles(
+      { mercatorToClip: c.mercatorToClip, zoom: c.zoom, center: c.center, bounds: c.bounds },
+      15,
+      streetLodPolicy(centre.lat, 16),
+      new Map(),
+    ).filter((t) => t.lod === 0);
+    expect(streets.length).toBeGreaterThan(0);
+
+    let coarsest = 99;
+    let checked = 0;
+    for (const s of streets) {
+      const street = streetGround(ground.grid({ z: 15, x: s.x, y: s.y }), 128);
+      for (const t of terrainTiles) {
+        const { z, x, y } = t.canonical;
+        // A terrain tile over this street tile (a coarser one holding it, or a finer one in it).
+        const k = 2 ** Math.abs(z - 15);
+        const over = z <= 15 ? (s.x / k) >> 0 === x && (s.y / k) >> 0 === y : (x / k) >> 0 === s.x && (y / k) >> 0 === s.y;
+        if (!over) continue;
+        coarsest = Math.min(coarsest, z);
+        const mesh = drawnMesh(terrain, z, x, y);
+        let under = 0;
+        // Each triangle's vertices, edge middles and centroid, as the GPU
+        // interpolates them: a coarse facet is farthest from the finer
+        // ground between its vertices, not at them.
+        for (let t = 0; t < mesh.indices.length; t += 3) {
+          const [a, b, c] = [mesh.indices[t], mesh.indices[t + 1], mesh.indices[t + 2]];
+          for (const [wa, wb, wc] of [
+            [1, 0, 0],
+            [1 / 3, 1 / 3, 1 / 3],
+            [0.5, 0.5, 0],
+            [0, 0.5, 0.5],
+            [0.5, 0, 0.5],
+          ]) {
+            const px =
+              mesh.positions[a * 3] * wa + mesh.positions[b * 3] * wb + mesh.positions[c * 3] * wc;
+            const py =
+              mesh.positions[a * 3 + 1] * wa +
+              mesh.positions[b * 3 + 1] * wb +
+              mesh.positions[c * 3 + 1] * wc;
+            const [mx, my] = mercatorOf(z, x, y, px, py);
+            const u = mx * 2 ** 15 - s.x;
+            const w = my * 2 ** 15 - s.y;
+            if (u < 0 || u > 1 || w < 0 || w > 1) continue;
+            const drawn = mesh.height[a] * wa + mesh.height[b] * wb + mesh.height[c] * wc;
+            under = Math.max(under, drawn - streetGroundAt(street, u, w));
+            checked++;
+          }
+        }
+        expect(under).toBeLessThan(1e-3);
+      }
+    }
+    expect(checked).toBeGreaterThan(1000);
+    // The case the review found: z14 (or coarser) terrain under full-detail streets.
+    expect(coarsest).toBeLessThanOrEqual(14);
   });
 });
