@@ -28,7 +28,7 @@ const TYPES: Record<string, string> = {
 
 export interface ServeDevExportOptions {
   /** Answer a path before the export does; `null` passes it on. */
-  respond?: (pathname: string) => Response | null;
+  respond?: (pathname: string) => Response | Promise<Response> | null;
   /** Told every path requested (a gate's `--debug`). */
   log?: (pathname: string) => void;
 }

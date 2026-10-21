@@ -24,7 +24,9 @@
  *    Served by the gate's own server, not by a browser route: the tiles are
  *    fetched inside Web Workers (MapLibre's, the mesh workers), which
  *    Playwright's routes do not see.
- *  - **Terrain**: a synthetic Terrarium tile at a constant 50 m. MapLibre's
+ *  - **Terrain**: a synthetic Terrarium tile at a constant 50 m, also served
+ *    by the gate's own server: the terrain data worker (`terrainDem.web.ts`)
+ *    fetches the DEM from the page's origin. MapLibre's
  *    terrain comes on with the tilt, so: open flat (tiles drawn with no
  *    terrain), tilt (terrain on, its elevation HELD, tiles drawn ungrounded),
  *    then release it once the city has settled and wait until MapLibre reads
@@ -253,8 +255,32 @@ function pbf(bytes: Uint8Array): Response {
       });
 }
 
+/**
+ * The elevation the current view is served: held until the view releases it,
+ * then flat at {@link TERRAIN_M} or {@link creasedMetres}. One view runs at a
+ * time, and each sets this before its page opens.
+ */
+let terrainServed: { held: Promise<void>; relief: 'flat' | 'creased' } = {
+  held: Promise.resolve(),
+  relief: 'flat',
+};
+
+async function terrainResponse(path: string): Promise<Response> {
+  const { held, relief } = terrainServed;
+  await held;
+  const at = /\/(\d+)\/(\d+)\/(\d+)\.\w+$/.exec(path);
+  const body =
+    relief === 'creased' && at
+      ? creasedTile(Number(at[1]), Number(at[2]), Number(at[3]))
+      : TERRAIN_PNG;
+  return new Response(new Blob([body as Uint8Array<ArrayBuffer>]), {
+    headers: { 'content-type': 'image/png' },
+  });
+}
+
 /** The fixture's own paths, answered by the gate's server (workers fetch them). */
-function fixtureResponse(path: string): Response | null {
+function fixtureResponse(path: string): Response | Promise<Response> | null {
+  if (path.startsWith('/map/terrain/')) return terrainResponse(path);
   if (path === CITY_COVERAGE_PATH) {
     return Response.json({ archives: [{ coverage: syntheticCoverage()[0] }] });
   }
@@ -275,14 +301,8 @@ function fixtureResponse(path: string): Response | null {
   return null;
 }
 
-/** What the page asks of anyone else (main-thread requests: style parts, terrain). */
-async function answer(
-  route: Route,
-  origin: string,
-  basemap: 'buildings' | 'empty',
-  terrain: Promise<void>,
-  relief: 'flat' | 'creased' = 'flat',
-): Promise<void> {
+/** What the page asks of anyone else (main-thread requests: style parts). */
+async function answer(route: Route, origin: string, basemap: 'buildings' | 'empty'): Promise<void> {
   const url = new URL(route.request().url());
   const path = url.pathname;
   if (url.origin === origin) {
@@ -295,16 +315,6 @@ async function answer(
       `${origin}/__gate/${basemap === 'buildings' ? 'omt' : 'empty'}/{z}/{x}/{y}.pbf`,
     ];
     await route.fulfill({ json: tileJson });
-    return;
-  }
-  if (path.includes('/map/terrain/')) {
-    await terrain;
-    const at = /\/(\d+)\/(\d+)\/(\d+)\.\w+$/.exec(path);
-    const body =
-      relief === 'creased' && at
-        ? creasedTile(Number(at[1]), Number(at[2]), Number(at[3]))
-        : TERRAIN_PNG;
-    await route.fulfill({ status: 200, contentType: 'image/png', body: Buffer.from(body) });
     return;
   }
   for (const prefix of ['/map/fonts/', '/map/sprites/']) {
@@ -462,7 +472,8 @@ async function view(
   const terrain = new Promise<void>((done) => {
     releaseTerrain = done;
   });
-  await context.route('**/*', (route) => answer(route, origin, basemap, terrain, relief));
+  terrainServed = { held: terrain, relief };
+  await context.route('**/*', (route) => answer(route, origin, basemap));
   const page = await context.newPage();
   if (DEBUG) {
     page.on('console', (m) => {
@@ -1038,7 +1049,8 @@ async function panSteps(
   outDir: string,
 ): Promise<number[]> {
   const context = await browser.newContext({ viewport: VIEWPORT });
-  await context.route('**/*', (route) => answer(route, origin, 'buildings', Promise.resolve()));
+  terrainServed = { held: Promise.resolve(), relief: 'flat' };
+  await context.route('**/*', (route) => answer(route, origin, 'buildings'));
   const page = await context.newPage();
   await page.clock.setFixedTime(PAN_MORNING);
   await page.addInitScript(() => {
@@ -1075,7 +1087,13 @@ async function panSteps(
     await drainGpu(page);
   };
   await still();
-  await page.addStyleTag({ content: '[data-goway-perf-hud] { display: none !important; }' });
+  // The map's own chrome stays put while the map moves under it: the floating
+  // controls (`map-controls`, `map-top-right-stack`) inside the clip are not
+  // the map, and would read as a change on every step (~1%, measured).
+  await page.addStyleTag({
+    content:
+      '[data-goway-perf-hud], [data-testid="map-controls"], [data-testid="map-top-right-stack"] { display: none !important; }',
+  });
   const shot = (i: number) =>
     page.screenshot({ clip: CLIP, path: join(outDir, `pan-${i}.png`), timeout: SETTLE_TIMEOUT_MS });
   const x = CLIP.x + CLIP.width / 2;
