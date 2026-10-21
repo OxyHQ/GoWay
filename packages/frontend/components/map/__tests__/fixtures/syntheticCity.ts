@@ -450,13 +450,17 @@ export function syntheticCoverage(): Array<[number, number, number, number]> {
 /**
  * Serve on a local port: `/city/{z}/{x}/{y}.pbf`, `/omt/{z}/{x}/{y}.pbf`,
  * `/roads/{z}/{x}/{y}.pbf` and the map's glyphs at `/fonts/{fontstack}/{range}.pbf`.
+ * `roads` stands in for a slow or failing road archive: each road tile waits
+ * for `wait`, then answers `status()` (a non-2xx: that status, no body).
  */
-export function serveSyntheticCity(): { origin: string; requests: string[]; stop(): void } {
+export function serveSyntheticCity(
+  roads: { wait?: () => Promise<void>; status?: () => number } = {},
+): { origin: string; requests: string[]; stop(): void } {
   const requests: string[] = [];
   const server = Bun.serve({
     port: 0,
     hostname: '127.0.0.1',
-    fetch(request) {
+    async fetch(request) {
       const url = new URL(request.url);
       const font = /^\/fonts\/([^/]+)\/(\d+-\d+)\.pbf$/.exec(url.pathname);
       if (font) {
@@ -469,6 +473,11 @@ export function serveSyntheticCity(): { origin: string; requests: string[]; stop
       const match = /^\/(city|omt|roads)\/(\d+)\/(\d+)\/(\d+)\.pbf$/.exec(url.pathname);
       if (!match) return new Response(null, { status: 404 });
       requests.push(url.pathname);
+      if (match[1] === 'roads') {
+        await roads.wait?.();
+        const status = roads.status?.() ?? 200;
+        if (status < 200 || status > 299) return new Response(null, { status });
+      }
       const [z, x, y] = [Number(match[2]), Number(match[3]), Number(match[4])];
       const bytes =
         match[1] === 'city'

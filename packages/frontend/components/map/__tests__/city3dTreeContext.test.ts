@@ -23,7 +23,7 @@ import {
   TREE_CONTEXT,
   type TreeContext,
 } from '@/components/map/engine/city3d/treeContext';
-import { roadContext } from '@/components/map/engine/city3d/workerTrees';
+import { decodeRoadLines, roadContext } from "@/components/map/engine/city3d/workerTrees";
 import { CITY_ROAD_LAYER } from '@/lib/map/cityRoads';
 import { CITY_TILE_EXTENT } from '@/lib/map/cityTiles';
 import { encodeLines, encodeTileLayers } from '@/scripts/citygen/mvtEncode';
@@ -241,7 +241,7 @@ describe('the carriageways, as the street detail draws them', () => {
   const view = new Uint8Array(bytes).buffer as ArrayBuffer;
 
   test('three recorded lanes, a recorded width; no shared surface, tunnel or bridge', () => {
-    const { carriageways, sidewalks } = roadContext(view, tile, 4096);
+    const { carriageways, sidewalks } = roadContext([decodeRoadLines(view, tile)], tile, 4096);
     expect(carriageways.map((c) => c.points[0][1])).toEqual([1000, 1100]);
     // 3 × the secondary lane (3.25 m); the recorded 9 m.
     expect(carriageways[0].halfWidthM).toBeCloseTo((3 * 3.25) / 2, 6);
@@ -250,7 +250,7 @@ describe('the carriageways, as the street detail draws them', () => {
   });
 
   test('in the city tile’s own units', () => {
-    const { carriageways } = roadContext(view, tile, 512);
+    const { carriageways } = roadContext([decodeRoadLines(view, tile)], tile, 512);
     expect(carriageways[0].points[0][1]).toBeCloseTo(125, 6);
   });
 });

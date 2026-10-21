@@ -56,6 +56,7 @@ import {
   placeEntry,
   setEntryFade,
   setEntryTreeDetail,
+  setEntryTrees,
   setEntryVisible,
   type TileEntry,
 } from './cityMeshes';
@@ -93,7 +94,12 @@ import {
 import { createMaterialWarmup } from './materialWarmup';
 import { createModelLayer, type ModelSpec, type ModelStatus } from './models';
 import type { CityLight } from './occlusion';
-import type { CityTileFormat, MeshWorkerRequest, MeshWorkerResponse } from './protocol';
+import type {
+  CityTileFormat,
+  MeshWorkerRequest,
+  MeshWorkerResponse,
+  TreeContextTiles,
+} from './protocol';
 import { type CitySky, type CitySkyStats, type CitySkyView, createCitySky } from './sky';
 import { createDetailedMaterial } from './tsl/detailedMaterial';
 import { type CityMaterialResponse, clayResponse } from './tsl/skyBuildingMaterial';
@@ -457,10 +463,12 @@ function expandTemplate(template: string, tile: TileId): string {
 
 /**
  * What surrounds a city tile's trees (`treeContext.ts`): its ancestor at the
- * basemap's zoom (areas; the fill's landcover) and the road tile at its own
- * address.
+ * basemap's zoom (areas; the fill's landcover) and, `withRoads` (one of the
+ * profile's `treeRoadTiles` nearest), the road tiles at its own address and
+ * its eight neighbours' — the worker reads a neighbour's only where a tree
+ * stands near that edge (`workerTrees.ts` → `treeTilesFor`).
  */
-function treeContextFor(
+export function treeContextFor(
   tile: TileId,
   source: {
     tileUrlTemplate: string;
@@ -468,15 +476,27 @@ function treeContextFor(
     mappedLayer: string;
     roadTileUrlTemplate?: string;
   },
-): { url: string; tile: TileId; roadsUrl?: string; mappedLayer: string } {
+  withRoads: boolean,
+): TreeContextTiles {
   const shift = Math.max(0, tile.z - source.tileZoom);
   const parent = { z: tile.z - shift, x: tile.x >> shift, y: tile.y >> shift };
+  const roads = withRoads ? source.roadTileUrlTemplate : undefined;
+  const n = 2 ** tile.z;
+  const neighbours: { tile: TileId; url: string }[] = [];
+  if (roads) {
+    for (const dy of [-1, 0, 1]) {
+      for (const dx of [-1, 0, 1]) {
+        const y = tile.y + dy;
+        if ((dx === 0 && dy === 0) || y < 0 || y >= n) continue;
+        const at = { z: tile.z, x: (tile.x + dx + n) % n, y };
+        neighbours.push({ tile: at, url: expandTemplate(roads, at) });
+      }
+    }
+  }
   return {
     url: expandTemplate(source.tileUrlTemplate, parent),
     tile: parent,
-    ...(source.roadTileUrlTemplate
-      ? { roadsUrl: expandTemplate(source.roadTileUrlTemplate, tile) }
-      : {}),
+    ...(roads ? { roadsUrl: expandTemplate(roads, tile), roadNeighbours: neighbours } : {}),
     mappedLayer: source.mappedLayer,
   };
 }
@@ -484,12 +504,40 @@ function treeContextFor(
 /** A (tile, level) the engine requests, and from which source. */
 type LodRequest = TileId & { lod: Lod; format: CityTileFormat };
 
-/** A worker reply waiting for the upload budget. */
-interface Arrival {
-  key: string;
-  lod: Lod;
-  format: CityTileFormat;
-  reply: Extract<MeshWorkerResponse, { type: 'mesh' }>;
+type MeshReply = Extract<MeshWorkerResponse, { type: 'mesh' }>;
+type TreesReply = Extract<MeshWorkerResponse, { type: 'trees' }>;
+
+/**
+ * A worker reply waiting for the upload budget: a tile's mesh (with its trees,
+ * or with them to follow), or the trees of a tile already drawn.
+ */
+type Arrival =
+  | {
+      kind: 'mesh';
+      key: string;
+      lod: Lod;
+      format: CityTileFormat;
+      reply: MeshReply;
+      /** Its trees were read in context (a city tile's), and whether against the road archive. */
+      treeRoads: boolean | null;
+    }
+  | {
+      kind: 'trees';
+      key: string;
+      reply: TreesReply;
+      /** The mesh request that built the entry these trees are for. */
+      origin: number;
+      treeRoads: boolean;
+    };
+
+/** The trees of a drawn city tile, as asked for and as answered. */
+interface TreeState {
+  /** Read against the road archive. */
+  roads: boolean;
+  /** Incomplete answers in a row. */
+  attempts: number;
+  /** When to read them again (an incomplete answer); `null`: never. */
+  retryAt: number | null;
 }
 
 export function createCityEngine(options: CityEngineOptions): CityEngine {
@@ -663,6 +711,14 @@ export function createCityEngine(options: CityEngineOptions): CityEngine {
     disposeEntry(entry);
     grounder.forget(entry.key);
     volumesVersion++;
+    // Its trees are for nothing now.
+    treeStates.delete(entry.key);
+    const origin = entryOrigin.get(entry);
+    for (const [id, pending] of treesPending) {
+      if (pending.key !== entry.key || pending.origin !== origin) continue;
+      treesPending.delete(id);
+      pool.cancel(id, { type: 'cancel', id });
+    }
   });
   // The camera's height field (`camera/field.ts`): the finest mesh held per
   // tile and the landmarks drawn, re-listed only when one of them (or the
@@ -704,12 +760,25 @@ export function createCityEngine(options: CityEngineOptions): CityEngine {
   });
   const scheduler = new TileScheduler<LodRequest>((t) => lodKey(tileKey(t), t.lod));
   const requests = new Map<number, LodRequest>();
+  // Whether each mesh request read its trees in context, against the road
+  // archive (`true`) or the basemap alone (`false`); absent: no context.
+  const requestTreeRoads = new Map<number, boolean>();
   // Landmark columns being measured by the workers, by request id.
   const measures = new Map<number, (volumes: VolumeIndex | null) => void>();
   const retryTimers = new Set<ReturnType<typeof setTimeout>>();
   const arrivals: Arrival[] = [];
-  // Tiles drawn from an incomplete answer, and when to ask for them again.
+  // EMPTY tiles from an incomplete answer, and when to ask for them again
+  // (a drawn tile's trees are asked for again alone: `treeStates`).
   const incomplete = new Map<string, { attempts: number; retryAt: number }>();
+  // Trees on their way, by request id: a mesh reply's trees to follow
+  // (`more`), or a `trees` request for a drawn tile. `origin` is the mesh
+  // request whose entry they are for: a newer mesh of the tile drops them.
+  const treesPending = new Map<number, { key: string; origin: number; roads: boolean }>();
+  // What built each entry, and the state of each city entry's trees.
+  const entryOrigin = new WeakMap<TileEntry, number>();
+  const treeStates = new Map<string, TreeState>();
+  // Entries whose new trees are not lifted onto the terrain yet: drawn without them.
+  const treesUnlifted = new WeakSet<TileEntry>();
   const previousLods = new Map<string, Lod>();
   let selected: SourcedTile[] = [];
   let nextRequestId = 1;
@@ -861,15 +930,16 @@ export function createCityEngine(options: CityEngineOptions): CityEngine {
       if (cache.has(lodKey(tileKey(tile), tile.lod))) loaded++;
     }
     // Counts that changed are reported at once; timings at most 4× a second.
-    const signature = `${byLod.join()}|${loaded}|${scheduler.pendingCount}|${arrivals.length}|${unlifted.size}|${errors}`;
+    const signature = `${byLod.join()}|${loaded}|${scheduler.pendingCount}|${arrivals.length}|${unlifted.size}|${treesPending.size}|${errors}`;
     if (!force && signature === lastSignature && at - lastStatsAt < 250) return;
     lastSignature = signature;
     lastStatsAt = at;
     options.onStats({
       tilesWanted: selected.length,
       tilesLoaded: loaded,
-      // On terrain a tile is not drawn until it is lifted: pending until then.
-      tilesPending: scheduler.pendingCount + arrivals.length + unlifted.size,
+      // On terrain a tile is not drawn until it is lifted, and a city tile's
+      // trees may follow its buildings: pending until then.
+      tilesPending: scheduler.pendingCount + arrivals.length + unlifted.size + treesPending.size,
       tilesByLod: byLod,
       ...drawn,
       gpuBytes: cache.bytes,
@@ -926,8 +996,48 @@ export function createCityEngine(options: CityEngineOptions): CityEngine {
       return;
     }
     if (reply.type === 'volumes') return;
+    // A tile's trees, after its buildings or read again — or lost with a
+    // worker that died, which is an incomplete answer.
+    const pendingTrees = treesPending.get(reply.id);
+    if (pendingTrees) {
+      treesPending.delete(reply.id);
+      if (reply.type === 'cancelled') return;
+      const trees: TreesReply =
+        reply.type === 'trees'
+          ? reply
+          : { type: 'trees', id: reply.id, trees: null, treeMs: 0, treesComplete: false };
+      if (reply.type === 'trees') lastTreeMs = reply.treeMs;
+      // Its buildings still waiting for the upload budget: they go up together.
+      const waiting = arrivals.find(
+        (a) => a.kind === 'mesh' && a.reply.id === pendingTrees.origin,
+      );
+      if (waiting?.kind === 'mesh') {
+        const { more: _more, ...meshed } = waiting.reply;
+        waiting.reply = {
+          ...meshed,
+          trees: trees.trees,
+          treeMs: trees.treeMs,
+          treesComplete: trees.treesComplete,
+          ...(trees.treeSettings ? { treeSettings: trees.treeSettings } : {}),
+        };
+        waiting.treeRoads = pendingTrees.roads;
+      } else {
+        arrivals.push({
+          kind: 'trees',
+          key: pendingTrees.key,
+          reply: trees,
+          origin: pendingTrees.origin,
+          treeRoads: pendingTrees.roads,
+        });
+      }
+      options.requestRepaint();
+      return;
+    }
+    if (reply.type === 'trees') return;
     const request = requests.get(reply.id);
     requests.delete(reply.id);
+    const treeRoads = requestTreeRoads.get(reply.id) ?? null;
+    requestTreeRoads.delete(reply.id);
     const meshedWith = requestVersion.get(reply.id) ?? 0;
     requestVersion.delete(reply.id);
     if (!request) return;
@@ -955,13 +1065,18 @@ export function createCityEngine(options: CityEngineOptions): CityEngine {
     const tileName = tileKey(request);
     if ((stale.get(tileName) ?? 0) <= meshedWith) stale.delete(tileName);
     lastMeshMs = reply.meshMs;
-    lastTreeMs = reply.treeMs;
+    if (!reply.more) lastTreeMs = reply.treeMs;
+    const key = lodKey(tileKey(request), request.lod);
+    // Its trees follow (`meshService.ts`): drawn without them until then.
+    if (reply.more) treesPending.set(reply.id, { key, origin: reply.id, roads: treeRoads === true });
     // GPU work waits for the upload budget (`admit`); the bookkeeping is done.
     arrivals.push({
-      key: lodKey(tileKey(request), request.lod),
+      kind: 'mesh',
+      key,
       lod: request.lod,
       format: request.format,
       reply,
+      treeRoads,
     });
     options.requestRepaint();
   };
@@ -979,6 +1094,60 @@ export function createCityEngine(options: CityEngineOptions): CityEngine {
     return frameUploadBudget(slow ? 0 : quality.uploadBytesPerFrame);
   };
 
+  /** Ask for a frame in `delay` ms: a retry falls due then, even if nothing moves. */
+  const wakeIn = (delay: number) => {
+    const timer = setTimeout(() => {
+      retryTimers.delete(timer);
+      if (!disposed) options.requestRepaint();
+    }, delay);
+    retryTimers.add(timer);
+  };
+
+  /**
+   * After an answer with trees: whether and when to ask again. A drawn
+   * tile's trees are read again ALONE (a `trees` request: its buildings stay
+   * as they are) at 2, 8 and 30 s; an empty tile (nothing drawn to keep) is
+   * asked for again in full. `treeRoads`: what the trees were read against
+   * (`null`: not in context — an OpenMapTiles tile, or no trees asked).
+   */
+  const settleTrees = (
+    key: string,
+    entry: TileEntry | null,
+    complete: boolean,
+    treeRoads: boolean | null,
+    now: number,
+  ) => {
+    if (!entry) {
+      treeStates.delete(key);
+      if (complete) {
+        incomplete.delete(key);
+        return;
+      }
+      const attempts = (incomplete.get(key)?.attempts ?? 0) + 1;
+      const delay = incompleteRetryMs(attempts);
+      if (delay === null) incomplete.delete(key);
+      else {
+        incomplete.set(key, { attempts, retryAt: now + delay });
+        wakeIn(delay);
+      }
+      return;
+    }
+    incomplete.delete(key);
+    if (treeRoads === null) {
+      treeStates.delete(key);
+      return;
+    }
+    const attempts = complete ? 0 : (treeStates.get(key)?.attempts ?? 0) + 1;
+    const delay = complete ? null : incompleteRetryMs(attempts);
+    if (process.env.TEST_DEBUG) console.log('settle', key, complete, treeRoads, attempts, delay, now);
+    treeStates.set(key, {
+      roads: treeRoads,
+      attempts,
+      retryAt: delay === null ? null : now + delay,
+    });
+    if (delay !== null) wakeIn(delay);
+  };
+
   /** Hand queued meshes to the GPU, nearest first, within this frame's budget. */
   const admit = (now: number, upload: FrameUploadBudget) => {
     // No tile becomes drawable before its materials are built
@@ -992,11 +1161,29 @@ export function createCityEngine(options: CityEngineOptions): CityEngine {
     while (arrivals.length > 0) {
       const next = arrivals[0];
       const bytes =
-        (next.reply.mesh?.bytes ?? 0) +
+        (next.kind === 'mesh' ? (next.reply.mesh?.bytes ?? 0) : 0) +
         (next.reply.trees?.data.byteLength ?? 0) +
         (next.reply.trees?.form.byteLength ?? 0);
       if (!upload.take(bytes)) break;
       arrivals.shift();
+      if (next.kind === 'trees') {
+        // The trees of a tile already drawn — if it is still the entry they
+        // were read for (a newer mesh brings its own).
+        const entry = cache.get(next.key);
+        if (!entry || entryOrigin.get(entry) !== next.origin) continue;
+        setEntryTrees(context, shapes, entry, next.reply.trees);
+        if (next.reply.treeSettings) entryTreeSettings.set(entry, next.reply.treeSettings);
+        else entryTreeSettings.delete(entry);
+        // On terrain its lift now covers trees it did not have: lifted again
+        // (`TileGrounder.reshape`), its buildings drawn meanwhile.
+        if (grounder.hasGround(entry.key)) {
+          grounder.reshape(entry.key);
+          if (entry.trees.length > 0) treesUnlifted.add(entry);
+        }
+        settleTrees(next.key, entry, next.reply.treesComplete, next.treeRoads, now);
+        cache.put(next.key, entry, entry.bytes, frame, wanted);
+        continue;
+      }
       const entry = createTileEntry(
         context,
         shapes,
@@ -1006,23 +1193,15 @@ export function createCityEngine(options: CityEngineOptions): CityEngine {
         next.reply.trees,
         next.format,
       );
+      if (entry) entryOrigin.set(entry, next.reply.id);
       if (entry && next.reply.sources) entrySources.set(entry, next.reply.sources);
       if (entry && next.reply.treeSettings) entryTreeSettings.set(entry, next.reply.treeSettings);
       remember(next.key.slice(0, next.key.indexOf('@')), next.lod, entry);
-      if (next.reply.treesComplete === false) {
-        const attempts = (incomplete.get(next.key)?.attempts ?? 0) + 1;
-        const delay = incompleteRetryMs(attempts);
-        if (delay === null) incomplete.delete(next.key);
-        else {
-          incomplete.set(next.key, { attempts, retryAt: now + delay });
-          const timer = setTimeout(() => {
-            retryTimers.delete(timer);
-            if (!disposed) options.requestRepaint();
-          }, delay);
-          retryTimers.add(timer);
-        }
+      if (next.reply.more) {
+        // Its trees follow: nothing to ask again yet.
+        treeStates.set(next.key, { roads: next.treeRoads === true, attempts: 0, retryAt: null });
       } else {
-        incomplete.delete(next.key);
+        settleTrees(next.key, entry, next.reply.treesComplete, next.treeRoads, now);
       }
       cache.put(next.key, entry, entry?.bytes ?? 0, frame, wanted);
       if (entry?.packed?.volumes) volumesVersion++;
@@ -1077,14 +1256,41 @@ export function createCityEngine(options: CityEngineOptions): CityEngine {
       pool.cancel(id, { type: 'cancel', id });
       requests.delete(id);
       requestVersion.delete(id);
+      requestTreeRoads.delete(id);
     }
-    const room = pool.size * MAX_IN_FLIGHT_PER_WORKER - pool.inFlight;
+    // The city tiles whose trees read the road archive: the profile's
+    // nearest (`city.treeRoadTiles`); the rest are set from the basemap's
+    // areas alone until they come this near.
+    const roadTiles = new Set(
+      selected
+        .filter((t) => t.format === 'goway' && t.lod < 2)
+        .sort((a, b) => a.r - b.r)
+        .slice(0, quality.treeRoadTiles)
+        .map((t) => tileKey(t)),
+    );
+    const contextFor = (tile: TileId, withRoads: boolean) =>
+      treeContextFor(
+        tile,
+        {
+          tileUrlTemplate: options.tileUrlTemplate,
+          tileZoom: options.tileZoom,
+          mappedLayer: options.city?.treeLayer ?? '',
+          roadTileUrlTemplate: options.city?.roadTileUrlTemplate,
+        },
+        withRoads,
+      );
+    const withRoads = (tile: TileId) =>
+      options.city?.roadTileUrlTemplate !== undefined && roadTiles.has(tileKey(tile));
+    let room = pool.size * MAX_IN_FLIGHT_PER_WORKER - pool.inFlight;
     for (const request of plan.request.slice(0, Math.max(0, room))) {
+      room--;
       const id = nextRequestId++;
       requests.set(id, request);
       requestVersion.set(id, hiddenVersion);
       scheduler.started(request, id);
       const tile: TileId = { z: request.z, x: request.x, y: request.y };
+      const inContext = trees !== null && request.format === 'goway' && request.lod < 2;
+      if (inContext) requestTreeRoads.set(id, withRoads(tile));
       pool.send(
         {
           type: 'mesh',
@@ -1099,16 +1305,7 @@ export function createCityEngine(options: CityEngineOptions): CityEngine {
                 // The trees' setting reads the basemap's areas and the road
                 // archive; the fill the basemap's landcover: the city tiles
                 // carry buildings and the trees OSM records, no landcover.
-                ...(trees
-                  ? {
-                      treeContext: treeContextFor(tile, {
-                        tileUrlTemplate: options.tileUrlTemplate,
-                        tileZoom: options.tileZoom,
-                        mappedLayer: options.city.treeLayer,
-                        roadTileUrlTemplate: options.city.roadTileUrlTemplate,
-                      }),
-                    }
-                  : {}),
+                ...(inContext ? { treeContext: contextFor(tile, withRoads(tile)) } : {}),
               }
             : {
                 url: expandTemplate(options.tileUrlTemplate, tile),
@@ -1123,6 +1320,46 @@ export function createCityEngine(options: CityEngineOptions): CityEngine {
         },
         tileKey(tile),
       );
+    }
+
+    // A drawn city tile's trees, read again alone — its buildings stay as
+    // they are: when their answer was incomplete and the retry is due, or
+    // when they were read without the road archive and the tile is now
+    // among the nearest. Not while the tile itself is being meshed (that
+    // brings its trees), nor twice at once.
+    if (trees && options.city && room > 0) {
+      const busy = new Set<string>();
+      for (const pending of treesPending.values()) busy.add(pending.key);
+      for (const request of requests.values()) busy.add(lodKey(tileKey(request), request.lod));
+      for (const tile of selected) {
+        if (room <= 0) break;
+        if (tile.format !== 'goway' || tile.lod >= 2) continue;
+        const key = lodKey(tileKey(tile), tile.lod);
+        const state = treeStates.get(key);
+        const entry = cache.get(key);
+        if (!state || !entry || busy.has(key) || stale.has(canonical(key))) continue;
+        const roads = withRoads(tile);
+        const retry = state.retryAt !== null && now >= state.retryAt;
+        if (!retry && !(roads && !state.roads)) continue;
+        const origin = entryOrigin.get(entry);
+        if (origin === undefined) continue;
+        const id = nextRequestId++;
+        const at: TileId = { z: tile.z, x: tile.x, y: tile.y };
+        treesPending.set(id, { key, origin, roads });
+        room--;
+        pool.send(
+          {
+            type: 'trees',
+            id,
+            tile: at,
+            url: expandTemplate(options.city.tileUrlTemplate, at),
+            trees: trees.sourceLayers,
+            treeFillWoods: trees.fillWoods === true,
+            treeContext: contextFor(at, roads),
+          },
+          tileKey(at),
+        );
+      }
     }
     if (plan.cancel.length > 0 || plan.request.length > 0) reportStats(true);
   };
@@ -1227,6 +1464,7 @@ export function createCityEngine(options: CityEngineOptions): CityEngine {
         const result = grounder.ground(entry.key, groundTileFor(entry, tile));
         if (result) {
           applyGround(entry, result);
+          treesUnlifted.delete(entry);
           groundRevisions.set(entry.key, (groundRevisions.get(entry.key) ?? 0) + 1);
           liftRange = {
             min: Math.min(liftRange?.min ?? result.min, result.min),
@@ -1282,7 +1520,10 @@ export function createCityEngine(options: CityEngineOptions): CityEngine {
         });
         drawn.triangles += entry.triangles;
         drawn.vertices += entry.vertices;
-        if (entry.trees.length > 0 && drawn.trees + entry.treeCount > quality.treeBudget) {
+        if (grounded && treesUnlifted.has(entry)) {
+          // Trees that arrived after its last lift: drawn once they are lifted.
+          for (const mesh of entry.trees) mesh.visible = false;
+        } else if (entry.trees.length > 0 && drawn.trees + entry.treeCount > quality.treeBudget) {
           // Past the budget a farther tile shows its buildings only.
           for (const mesh of entry.trees) mesh.visible = false;
         } else {
@@ -1527,6 +1768,9 @@ export function createCityEngine(options: CityEngineOptions): CityEngine {
       tslPass.dispose();
       shapes.dispose();
       requests.clear();
+      requestTreeRoads.clear();
+      treesPending.clear();
+      treeStates.clear();
       arrivals.length = 0;
     },
   };

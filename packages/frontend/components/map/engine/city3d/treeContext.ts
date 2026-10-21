@@ -27,8 +27,18 @@
  * square to the kerb and `kerbClearanceM` past it, counted as `nudged`; or it
  * is deeper in the road (a mis-mapped point, or a planted median the road's
  * one centreline runs through): it is not drawn, counted as `offCarriageway`
- * (the engine's dev stats show both). Shared surfaces (`living_street`,
- * `pedestrian`), tunnels and bridges have no carriageway at ground level.
+ * (the engine's dev stats show both). A RECORDED parking lane is the kerb
+ * side of the street, not its traffic: a tree in it (OSM's point a little off
+ * a kerb that has parking beside it) is a kerb tree too, moved out like one —
+ * only a point more than `nudgeM` into the lanes past the parking is left out.
+ * Shared surfaces (`living_street`, `pedestrian`), tunnels and bridges have no
+ * carriageway at ground level.
+ *
+ * **At a tile's edge.** The road archive cuts every way at the z15 edge, with
+ * no buffer (`lib/map/cityRoads.ts`), so a street running just inside the
+ * neighbouring tile is not in this tile's road tile. The worker reads the
+ * neighbours' road tiles too wherever a tree stands within
+ * {@link TREE_CONTEXT}`.edgeReachM` of an edge (`workerTrees.ts`).
  *
  * Pure: tested in `components/map/__tests__/city3dTreeContext.test.ts`.
  */
@@ -46,13 +56,25 @@ export const TREE_CONTEXT = {
   nudgeM: 1.5,
   /** Where a moved tree stands: this far past the kerb (metres). */
   kerbClearanceM: 0.75,
+  /**
+   * A tree this close to a tile's edge (metres) is read against the
+   * neighbouring tile's road tile as well: half the widest carriageway the
+   * street detail draws plus `nearCarriagewayM`.
+   */
+  edgeReachM: 30,
 } as const;
 
 /** A carriageway as drawn: its centreline and half its kerb-to-kerb width. */
 export interface Carriageway {
   /** Tile units, y down (the city tile's). */
   points: readonly Point2[];
+  /** Half the kerb-to-kerb width, recorded parking included. */
   halfWidthM: number;
+  /**
+   * Recorded parking lanes along its kerbs (metres): on the left and the right
+   * of the centreline's direction. Absent: none.
+   */
+  parkingM?: { left: number; right: number };
 }
 
 /** What the tiles around a city tile record, in its tile units. */
@@ -133,6 +155,9 @@ interface Segment {
   by: number;
   /** Half width in tile units (carriageways); 0 for a sidewalk. */
   half: number;
+  /** Recorded parking on the left and the right of a → b, tile units. */
+  parkLeft: number;
+  parkRight: number;
 }
 
 /** Segments bucketed by a square grid of their (padded) boxes. */
@@ -166,9 +191,16 @@ class SegmentGrid {
   }
 }
 
-function segmentsOf(lines: readonly (readonly Point2[])[], half: (k: number) => number) {
+const NO_PARKING = { left: 0, right: 0 } as const;
+
+function segmentsOf(
+  lines: readonly (readonly Point2[])[],
+  half: (k: number) => number,
+  parking: (k: number) => { left: number; right: number } = () => NO_PARKING,
+) {
   const out: Segment[] = [];
   lines.forEach((points, k) => {
+    const park = parking(k);
     for (let i = 0; i + 1 < points.length; i++) {
       out.push({
         ax: points[i][0],
@@ -176,10 +208,22 @@ function segmentsOf(lines: readonly (readonly Point2[])[], half: (k: number) => 
         bx: points[i + 1][0],
         by: points[i + 1][1],
         half: half(k),
+        parkLeft: park.left,
+        parkRight: park.right,
       });
     }
   });
   return out;
+}
+
+/**
+ * The recorded parking on the side of `s` that (x, y) is on. Tile units are
+ * y down, so a point is on the LEFT of a → b where the cross product is
+ * negative (heading east, north is up the screen: −y).
+ */
+function parkingOnSide(s: Segment, x: number, y: number): number {
+  const cross = (s.bx - s.ax) * (y - s.ay) - (s.by - s.ay) * (x - s.ax);
+  return cross < 0 ? s.parkLeft : cross > 0 ? s.parkRight : Math.min(s.parkLeft, s.parkRight);
 }
 
 /** The nearest point of a segment to (x, y), and the distance to it. */
@@ -194,9 +238,14 @@ function nearest(s: Segment, x: number, y: number): { px: number; py: number; d:
   return { px, py, d: Math.hypot(x - px, y - py) };
 }
 
-/** How deep (x, y) is inside the deepest carriageway, tile units (≤ 0: outside all). */
+/**
+ * How deep (x, y) is inside the deepest carriageway, tile units (≤ 0: outside
+ * all), and how deep past the recorded parking on its side (`lanes`: into the
+ * traffic lanes).
+ */
 function deepest(grid: SegmentGrid, x: number, y: number) {
   let depth = -Infinity;
+  let lanes = -Infinity;
   let at: { s: Segment; px: number; py: number; d: number } | null = null;
   for (const s of grid.near(x, y)) {
     if (s.half === 0) continue;
@@ -206,8 +255,9 @@ function deepest(grid: SegmentGrid, x: number, y: number) {
       depth = inside;
       at = { s, ...n };
     }
+    if (inside > 0) lanes = Math.max(lanes, inside - parkingOnSide(s, x, y));
   }
-  return { depth, at };
+  return { depth, lanes, at };
 }
 
 /**
@@ -226,12 +276,14 @@ export function settleTrees<T extends { x: number; y: number; street?: boolean }
   const unit = (metres: number) => metres / metresPerUnit;
   const near = unit(TREE_CONTEXT.nearCarriagewayM);
   const nearWalk = unit(TREE_CONTEXT.nearSidewalkM);
-  const segments = [
-    ...segmentsOf(
-      context.carriageways.map((c) => c.points),
-      (k) => unit(context.carriageways[k].halfWidthM),
-    ),
-  ];
+  const segments = segmentsOf(
+    context.carriageways.map((c) => c.points),
+    (k) => unit(context.carriageways[k].halfWidthM),
+    (k) => {
+      const parking = context.carriageways[k].parkingM;
+      return parking ? { left: unit(parking.left), right: unit(parking.right) } : NO_PARKING;
+    },
+  );
   const walks = segmentsOf(context.sidewalks, () => 0);
   const grid = new SegmentGrid(unit(16), [...segments, ...walks], Math.max(near, nearWalk));
   const nature = indexAreas(context.nature);
@@ -242,7 +294,8 @@ export function settleTrees<T extends { x: number; y: number; street?: boolean }
     let { x, y } = tree;
     const inRoad = deepest(grid, x, y);
     if (inRoad.depth > 0 && inRoad.at) {
-      if (inRoad.depth > unit(TREE_CONTEXT.nudgeM)) {
+      // Recorded parking is the kerb side: only the depth into the lanes past it counts.
+      if (inRoad.lanes > unit(TREE_CONTEXT.nudgeM)) {
         counts.offCarriageway++;
         continue;
       }

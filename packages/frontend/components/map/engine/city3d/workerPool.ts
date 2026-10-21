@@ -49,6 +49,11 @@ export function pickWorker(loads: readonly number[], key: string): number {
 export interface PoolMessage {
   id: number;
   type?: string;
+  /**
+   * A reply that is not the request's last: its slot is free, and the
+   * replies that follow (the last without `more`) are still handed on.
+   */
+  more?: boolean;
 }
 
 /** Where a worker's replies go: given to the factory for the worker it makes. */
@@ -87,11 +92,18 @@ export function webWorker<Response>(worker: Worker, events: WorkerEvents<Respons
  *  - **A worker that dies fails its requests and is replaced.** Its in-flight
  *    requests are reported failed (the engine retries them with backoff) —
  *    otherwise they stayed pending forever and their tiles never drew.
+ *
+ * A reply marked `more` (a tile's buildings, its trees to follow:
+ * `meshService.ts`) frees the slot — the worker is only waiting on downloads
+ * — and the request is FOLLOWED until its last reply: handed on, cancellable,
+ * and failed if its worker dies.
  */
 export class WorkerPool<Request extends PoolMessage, Response extends PoolMessage> {
   private readonly workers: PoolWorker[];
   private readonly loads: number[];
   private readonly owner = new Map<number, number>();
+  /** Requests whose slot is free and whose last reply is still to come, by worker. */
+  private readonly following = new Map<number, number>();
   private readonly cancelled = new Set<number>();
 
   constructor(
@@ -130,10 +142,23 @@ export class WorkerPool<Request extends PoolMessage, Response extends PoolMessag
 
   private received(index: number, response: Response): void {
     const { id, type } = response;
-    if (this.owner.get(id) !== index) return;
-    this.owner.delete(id);
-    this.loads[index] = Math.max(0, this.loads[index] - 1);
-    if (this.cancelled.delete(id) || type === 'cancelled') return;
+    const last = response.more !== true || type === 'cancelled';
+    if (this.owner.get(id) === index) {
+      this.owner.delete(id);
+      this.loads[index] = Math.max(0, this.loads[index] - 1);
+    } else if (this.following.get(id) === index) {
+      this.following.delete(id);
+    } else {
+      return;
+    }
+    if (this.cancelled.has(id)) {
+      // Dropped; a cancel ends the request whatever the worker was saying.
+      if (last) this.cancelled.delete(id);
+      else this.following.set(id, index);
+      return;
+    }
+    if (type === 'cancelled') return;
+    if (!last) this.following.set(id, index);
     this.onMessage(response);
   }
 
@@ -141,8 +166,10 @@ export class WorkerPool<Request extends PoolMessage, Response extends PoolMessag
   private replace(index: number, message: string): void {
     const lost: number[] = [];
     for (const [id, owner] of this.owner) if (owner === index) lost.push(id);
+    for (const [id, owner] of this.following) if (owner === index) lost.push(id);
     for (const id of lost) {
       this.owner.delete(id);
+      this.following.delete(id);
       if (!this.cancelled.delete(id)) this.onFailed(id, message);
     }
     this.loads[index] = 0;
@@ -154,7 +181,10 @@ export class WorkerPool<Request extends PoolMessage, Response extends PoolMessag
     return this.workers.length;
   }
 
-  /** Requests sent and not yet answered — cancelled ones included, until acknowledged. */
+  /**
+   * Requests sent and not yet answered — cancelled ones included, until
+   * acknowledged. A followed request (`more`) holds no slot.
+   */
   get inFlight(): number {
     return this.owner.size;
   }
@@ -168,7 +198,7 @@ export class WorkerPool<Request extends PoolMessage, Response extends PoolMessag
 
   /** Ask the worker holding `id` to drop it; the slot frees when it answers. */
   cancel(id: number, message: unknown): void {
-    const index = this.owner.get(id);
+    const index = this.owner.get(id) ?? this.following.get(id);
     if (index === undefined || this.cancelled.has(id)) return;
     this.cancelled.add(id);
     this.workers[index].postMessage(message);
@@ -177,6 +207,7 @@ export class WorkerPool<Request extends PoolMessage, Response extends PoolMessag
   terminate(): void {
     for (const worker of this.workers) worker.terminate();
     this.owner.clear();
+    this.following.clear();
     this.cancelled.clear();
   }
 }

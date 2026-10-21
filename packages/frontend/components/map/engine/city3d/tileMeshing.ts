@@ -70,6 +70,16 @@ export function meshOpenMapTiles(
 }
 
 /**
+ * A GoWay city tile's footprints alone — what its trees must not stand in —
+ * without meshing it: for re-reading the trees of a tile already drawn
+ * (`meshService.ts`, a `trees` request).
+ */
+export function cityFootprints(bytes: ArrayBuffer): Meshed['footprints'] {
+  const decoded = decodeCityTile(bytes);
+  return { list: decoded?.buildings ?? [], extent: decoded?.extent ?? CITY_TILE_EXTENT };
+}
+
+/**
  * GoWay city tiles: per-building, with roofs, colours and recorded storeys.
  * Full detail only (`osmMesher.ts` has no far levels yet); packed with its
  * colour and facade lanes.

@@ -57,6 +57,7 @@ describe('resolveQuality', () => {
       p.city.uploadBytesPerFrame,
       p.city.maxWorkers,
       p.city.treeBudget,
+      p.city.treeRoadTiles,
       p.sky.shadowMapSize,
       p.life.cars,
       p.life.people,

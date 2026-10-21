@@ -22,6 +22,8 @@ export interface CityQuality {
   workers: number;
   /** Tree instances per frame; 0: the workers place no trees at all. */
   treeBudget: number;
+  /** Nearest city tiles whose trees read the road archive (`QualityProfile.city.treeRoadTiles`). */
+  treeRoadTiles: number;
   /** `null`: no sun shadows (no shadow pass, no shadow map, no PCF in any shader). */
   shadows: { mapSize: number; taps: number } | null;
   /** What one tile's camera volumes may hold (`camera/volumes.ts`), handed to the mesh worker. */
@@ -45,6 +47,7 @@ export function cityQuality(
     uploadBytesPerFrame: city.uploadBytesPerFrame,
     workers: Math.max(1, Math.min(poolSize(hardwareConcurrency), city.maxWorkers)),
     treeBudget: city.treeBudget,
+    treeRoadTiles: city.treeRoadTiles,
     shadows: sky.shadowMapSize > 0 ? { mapSize: sky.shadowMapSize, taps: sky.shadowTaps } : null,
     volumes: {
       maxBytes: camera.volumeBytesPerTile,

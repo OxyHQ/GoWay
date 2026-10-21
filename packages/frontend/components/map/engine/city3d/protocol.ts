@@ -19,6 +19,24 @@ import type { TileId } from './tileMath';
  */
 export type CityTileFormat = 'openmaptiles' | 'goway';
 
+/**
+ * What surrounds a city tile's mapped trees: the OpenMapTiles tile whose areas
+ * set a tree's setting and whose landcover the styling fill reads (`url`,
+ * `tile`: the z14 parent of this z15 tile); the road archive's tile at this
+ * tile's address (`roadsUrl`) and its eight neighbours' (`roadNeighbours`,
+ * read only where a tree stands near that edge, `workerTrees.ts` →
+ * `treeTilesFor`) — both absent where none is published, or beyond the
+ * profile's `city.treeRoadTiles` nearest tiles; and the city tile's own tree
+ * layer name.
+ */
+export interface TreeContextTiles {
+  url: string;
+  tile: TileId;
+  roadsUrl?: string;
+  roadNeighbours?: readonly { tile: TileId; url: string }[];
+  mappedLayer: string;
+}
+
 export type MeshWorkerRequest =
   | {
       type: 'mesh';
@@ -45,13 +63,9 @@ export type MeshWorkerRequest =
       treeFillWoods?: boolean;
       /**
        * GoWay city tiles only: what surrounds the trees OSM records
-       * (`treeContext.ts`) — the OpenMapTiles tile whose areas set a tree's
-       * setting and whose landcover the styling fill reads (`url`, `tile`:
-       * the z14 parent of this z15 tile), the road archive's tile at this
-       * tile's address (`roadsUrl`; absent where none is published) — and the
-       * city tile's own tree layer name. Absent: the fill reads this tile.
+       * (`treeContext.ts`). Absent: the fill reads this tile.
        */
-      treeContext?: { url: string; tile: TileId; roadsUrl?: string; mappedLayer: string };
+      treeContext?: TreeContextTiles;
       /**
        * City-tile feature ids (`osmId × 10 + 2|3`) NOT to mesh: buildings a
        * drawn landmark model replaces (`docs/MAP_LANDMARKS.md`). Only the
@@ -63,6 +77,21 @@ export type MeshWorkerRequest =
        * profile's `camera`, `camera/volumes.ts`). Absent: no limit.
        */
       volumes?: VolumeLimits;
+    }
+  /**
+   * The trees of a city tile already drawn, read again without meshing its
+   * buildings: when its first answer was incomplete (a context tile failed
+   * to fetch), or it was read without the road archive and is now among the
+   * profile's nearest tiles. Answered with one `trees` reply.
+   */
+  | {
+      type: 'trees';
+      id: number;
+      tile: TileId;
+      url: string;
+      trees: TreeSourceLayers;
+      treeFillWoods?: boolean;
+      treeContext: TreeContextTiles;
     }
   /**
    * Measure a landmark's columns for the camera (`camera/volumes.ts` →
@@ -91,11 +120,27 @@ export type MeshWorkerResponse =
        */
       treesComplete: boolean;
       /**
+       * `true`: the trees were not ready (the tiles they are read against
+       * were still downloading), so the buildings came first and the trees
+       * follow in a `trees` reply to the same id — buildings never wait on
+       * trees. `trees` is then `null`.
+       */
+      more?: true;
+      /**
        * Official 3D datasets (`CITY_LOD2_SOURCES` ids) whose surfaces are in
        * this mesh, so the map can credit each exactly while it is drawn.
        * Absent: none.
        */
       sources?: string[];
+    }
+  /** A tile's trees: after a `mesh` reply with `more`, or for a `trees` request. */
+  | {
+      type: 'trees';
+      id: number;
+      trees: TreeInstances | null;
+      treeMs: number;
+      treeSettings?: TreeSettingCounts;
+      treesComplete: boolean;
     }
   | { type: 'volumes'; id: number; volumes: VolumeIndex | null }
   | { type: 'error'; id: number; message: string }

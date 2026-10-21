@@ -201,7 +201,7 @@ export function createTileEntry(
     treeTriangles: 0,
     treesNear: lod === 0,
     packed: mesh,
-    instances: lod < 2 ? instances : null,
+    instances: null,
   };
 
   if (mesh) {
@@ -237,63 +237,70 @@ export function createTileEntry(
     entry.triangles += mesh.triangles;
   }
 
-  // Trees at levels 0 and 1 only; level 2 is too far for a tree to show.
-  if (instances && lod < 2) {
-    // One shared TSL material for every tile's trees (`tsl/treeMaterial.ts`);
-    // each mesh carries its tile's unit and fade.
-    const material = context.tsl.trees.get(false);
-    const forLevel = lod === 0 ? shapes.near : shapes.far;
-    let from = 0;
-    const ranges = instances.ranges.map((count, i) => {
-      const range = { shape: forLevel[i], index: i, from, count };
-      from += count;
-      return range;
-    });
-    for (const { shape, index, from, count } of ranges) {
-      if (count === 0) continue;
-      const geometry = new THREE.InstancedBufferGeometry();
-      geometry.setAttribute('position', shape.position);
-      geometry.setAttribute('normal', shape.normal);
-      geometry.setAttribute('part', shape.part);
-      geometry.setIndex(shape.index);
-      geometry.setAttribute(
-        'aTree',
-        new THREE.InstancedBufferAttribute(
-          instances.data.subarray(from * 4, (from + count) * 4),
-          4,
-        ),
-      );
-      // Crown base and diameter, decimetres (`trees.ts` → `treeForm`).
-      geometry.setAttribute(
-        'aForm',
-        new THREE.InstancedBufferAttribute(
-          instances.form.subarray(from * 2, (from + count) * 2),
-          2,
-        ),
-      );
-      geometry.instanceCount = count;
-      const trees = hide(new THREE.Mesh(geometry, material));
-      // Which instances it draws (its terrain lifts, `applyGround`), as which
-      // shape (its level of detail, `setEntryTreeDetail`), and what the shared
-      // material reads per mesh.
-      trees.userData = {
-        from,
-        shape: index,
-        count,
-        [TREE_UNIT_USERDATA_KEY]: instances.unitM,
-        [FADE_USERDATA_KEY]: fade,
-      };
-      // Its bounds are the instances', which three cannot see; the tile was
-      // already chosen by the engine's own frustum test (`lod.ts`).
-      trees.frustumCulled = false;
-      context.tsl.scene.add(trees);
-      entry.trees.push(trees);
-      entry.treeTriangles += count * shape.triangles;
-    }
-    entry.bytes += instances.data.byteLength + instances.form.byteLength;
-    entry.treeCount = instances.count;
-  }
+  addTrees(entry, context.tsl, shapes, instances);
   return entry;
+}
+
+/**
+ * Give an entry its trees (levels 0 and 1 only; level 2 is too far for a tree
+ * to show): one instanced mesh per shape, in the shape set its level of
+ * detail draws now, with the material its fade draws now.
+ */
+function addTrees(
+  entry: TileEntry,
+  tsl: EntryContext['tsl'],
+  shapes: TreeShapes,
+  instances: TreeInstances | null,
+): void {
+  entry.instances = entry.lod < 2 ? instances : null;
+  if (!instances || entry.lod >= 2) return;
+  // One shared TSL material for every tile's trees (`tsl/treeMaterial.ts`);
+  // each mesh carries its tile's unit and fade.
+  const material = tsl.trees.get(entry.dithering);
+  const forLevel = entry.treesNear ? shapes.near : shapes.far;
+  let from = 0;
+  const ranges = instances.ranges.map((count, i) => {
+    const range = { shape: forLevel[i], index: i, from, count };
+    from += count;
+    return range;
+  });
+  for (const { shape, index, from, count } of ranges) {
+    if (count === 0) continue;
+    const geometry = new THREE.InstancedBufferGeometry();
+    geometry.setAttribute('position', shape.position);
+    geometry.setAttribute('normal', shape.normal);
+    geometry.setAttribute('part', shape.part);
+    geometry.setIndex(shape.index);
+    geometry.setAttribute(
+      'aTree',
+      new THREE.InstancedBufferAttribute(instances.data.subarray(from * 4, (from + count) * 4), 4),
+    );
+    // Crown base and diameter, decimetres (`trees.ts` → `treeForm`).
+    geometry.setAttribute(
+      'aForm',
+      new THREE.InstancedBufferAttribute(instances.form.subarray(from * 2, (from + count) * 2), 2),
+    );
+    geometry.instanceCount = count;
+    const trees = hide(new THREE.Mesh(geometry, material));
+    // Which instances it draws (its terrain lifts, `applyGround`), as which
+    // shape (its level of detail, `setEntryTreeDetail`), and what the shared
+    // material reads per mesh.
+    trees.userData = {
+      from,
+      shape: index,
+      count,
+      [TREE_UNIT_USERDATA_KEY]: instances.unitM,
+      [FADE_USERDATA_KEY]: entry.fade,
+    };
+    // Its bounds are the instances', which three cannot see; the tile was
+    // already chosen by the engine's own frustum test (`lod.ts`).
+    trees.frustumCulled = false;
+    tsl.scene.add(trees);
+    entry.trees.push(trees);
+    entry.treeTriangles += count * shape.triangles;
+  }
+  entry.bytes += treeBytes(instances);
+  entry.treeCount = instances.count;
 }
 
 /** Place an entry's meshes for `tile` (its world copy) relative to `center`. */
@@ -355,6 +362,32 @@ export function setEntryVisible(entry: TileEntry, visible: boolean): void {
   for (const mesh of entry.trees) mesh.visible = visible;
 }
 
+/**
+ * Replace an entry's trees with `instances`, its buildings untouched: the
+ * trees of a tile arrive after its buildings when the tiles they are read
+ * against were still downloading (`meshService.ts`), and are read again when
+ * they were incomplete. On terrain the entry must be lifted again before the
+ * new trees are drawn (`cityEngine.ts`, `TileGrounder.reshape`).
+ */
+export function setEntryTrees(
+  context: EntryContext,
+  shapes: TreeShapes,
+  entry: TileEntry,
+  instances: TreeInstances | null,
+): void {
+  disposeTrees(entry);
+  entry.bytes -= treeBytes(entry.instances);
+  entry.trees = [];
+  entry.treeCount = 0;
+  entry.treeTriangles = 0;
+  addTrees(entry, context.tsl, shapes, instances);
+}
+
+/** Bytes of an entry's tree instances. */
+function treeBytes(instances: TreeInstances | null): number {
+  return instances ? instances.data.byteLength + instances.form.byteLength : 0;
+}
+
 /** Free an entry's GPU buffers and materials. */
 export function disposeEntry(entry: TileEntry): void {
   for (const mesh of entry.buildings) {
@@ -362,6 +395,10 @@ export function disposeEntry(entry: TileEntry): void {
     mesh.removeFromParent();
     mesh.geometry.dispose();
   }
+  disposeTrees(entry);
+}
+
+function disposeTrees(entry: TileEntry): void {
   for (const mesh of entry.trees) {
     mesh.removeFromParent();
     // three's dispose frees EVERY buffer the geometry holds, and the unit

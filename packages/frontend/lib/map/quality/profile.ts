@@ -77,6 +77,15 @@ export interface QualityProfile {
     maxWorkers: number;
     /** Tree instances drawn per frame; 0 draws no trees. */
     treeBudget: number;
+    /**
+     * City tiles, nearest first, whose mapped trees are read against the road
+     * archive (its tile there and its neighbours' at the edges: one to nine
+     * more downloads; `docs/MAP_3D_CITY.md` → Trees). Farther tiles' trees are
+     * set from the basemap's areas alone, and read again when they come this
+     * near. The street detail's own `streets.maxTiles`, so with it on these
+     * road tiles are the ones it reads anyway.
+     */
+    treeRoadTiles: number;
   };
   sky: {
     /** Sun shadows: the map's side in texels, 0 for none (no shadow pass, no shadow map). */
@@ -189,6 +198,7 @@ export const QUALITY_PRESETS: Readonly<Record<QualityTier, Omit<QualityProfile, 
       uploadBytesPerFrame: 4 * MiB,
       maxWorkers: 1,
       treeBudget: 6_000,
+      treeRoadTiles: 6,
     },
     sky: { shadowMapSize: 0, shadowTaps: 4 },
     life: { cars: 300, people: 300 },
@@ -219,6 +229,7 @@ export const QUALITY_PRESETS: Readonly<Record<QualityTier, Omit<QualityProfile, 
       uploadBytesPerFrame: 8 * MiB,
       maxWorkers: 2,
       treeBudget: 16_000,
+      treeRoadTiles: 10,
     },
     sky: { shadowMapSize: 1024, shadowTaps: 8 },
     life: { cars: 700, people: 700 },
@@ -249,6 +260,7 @@ export const QUALITY_PRESETS: Readonly<Record<QualityTier, Omit<QualityProfile, 
       uploadBytesPerFrame: 12 * MiB,
       maxWorkers: 3,
       treeBudget: 40_000,
+      treeRoadTiles: 16,
     },
     sky: { shadowMapSize: 2048, shadowTaps: 12 },
     life: { cars: 1200, people: 1200 },

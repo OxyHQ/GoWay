@@ -618,6 +618,16 @@ export class TileGrounder {
     return result;
   }
 
+  /**
+   * The tile now holds more (or other) things to lift — its trees arrived
+   * after its buildings: lifted afresh on its next turn, never from the
+   * unchanged shortcut, and still drawn on its old lift until then.
+   */
+  reshape(key: string): void {
+    const state = this.tiles.get(key);
+    if (state) this.tiles.set(key, { ...state, version: -1, grid: undefined });
+  }
+
   forget(key: string): void {
     this.tiles.delete(key);
   }
