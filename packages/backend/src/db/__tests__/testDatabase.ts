@@ -37,10 +37,10 @@ import { copyFileSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } fro
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createDatabase } from '@oxy.so/db';
-import { runMigrations, type MigrationRun } from '@oxy.so/db/migrate';
+import type { MigrationRun } from '@oxy.so/db/migrate';
 import { createTestDatabase, dropTestDatabase } from '@oxy.so/db/testing';
 import postgres from 'postgres';
-import { REQUIRED_EXTENSIONS } from '../extensions';
+import { applyMigrations } from '../applyMigrations';
 import { MIGRATIONS_FOLDER } from '../migrationsFolder';
 import { setDatabaseForTesting, type Database } from '../postgres';
 import * as schema from '../schema';
@@ -201,15 +201,14 @@ export async function migrateSuiteDatabase(
   run: MigrationRun,
   throughTag?: string,
 ): Promise<void> {
-  await runMigrations({
+  await applyMigrations({
     databaseUrl,
     migrationsFolder: throughTag ? migrationsFolderThrough(throughTag) : MIGRATIONS_FOLDER,
-    extensions: REQUIRED_EXTENSIONS,
     run,
     dryRun: false,
     // Silent: a migration log line per test file drowns the assertions,
     // and a failure throws rather than being reported through this.
-    logger: { info: () => undefined, debug: () => undefined },
+    logger: { info: () => undefined, warn: () => undefined, debug: () => undefined },
   });
 }
 

@@ -282,3 +282,28 @@ GoWay's side of its Oxy file references (Oxy ADR 0043; `src/db/schema/oxyFiles.t
 reconciliation runs with a partial unique index allowing one open run per
 entity type. `pre`, purely additive: two new tables, no foreign keys, nothing
 existing is read or locked. The previous image never touches them.
+
+## `0026_goway_place_name_search`
+
+Two trigram GIN indexes for name search (#249): `places_name_fold_trgm_idx` on
+`places` and `places_names_name_fold_trgm_idx` on `places_names`, both over the
+accent-folded `name_normalized`. `pre`: an index changes nothing the previous
+image can see.
+
+Both tables hold ~13M rows in production. As generated (plain `CREATE INDEX`)
+the migration built them inside its transaction, under the migrator's 120 s
+`statement_timeout`, and every deploy's `pre` task failed on 2026-10-21 with
+`canceling statement due to statement timeout`; a larger timeout would only
+have traded that for SHARE on `places` — every write blocked — for the whole
+build. Both statements are therefore `CREATE INDEX IF NOT EXISTS` (the one
+edit to the generated file besides its marker, as
+`~/Oxy/docs/postgres-and-drizzle.md` prescribes), and the migrator builds them
+`CONCURRENTLY` before the migration runs (`src/db/indexBuilds.ts`), so the
+migration itself finds them built and takes SHARE only for the moment its
+`IF NOT EXISTS` needs. `bun run check:migration-locks` refuses an index on
+`places`, `places_names` or `places_sources` without `IF NOT EXISTS`.
+
+The failed runs left nothing behind: a non-concurrent build in a rolled-back
+transaction leaves no index, and a concurrent build that fails leaves an
+INVALID one, which the migrator drops and rebuilds rather than accepting by
+name.
