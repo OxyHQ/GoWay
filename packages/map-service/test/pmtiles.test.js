@@ -503,7 +503,7 @@ describe('serving an elevation tile from R2', () => {
   const env = (archive) => ({
     MAP_TILES: bucketOver(archive),
     MAP_TERRAIN_ARCHIVE: 'terrain/test.pmtiles',
-    // Present, and must NOT be used while the archive is configured.
+    // Present, and asked only for a tile the archive does not hold.
     MAP_TERRAIN_UPSTREAM: 'https://upstream.example/{z}/{x}/{y}.webp',
   });
   const terrainRequest = (z, x, y) =>
@@ -523,8 +523,25 @@ describe('serving an elevation tile from R2', () => {
     expect(new Uint8Array(await response.arrayBuffer())).toEqual(TILE_BODY);
   });
 
-  test('a tile the archive does not hold is a 404: flat ground, not an error', async () => {
+  test('a tile the archive does not hold is asked of the upstream, and its 404 is flat ground', async () => {
+    const asked = [];
+    globalThis.fetch = (target) => {
+      asked.push(String(target));
+      return Promise.resolve(new Response(null, { status: 404 }));
+    };
     const e = env(buildArchive(new Map([['12/2069/1525', TILE_BODY]])));
+    const request = terrainRequest(12, 2070, 1525);
+    const response = await serveTerrain(new URL(request.url), request, e, ctx);
+    expect(asked).toEqual(['https://upstream.example/12/2070/1525.webp']);
+    expect(response.status).toBe(404);
+  });
+
+  test('with no upstream, a tile the archive does not hold is a 404: flat ground, not an error', async () => {
+    globalThis.fetch = () => {
+      throw new Error('there is no upstream to ask');
+    };
+    const e = { ...env(buildArchive(new Map([['12/2069/1525', TILE_BODY]]))) };
+    delete e.MAP_TERRAIN_UPSTREAM;
     const request = terrainRequest(12, 2070, 1525);
     const response = await serveTerrain(new URL(request.url), request, e, ctx);
     expect(response.status).toBe(404);
