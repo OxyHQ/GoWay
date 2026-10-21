@@ -58,9 +58,10 @@ import {
   type LiveBus,
   type LiveClusterMessage,
 } from './cluster';
-import { getBytes } from './normalise';
+import { getBytes, getResponse, readBody } from './normalise';
 import {
-  loadStaticGtfs,
+  loadStaticGtfsParts,
+  mergeStaticGtfs,
   type MatchHint,
   matchTrack,
   type PreviousMatch,
@@ -98,8 +99,12 @@ export interface LiveHubOptions {
   now?: () => number;
   /** A room's changes. Called only for rooms somebody watches. */
   publish: (delta: LiveDelta) => void;
-  /** The source list changed in a way a client shows (status, freshness, counts). */
-  onSourcesChanged?: () => void;
+  /**
+   * One source changed in a way a client shows (status, freshness, count).
+   * Sent to the sockets whose rooms meet it (`sourcesMeeting`), not the list
+   * to everyone.
+   */
+  onSourceChanged?: (source: LiveSource) => void;
   logger?: LiveHubLogger;
   /** Jitter in `[0, 1)`; injected so a test's backoff is exact. */
   random?: () => number;
@@ -124,11 +129,19 @@ interface SourceState {
   nextDueAt: number;
   lastSuccessAt: number | null;
   failures: number;
+  /** Answered in part (`LivePollResult.degraded`): why, for the log; `null` when whole. */
+  degraded: string | null;
   /** When it last had demand; `null` while it has demand now. */
   idleSince: number | null;
   everActive: boolean;
   /** The operator's static GTFS, when the definition names one (`staticGtfs.ts`). */
   gtfs: StaticGtfs | null;
+  /** The rooms this task watches that are demand for it, and their boxes (`indexRoom`). */
+  pollRooms: Map<string, GeoBoundingBox>;
+  /** The same, of the rooms a client asks shapes in. */
+  shapeRooms: Map<string, GeoBoundingBox>;
+  /** Its parts as loaded, kept so a part that fails a refresh keeps its last copy. */
+  gtfsParts: Map<string, StaticGtfs>;
   gtfsLoading: Promise<void> | null;
   /** When the next load may start (a refresh, or a retry after failure). */
   gtfsDueAt: number;
@@ -156,6 +169,29 @@ export const STATIC_GTFS_REFRESH_MS = 24 * 3600_000;
  * network anyone looked at. Read again when someone looks again.
  */
 export const STATIC_GTFS_IDLE_MS = 15 * 60_000;
+/**
+ * Polls in flight at once to one upstream host. Twenty Japanese operators
+ * share ODPT's host, four Swedish ones Trafiklab's: their polls queue rather
+ * than arrive together.
+ */
+export const MAX_POLLS_PER_HOST = 2;
+
+function hostOf(url: string): string {
+  try {
+    return new URL(url).host;
+  } catch {
+    return url;
+  }
+}
+
+/** A static GTFS that failed is tried again after at most this (60 s, doubling). */
+export const STATIC_GTFS_MAX_BACKOFF_MS = 30 * 60_000;
+/**
+ * Static GTFS loads in flight at once, per process. Parsing one costs up to
+ * a few hundred MB of heap while it runs (Ireland's ~440 MB): one at a time
+ * keeps `LIVE_SOURCES=all` from stacking them.
+ */
+export const MAX_CONCURRENT_STATIC_LOADS = 1;
 /** The largest static GTFS download (Renfe Cercanías' zip is ~14 MB). */
 export const MAX_STATIC_GTFS_BYTES = 120 * 1024 * 1024;
 
@@ -167,6 +203,7 @@ interface Room {
 export class LiveHub {
   private readonly index = new LiveTileIndex();
   private readonly states: SourceState[];
+  private readonly stateById = new Map<string, SourceState>();
   /** watcher id → the room keys it is in. */
   private readonly watchers = new Map<string, Set<string>>();
   /** room key → watcher count. */
@@ -175,7 +212,12 @@ export class LiveHub {
   private readonly random: () => number;
   private timer: ReturnType<typeof setInterval> | null = null;
   private stopped = false;
-  private lastSourcesSignature = '';
+  /** Polls in flight per upstream host (`MAX_POLLS_PER_HOST`). */
+  private readonly pollsByHost = new Map<string, number>();
+  /** Static GTFS loads in flight (`MAX_CONCURRENT_STATIC_LOADS`). */
+  private staticLoads = 0;
+  /** source id → what a client was last told of it. */
+  private readonly sourceSignatures = new Map<string, string>();
 
   constructor(private readonly options: LiveHubOptions) {
     this.now = options.now ?? Date.now;
@@ -189,9 +231,13 @@ export class LiveHub {
       nextDueAt: 0,
       lastSuccessAt: null,
       failures: 0,
+      degraded: null,
       idleSince: null,
       everActive: false,
       gtfs: null,
+      gtfsParts: new Map(),
+      pollRooms: new Map(),
+      shapeRooms: new Map(),
       gtfsLoading: null,
       gtfsDueAt: 0,
       gtfsFailures: 0,
@@ -203,6 +249,7 @@ export class LiveHub {
       heardEpoch: 0,
       heardAt: 0,
     }));
+    for (const state of this.states) this.stateById.set(state.definition.id, state);
     this.bus = options.bus ?? null;
   }
 
@@ -380,6 +427,8 @@ export class LiveHub {
     } else {
       state.failures = message.type === 'state' ? message.failures : 0;
       state.lastSuccessAt = message.lastSuccessAt;
+      if (message.type === 'poll')
+        state.degraded = message.degraded ? 'reported by the leader' : null;
       this.apply(state, message.entities);
     }
     this.notifySources();
@@ -423,7 +472,9 @@ export class LiveHub {
     for (const room of rooms) {
       const key = roomKey(room.tile, room.kind);
       if (previous.has(key)) continue;
-      this.roomWatchers.set(key, (this.roomWatchers.get(key) ?? 0) + 1);
+      const count = (this.roomWatchers.get(key) ?? 0) + 1;
+      this.roomWatchers.set(key, count);
+      if (count === 1) this.indexRoom(key);
       joined.push(room);
     }
     if (next.size === 0) this.watchers.delete(watcherId);
@@ -438,8 +489,45 @@ export class LiveHub {
 
   private decrement(key: string): void {
     const count = (this.roomWatchers.get(key) ?? 0) - 1;
-    if (count <= 0) this.roomWatchers.delete(key);
-    else this.roomWatchers.set(key, count);
+    if (count <= 0) {
+      this.roomWatchers.delete(key);
+      this.unindexRoom(key);
+    } else this.roomWatchers.set(key, count);
+  }
+
+  /**
+   * A room's first watcher: work out, ONCE, which sources it is demand for
+   * (to poll, and to read static GTFS for shapes) — not every tick for every
+   * source over every room (634–797 ms a tick at 2,000 sockets).
+   */
+  private indexRoom(key: string): void {
+    const room = parseRoom(key);
+    const box = liveTileBounds(room.tile);
+    const zoom = Number(room.tile.slice(0, room.tile.indexOf('/')));
+    for (const state of this.states) {
+      const { definition } = state;
+      if (definition.kind !== room.kind) continue;
+      // Its operator's stops, not one box round them all (`areas.ts`).
+      if (!meetsSource(definition, box)) continue;
+      const levels = LIVE_ROOM_ZOOMS[definition.kind];
+      const finest = zoom === levels[levels.length - 1];
+      const regional =
+        !definition.transitModes || definition.transitModes.some(isRegionalTransitMode);
+      // A regional transit room holds rail only (`liveRoomZoomsOf`): it is
+      // demand for a source that may carry rail; shapes are asked only in the
+      // finest rooms (`LIVE_SHAPES_MIN_ZOOM`).
+      const poll = room.kind !== 'transit' || finest || regional;
+      const shapes = room.kind !== 'transit' || finest;
+      if (poll) state.pollRooms.set(key, box);
+      if (shapes) state.shapeRooms.set(key, box);
+    }
+  }
+
+  private unindexRoom(key: string): void {
+    for (const state of this.states) {
+      state.pollRooms.delete(key);
+      state.shapeRooms.delete(key);
+    }
   }
 
   /** Everything in one room, now. */
@@ -485,7 +573,8 @@ export class LiveHub {
     }
     if (state.lastSuccessAt === null) return 'starting';
     const interval = state.definition.pollIntervalSeconds * 1000;
-    return now - state.lastSuccessAt > 3 * interval + POLL_TIMEOUT_MS ? 'stale' : 'live';
+    if (now - state.lastSuccessAt > 3 * interval + POLL_TIMEOUT_MS) return 'stale';
+    return state.degraded ? 'degraded' : 'live';
   }
 
   /**
@@ -499,24 +588,9 @@ export class LiveHub {
     definition: LiveSourceDefinition,
     purpose: 'poll' | 'shapes' = 'poll',
   ): GeoBoundingBox[] {
-    const boxes: GeoBoundingBox[] = [];
-    const levels = LIVE_ROOM_ZOOMS[definition.kind];
-    const finest = levels[levels.length - 1];
-    const regional =
-      !definition.transitModes || definition.transitModes.some(isRegionalTransitMode);
-    for (const key of this.roomWatchers.keys()) {
-      const room = parseRoom(key);
-      if (room.kind !== definition.kind) continue;
-      if (room.kind === 'transit') {
-        const zoom = Number(room.tile.slice(0, room.tile.indexOf('/')));
-        if (zoom !== finest && (purpose === 'shapes' || !regional)) continue;
-      }
-      const box = liveTileBounds(room.tile);
-      // Its operator's stops, not one box round them all (`areas.ts`).
-      if (!meetsSource(definition, box)) continue;
-      boxes.push(box);
-    }
-    return boxes;
+    const state = this.stateById.get(definition.id);
+    if (!state) return [];
+    return [...(purpose === 'poll' ? state.pollRooms : state.shapeRooms).values()];
   }
 
   /**
@@ -603,14 +677,27 @@ export class LiveHub {
         needsStatic &&
         state.definition.staticGtfs &&
         !state.gtfsLoading &&
-        now >= state.gtfsDueAt
+        now >= state.gtfsDueAt &&
+        this.staticLoads < MAX_CONCURRENT_STATIC_LOADS
       ) {
         started.push(this.loadStatic(state));
       }
       // Another task polls it and publishes what it gets (`receive`).
       if (!this.leads(state)) continue;
       if (state.inFlight || now < state.nextDueAt) continue;
-      started.push(this.poll(state, demand));
+      // One upstream host's budget: ODPT serves ~20 operators from one host,
+      // polled no more than MAX_POLLS_PER_HOST at a time; the rest wait a tick.
+      const host = hostOf(state.settings.url);
+      const busy = this.pollsByHost.get(host) ?? 0;
+      if (busy >= MAX_POLLS_PER_HOST) continue;
+      this.pollsByHost.set(host, busy + 1);
+      started.push(
+        this.poll(state, demand).finally(() => {
+          const left = (this.pollsByHost.get(host) ?? 1) - 1;
+          if (left <= 0) this.pollsByHost.delete(host);
+          else this.pollsByHost.set(host, left);
+        }),
+      );
     }
     this.sweep(now);
     this.notifySources();
@@ -638,6 +725,20 @@ export class LiveHub {
           state.nextDueAt =
             startedAt +
             Math.max(state.definition.pollIntervalSeconds, result.backoffSeconds ?? 0) * 1000;
+          const degraded = result.degraded ?? null;
+          // Logged when it starts and when it ends, not every poll; the source
+          // and the reason (redacted), never a URL or a viewport.
+          if (degraded && !state.degraded)
+            this.options.logger?.warn(
+              { source: state.definition.id, reason: redact(degraded, state.secrets) },
+              'Live source answering in part',
+            );
+          else if (!degraded && state.degraded)
+            this.options.logger?.info(
+              { source: state.definition.id },
+              'Live source answering in full again',
+            );
+          state.degraded = degraded;
           const entities = this.enrich(state, result.entities, result.hints);
           this.apply(state, entities);
           this.share({
@@ -646,6 +747,7 @@ export class LiveHub {
             entities,
             lastSuccessAt: state.lastSuccessAt,
             epoch: state.epoch,
+            degraded: degraded !== null,
           });
         },
         (error: unknown) => {
@@ -709,6 +811,7 @@ export class LiveHub {
     state.gtfsUnneededSince ??= now;
     if (now - state.gtfsUnneededSince < STATIC_GTFS_IDLE_MS || state.gtfsLoading) return;
     state.gtfs = null;
+    state.gtfsParts = new Map();
     state.gtfsDueAt = 0;
     state.gtfsUnneededSince = null;
     state.matches.clear();
@@ -731,37 +834,63 @@ export class LiveHub {
     // A ranged GET: 206 with the part asked for, or 200 with the whole file
     // from a server that ignores ranges (bounded like any static download).
     const readRange = async (url: string, range: string) => {
-      const response = await this.options.fetch(url, {
-        signal: abort.signal,
+      const response = await getResponse(
+        this.options.fetch,
+        url,
+        abort.signal,
         // A range of the archive itself: a server that gzips on the fly
         // (TransLink Queensland's) otherwise ranges over its gzip stream.
-        headers: { 'user-agent': state.settings.userAgent, range, 'accept-encoding': 'identity' },
-      });
-      if (response.status !== 206 && (response.status < 200 || response.status >= 300))
-        throw new LiveUpstreamError(`upstream answered ${response.status}`, null, response.status);
-      const length = Number.parseInt(response.headers.get('content-length') ?? '', 10);
-      if (Number.isFinite(length) && length > MAX_STATIC_GTFS_BYTES)
-        throw new LiveUpstreamError(`upstream body too large (${length} bytes)`);
-      const bytes = new Uint8Array(await response.arrayBuffer());
-      if (bytes.byteLength > MAX_STATIC_GTFS_BYTES)
-        throw new LiveUpstreamError(`upstream body too large (${bytes.byteLength} bytes)`);
-      return { bytes, partial: response.status === 206 };
+        { 'user-agent': state.settings.userAgent, range, 'accept-encoding': 'identity' },
+        { accept206: true },
+      );
+      return {
+        bytes: await readBody(response, MAX_STATIC_GTFS_BYTES),
+        partial: response.status === 206,
+      };
     };
-    const run = loadStaticGtfs(location, read, readRange)
+    this.staticLoads++;
+    const run = loadStaticGtfsParts(location, read, readRange, state.gtfsParts)
       .then(
-        (gtfs) => {
-          state.gtfs = gtfs;
-          state.gtfsFailures = 0;
-          state.gtfsDueAt = this.now() + STATIC_GTFS_REFRESH_MS;
-          this.options.logger?.info(
-            { source: state.definition.id, shapes: gtfs.shapes.size, trips: gtfs.trips.size },
-            'Live source static GTFS loaded',
-          );
+        ({ parts, failures }) => {
+          for (const failure of failures)
+            this.options.logger?.warn(
+              {
+                source: state.definition.id,
+                part:
+                  failures.length > 1 || parts.size > 0
+                    ? redact(failure.part, state.secrets)
+                    : undefined,
+                reason: redact(describe(failure.error), state.secrets),
+              },
+              'Live source static GTFS failed to load',
+            );
+          if (parts.size > 0) {
+            state.gtfsParts = parts;
+            state.gtfs = mergeStaticGtfs(parts.values());
+            this.options.logger?.info(
+              {
+                source: state.definition.id,
+                shapes: state.gtfs.shapes.size,
+                trips: state.gtfs.trips.size,
+              },
+              'Live source static GTFS loaded',
+            );
+          }
+          if (failures.length === 0) {
+            state.gtfsFailures = 0;
+            state.gtfsDueAt = this.now() + STATIC_GTFS_REFRESH_MS;
+          } else {
+            // A part missing: tried again soon, whatever the others did — and
+            // never later than STATIC_GTFS_MAX_BACKOFF_MS.
+            state.gtfsFailures++;
+            state.gtfsDueAt =
+              this.now() + Math.min(STATIC_GTFS_MAX_BACKOFF_MS, 60_000 * 2 ** state.gtfsFailures);
+          }
         },
         (error: unknown) => {
           state.gtfsFailures++;
           state.gtfsDueAt =
-            this.now() + Math.min(STATIC_GTFS_REFRESH_MS, 60_000 * 2 ** state.gtfsFailures);
+            this.now() + Math.min(STATIC_GTFS_MAX_BACKOFF_MS, 60_000 * 2 ** state.gtfsFailures);
           this.options.logger?.warn(
             { source: state.definition.id, reason: redact(describe(error), state.secrets) },
             'Live source static GTFS failed to load',
@@ -770,6 +899,7 @@ export class LiveHub {
       )
       .finally(() => {
         clearTimeout(timer);
+        this.staticLoads--;
         state.gtfsLoading = null;
       });
     state.gtfsLoading = run;
@@ -879,6 +1009,7 @@ export class LiveHub {
     state.idleSince = null;
     state.lastSuccessAt = null;
     state.failures = 0;
+    state.degraded = null;
     state.nextDueAt = 0;
     const changes: IndexChange[] = [];
     for (const id of this.index.idsOfSource(state.definition.id))
@@ -931,13 +1062,29 @@ export class LiveHub {
   }
 
   private notifySources(): void {
-    if (!this.options.onSourcesChanged) return;
-    const signature = JSON.stringify(
-      this.sources().map((source) => [source.status, source.lastUpdatedAt, source.entityCount]),
-    );
-    if (signature === this.lastSourcesSignature) return;
-    this.lastSourcesSignature = signature;
-    this.options.onSourcesChanged();
+    if (!this.options.onSourceChanged) return;
+    for (const source of this.sources()) {
+      const signature = `${source.status}|${source.lastUpdatedAt}|${source.entityCount}`;
+      if (this.sourceSignatures.get(source.id) === signature) continue;
+      this.sourceSignatures.set(source.id, signature);
+      this.options.onSourceChanged(source);
+    }
+  }
+
+  /** The sources a set of rooms meets: a socket in them is told of those sources' changes. */
+  sourcesMeeting(rooms: readonly Room[]): string[] {
+    const out: string[] = [];
+    for (const state of this.states) {
+      const { definition } = state;
+      if (
+        rooms.some(
+          (room) =>
+            room.kind === definition.kind && meetsSource(definition, liveTileBounds(room.tile)),
+        )
+      )
+        out.push(definition.id);
+    }
+    return out;
   }
 
   /** Test seam: entities in a box. */

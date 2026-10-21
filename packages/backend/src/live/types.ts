@@ -47,11 +47,22 @@ export interface LiveFetchContext {
 /** The slice of `fetch` the adapters use. */
 export type LiveFetch = (
   url: string,
-  init: { signal: AbortSignal; headers: Record<string, string> },
+  init: {
+    signal: AbortSignal;
+    headers: Record<string, string>;
+    /** `manual`: a redirect is answered as is, and `getBytes` decides whether to follow it. */
+    redirect?: 'manual';
+  },
 ) => Promise<{
   status: number;
   headers: { get(name: string): string | null };
   arrayBuffer(): Promise<ArrayBuffer>;
+  /**
+   * The body as a stream (`fetch`'s, already decompressed): read with a
+   * running count so an oversized or endless body is refused at the cap,
+   * not after it has been held whole.
+   */
+  body?: ReadableStream<Uint8Array> | null;
 }>;
 
 export interface LivePollResult {
@@ -68,6 +79,12 @@ export interface LivePollResult {
    * trip, the route). Internal: never re-served.
    */
   hints?: Map<string, MatchHint>;
+  /**
+   * Answered only in part: why (one of a combined source's feeds failing,
+   * `adapters/combined.ts`). The source reports `degraded`; the reason is
+   * logged, never served (it may name an upstream's error).
+   */
+  degraded?: string;
 }
 
 export interface LiveAdapter {

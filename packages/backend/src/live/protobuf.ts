@@ -226,7 +226,26 @@ function readEventTime(reader: ProtobufReader): number | undefined {
   return time;
 }
 
-function readTripUpdate(reader: ProtobufReader): GtfsTripUpdate {
+/**
+ * The most records (entities, and each trip's stop predictions) one feed
+ * may decode to. The biggest served today is ~6,000 vehicles (MTA buses) or
+ * ~40,000 predictions (AMB); a 40 MB body of tiny entities would be ten
+ * million objects and over a gigabyte of heap, so past this the feed is
+ * refused rather than decoded.
+ */
+export const MAX_FEED_RECORDS = 250_000;
+
+interface Budget {
+  left: number;
+}
+
+function spend(budget: Budget): void {
+  budget.left--;
+  if (budget.left < 0)
+    throw new ProtobufError(`feed has more than ${MAX_FEED_RECORDS} records; refused`);
+}
+
+function readTripUpdate(reader: ProtobufReader, budget: Budget): GtfsTripUpdate {
   const out: GtfsTripUpdate = { stops: [] };
   while (!reader.done) {
     const { field, wire } = reader.tag();
@@ -247,13 +266,15 @@ function readTripUpdate(reader: ProtobufReader): GtfsTripUpdate {
           stop.departure = readEventTime(update.message());
         else update.skip(tag.wire);
       }
+      spend(budget);
       out.stops.push(stop);
     } else reader.skip(wire);
   }
   return out;
 }
 
-function readEntity(reader: ProtobufReader, feed: GtfsFeed): void {
+function readEntity(reader: ProtobufReader, feed: GtfsFeed, budget: Budget): void {
+  spend(budget);
   const out: GtfsVehiclePosition = {};
   let hasVehicle = false;
   while (!reader.done) {
@@ -264,7 +285,7 @@ function readEntity(reader: ProtobufReader, feed: GtfsFeed): void {
       hasVehicle = true;
       readVehiclePosition(reader.message(), out);
     } else if (field === 3 && wire === WIRE_BYTES)
-      feed.tripUpdates.push(readTripUpdate(reader.message()));
+      feed.tripUpdates.push(readTripUpdate(reader.message(), budget));
     else reader.skip(wire);
   }
   if (hasVehicle) feed.vehicles.push(out);
@@ -274,6 +295,7 @@ function readEntity(reader: ProtobufReader, feed: GtfsFeed): void {
 export function decodeGtfsRealtime(bytes: Uint8Array): GtfsFeed {
   const reader = new ProtobufReader(bytes);
   const feed: GtfsFeed = { vehicles: [], tripUpdates: [] };
+  const budget: Budget = { left: MAX_FEED_RECORDS };
   let sawHeader = false;
   while (!reader.done) {
     const { field, wire } = reader.tag();
@@ -286,7 +308,7 @@ export function decodeGtfsRealtime(bytes: Uint8Array): GtfsFeed {
         else header.skip(tag.wire);
       }
     } else if (field === 2 && wire === WIRE_BYTES) {
-      readEntity(reader.message(), feed);
+      readEntity(reader.message(), feed, budget);
     } else {
       reader.skip(wire);
     }

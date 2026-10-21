@@ -83,6 +83,15 @@ export interface LivePolicy {
   /** Subscription token bucket, per socket. */
   subscribeBurst: number;
   subscribePerMinute: number;
+  /**
+   * Per client ADDRESS (the namespace is anonymous): live sockets at once,
+   * and one subscription bucket shared by all of them — so opening many
+   * sockets buys neither more rooms (each socket's are capped) nor more
+   * subscriptions.
+   */
+  maxConnectionsPerAddress: number;
+  addressSubscribeBurst: number;
+  addressSubscribePerMinute: number;
   /** Upstream requests a regional source (aircraft) may make per poll cycle. */
   maxRegionsPerPoll: number;
 }
@@ -92,6 +101,9 @@ export const LIVE_POLICY: LivePolicy = {
   maxConnections: 2000,
   subscribeBurst: 10,
   subscribePerMinute: 60,
+  maxConnectionsPerAddress: 16,
+  addressSubscribeBurst: 30,
+  addressSubscribePerMinute: 240,
   maxRegionsPerPoll: 4,
 };
 
@@ -161,6 +173,16 @@ export function parseLiveConfig(
   // `all`: the whole catalogue (only meaningful against it).
   const all = parsed.includes('all') && knownSourceIds.length > 0;
   const listed = all ? [...knownSourceIds] : parsed;
+  // A source named beside `all` (`all,adsb-lol`) is checked too: a typo there
+  // would otherwise leave an awaited source silently off.
+  if (all) {
+    for (const id of parsed) {
+      if (id !== 'all' && !knownSourceIds.includes(id))
+        problems.push(
+          `  - LIVE_SOURCES: unknown source "${id}" (known: ${knownSourceIds.join(', ')})`,
+        );
+    }
+  }
   for (const id of listed) {
     if (knownSourceIds.length > 0 && !knownSourceIds.includes(id)) {
       problems.push(

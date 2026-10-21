@@ -13,7 +13,7 @@ import { LIVE_SOURCES } from './catalogue';
 import { type LiveBus, ValkeyLiveBus } from './cluster';
 import { packLivePayload } from './pack';
 import { LiveHub, type LiveHubLogger, type LiveHubSource } from './hub';
-import { attachLiveNamespace, liveRoomName } from './socket';
+import { attachLiveNamespace, liveRoomName, liveSourceRoomName } from './socket';
 import type { LiveFetch } from './types';
 
 export interface LiveService {
@@ -120,11 +120,10 @@ export function createLiveService(options: CreateLiveServiceOptions): LiveServic
         ?.to(liveRoomName(delta.tile, delta.kind))
         .emit(LIVE_SOCKET_EVENTS.delta, packLivePayload(delta));
     },
-    onSourcesChanged: () => {
-      namespace?.emit(
-        LIVE_SOCKET_EVENTS.sources,
-        packLivePayload({ items: hub.sources(), nextCursor: null }),
-      );
+    onSourceChanged: (source) => {
+      // Only to the sockets watching it: ~300 bytes to a few, not the whole
+      // list (7 KB) to every socket on every poll.
+      namespace?.to(liveSourceRoomName(source.id)).emit(LIVE_SOCKET_EVENTS.source, source);
     },
   });
   logger.info(

@@ -411,8 +411,14 @@ export const LIVE_SOCKET_EVENTS = {
   snapshot: 'live:snapshot',
   /** server → client: {@link LiveDelta}, per room, as feeds answer. */
   delta: 'live:delta',
-  /** server → client: {@link LiveSourcePage}, on connect and as statuses change. */
+  /** server → client: {@link LiveSourcePage}, every feed, once on connect. */
   sources: 'live:sources',
+  /**
+   * server → client: one `LiveSource` whose status, freshness or count
+   * changed — sent only to the sockets whose rooms meet that source, never
+   * the whole list to everyone.
+   */
+  source: 'live:source',
 } as const;
 
 /** What a client is looking at. The zoom is the camera's; the box is the visible area. */

@@ -47,10 +47,20 @@ export type LiveLink = z.infer<typeof liveLinkSchema>;
  *   Nothing is wrong; there is simply nothing to show.
  * - `starting` — being polled, no answer yet.
  * - `live` — answered within its expected interval.
+ * - `degraded` — answered, but one of the feeds it combines did not (Renfe's
+ *   long-distance feed down, its commuter one up): what that feed last sent
+ *   is kept until it ages out, and the rest is current.
  * - `stale` — the last good answer is older than three intervals.
  * - `unavailable` — failing; the server is backing off.
  */
-export const LIVE_SOURCE_STATUSES = ['idle', 'starting', 'live', 'stale', 'unavailable'] as const;
+export const LIVE_SOURCE_STATUSES = [
+  'idle',
+  'starting',
+  'live',
+  'degraded',
+  'stale',
+  'unavailable',
+] as const;
 export type LiveSourceStatus = (typeof LIVE_SOURCE_STATUSES)[number];
 
 /** One feed GoWay re-serves, with its terms and freshness. */

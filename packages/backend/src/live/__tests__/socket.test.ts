@@ -185,6 +185,40 @@ describe('the /live namespace', () => {
     expect(received.tile).toBe(liveTileOf({ latitude: 41.39, longitude: 2.17 }, 'transit'));
   });
 
+  it("tells only a source's watchers of its changes, one source at a time", async () => {
+    const server = await start();
+    const barcelona = client(server);
+    const newYork = client(server);
+    await Promise.all([next(barcelona, 'connect'), next(newYork, 'connect')]);
+    const bcnLists = collect<unknown>(barcelona, LIVE_SOCKET_EVENTS.sources);
+    const bcnNews = collect<{ id: string; status: string }>(barcelona, LIVE_SOCKET_EVENTS.source);
+    const nyNews = collect<unknown>(newYork, LIVE_SOCKET_EVENTS.source);
+    const nyLists = collect<unknown>(newYork, LIVE_SOCKET_EVENTS.sources);
+    const answers = [
+      next(barcelona, LIVE_SOCKET_EVENTS.subscription),
+      next(newYork, LIVE_SOCKET_EVENTS.subscription),
+    ];
+    barcelona.emit(LIVE_SOCKET_EVENTS.subscribe, {
+      ...BARCELONA_BOX,
+      zoom: 12,
+      kinds: ['transit'],
+    });
+    newYork.emit(LIVE_SOCKET_EVENTS.subscribe, { ...NEW_YORK_BOX, zoom: 12, kinds: ['transit'] });
+    await Promise.all(answers);
+    await server.live.hub.tick();
+    await new Promise((resolve) => setTimeout(resolve, 150));
+    // Renfe went live: its Barcelona watcher hears of it, as one source.
+    expect(bcnNews.map((source) => [source.id, source.status])).toContainEqual([
+      'renfe-cercanias',
+      'live',
+    ]);
+    // New York's watcher meets no Spanish source; the whole list is sent once,
+    // on connect, and never again on a change.
+    expect(nyNews).toEqual([]);
+    expect(bcnLists.length).toBeLessThanOrEqual(1);
+    expect(nyLists.length).toBeLessThanOrEqual(1);
+  });
+
   it('sends a room only to its members', async () => {
     const server = await start();
     const barcelona = client(server);
@@ -282,6 +316,33 @@ describe('the /live namespace', () => {
     const error = await next<Error>(second, 'connect_error');
     expect(error.message).toBe('live_capacity');
   });
+
+  it('caps one address: its sockets, and the subscriptions they share', async () => {
+    const server = await start({
+      maxConnectionsPerAddress: 2,
+      addressSubscribeBurst: 2,
+      addressSubscribePerMinute: 6,
+    });
+    const [a, b] = [client(server), client(server)];
+    await Promise.all([next(a, 'connect'), next(b, 'connect')]);
+    // A third socket from the same address is refused…
+    const third = client(server);
+    expect((await next<Error>(third, 'connect_error')).message).toBe('live_address_capacity');
+    // …and two sockets do not buy two buckets.
+    const fromA = collect<LiveSubscriptionState>(a, LIVE_SOCKET_EVENTS.subscription);
+    const fromB = collect<LiveSubscriptionState>(b, LIVE_SOCKET_EVENTS.subscription);
+    const box = { ...BARCELONA_BOX, zoom: 12, kinds: ['transit'] };
+    a.emit(LIVE_SOCKET_EVENTS.subscribe, box);
+    b.emit(LIVE_SOCKET_EVENTS.subscribe, box);
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    a.emit(LIVE_SOCKET_EVENTS.subscribe, box);
+    await new Promise((resolve) => setTimeout(resolve, 150));
+    expect([...fromA, ...fromB].map((answer) => answer.state).sort()).toEqual([
+      'ok',
+      'ok',
+      'rate_limited',
+    ]);
+  });
 });
 
 describe('the subscription bucket', () => {
@@ -299,6 +360,10 @@ describe('live configuration', () => {
     expect(parseLiveConfig({}, ['adsb-lol'])).toMatchObject({ sources: [] });
     expect(() => parseLiveConfig({ LIVE_SOURCES: 'adsb-lol,nope' }, ['adsb-lol'])).toThrow(
       /unknown source "nope"/,
+    );
+    // Named beside `all` too: a typo there must not leave a source silently off.
+    expect(() => parseLiveConfig({ LIVE_SOURCES: 'all,adsb-lo' }, ['adsb-lol'])).toThrow(
+      /unknown source "adsb-lo"/,
     );
     expect(() =>
       parseLiveConfig({ LIVE_SOURCES: 'adsb-lol', LIVE_SOURCE_ADSB_LOL_URL: 'https://x/?key=1' }, [

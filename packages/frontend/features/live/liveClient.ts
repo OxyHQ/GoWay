@@ -37,6 +37,7 @@ import {
   parseLiveDelta,
   unpackLivePayload,
   parseLiveSnapshot,
+  parseLiveSource,
   parseLiveSources,
   parseLiveSubscriptionState,
 } from '@goway.to/sdk/live';
@@ -187,6 +188,12 @@ export function createLiveClient(options: { apiUrl: string; store: LiveStore }):
         const page = parseLiveSources(payload);
         if (!page) return;
         store.setSources(page.items);
+        notify();
+      });
+      receive(LIVE_SOCKET_EVENTS.source, (payload: unknown) => {
+        const source = parseLiveSource(payload);
+        if (!source) return;
+        store.upsertSource(source);
         notify();
       });
       receive(LIVE_SOCKET_EVENTS.subscription, (payload: unknown) => {

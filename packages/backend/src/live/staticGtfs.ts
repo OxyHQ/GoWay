@@ -432,56 +432,90 @@ const FILES = ['routes.txt', 'trips.txt', 'shapes.txt', 'stops.txt'] as const;
 const NO_SHAPES = 'shape_id,shape_pt_lat,shape_pt_lon,shape_pt_sequence\n';
 const NO_TRIPS = 'route_id,trip_id\n';
 
-/** Fetch and build an operator's static GTFS. Throws on a missing file. */
-export async function loadStaticGtfs(
+type Read = (url: string) => Promise<Uint8Array>;
+type ReadRange = (url: string, range: string) => Promise<ZipRange>;
+
+/** One part of a static GTFS: a zip of a `zips` list, or the separate files. */
+async function loadPart(
   location: StaticGtfsLocation,
-  read: (url: string) => Promise<Uint8Array>,
-  /** Ranged reads: with `only`, a big archive's few small files without the rest. */
-  readRange?: (url: string, range: string) => Promise<ZipRange>,
+  url: string | null,
+  read: Read,
+  readRange: ReadRange | undefined,
 ): Promise<StaticGtfs> {
   const decoder = new TextDecoder();
-  const parts: { routes: string; trips: string; shapes: string; stops?: string }[] = [];
-  const zips = 'zip' in location ? [location.zip] : 'zips' in location ? location.zips : [];
-  const only = 'zip' in location ? location.only : undefined;
-  const files =
-    only === 'routes' ? FILES.slice(0, 1) : only === 'trips' ? FILES.slice(0, 2) : FILES;
-  for (const url of zips) {
-    const entries =
-      only && readRange
-        ? await readZipEntriesRanged((range) => readRange(url, range), files)
-        : readZipEntries(await read(url), files);
-    const text = (name: (typeof FILES)[number]) => {
-      const bytes = entries.get(name);
-      if (!bytes) throw new ZipError(`${name} missing from ${url}`);
-      return decoder.decode(bytes);
-    };
-    if (only) {
-      parts.push({
-        routes: text('routes.txt'),
-        trips: only === 'trips' ? text('trips.txt') : NO_TRIPS,
-        shapes: NO_SHAPES,
-      });
-      continue;
-    }
-    const stops = entries.get('stops.txt');
-    // Shapes are optional in GTFS (Renfe's long-distance file has none): its
-    // routes still name the lines; its vehicles are drawn where reported.
-    const shapes = entries.get('shapes.txt');
-    parts.push({
-      routes: text('routes.txt'),
-      trips: text('trips.txt'),
-      shapes: shapes ? decoder.decode(shapes) : NO_SHAPES,
-      ...(stops ? { stops: decoder.decode(stops) } : {}),
-    });
-  }
-  if ('routes' in location) {
-    parts.push({
+  if (url === null) {
+    if (!('routes' in location)) throw new Error('no separate files');
+    return buildStaticGtfs({
       routes: decoder.decode(await read(location.routes)),
       trips: decoder.decode(await read(location.trips)),
       shapes: decoder.decode(await read(location.shapes)),
     });
   }
-  const built = parts.map(buildStaticGtfs);
+  const only = 'zip' in location ? location.only : undefined;
+  const files =
+    only === 'routes' ? FILES.slice(0, 1) : only === 'trips' ? FILES.slice(0, 2) : FILES;
+  const entries =
+    only && readRange
+      ? await readZipEntriesRanged((range) => readRange(url, range), files)
+      : readZipEntries(await read(url), files);
+  const text = (name: (typeof FILES)[number]) => {
+    const bytes = entries.get(name);
+    if (!bytes) throw new ZipError(`${name} missing from ${url}`);
+    return decoder.decode(bytes);
+  };
+  if (only) {
+    return buildStaticGtfs({
+      routes: text('routes.txt'),
+      trips: only === 'trips' ? text('trips.txt') : NO_TRIPS,
+      shapes: NO_SHAPES,
+    });
+  }
+  const stops = entries.get('stops.txt');
+  // Shapes are optional in GTFS (Renfe's long-distance file has none): its
+  // routes still name the lines; its vehicles are drawn where reported.
+  const shapes = entries.get('shapes.txt');
+  return buildStaticGtfs({
+    routes: text('routes.txt'),
+    trips: text('trips.txt'),
+    shapes: shapes ? decoder.decode(shapes) : NO_SHAPES,
+    ...(stops ? { stops: decoder.decode(stops) } : {}),
+  });
+}
+
+/** The parts' keys: each zip's URL, or `files` for the separate-files form. */
+export function staticGtfsParts(location: StaticGtfsLocation): string[] {
+  if ('routes' in location) return ['files'];
+  return 'zip' in location ? [location.zip] : [...location.zips];
+}
+
+/**
+ * Load a static GTFS PART BY PART (Renfe's commuter and long-distance zips):
+ * a part that fails keeps what it loaded before (`previous`), and the others
+ * load regardless — one zip down never costs the other its tracks.
+ */
+export async function loadStaticGtfsParts(
+  location: StaticGtfsLocation,
+  read: Read,
+  readRange?: ReadRange,
+  previous: ReadonlyMap<string, StaticGtfs> = new Map(),
+): Promise<{ parts: Map<string, StaticGtfs>; failures: { part: string; error: unknown }[] }> {
+  const parts = new Map<string, StaticGtfs>();
+  const failures: { part: string; error: unknown }[] = [];
+  for (const key of staticGtfsParts(location)) {
+    try {
+      parts.set(key, await loadPart(location, key === 'files' ? null : key, read, readRange));
+    } catch (error) {
+      failures.push({ part: key, error });
+      const kept = previous.get(key);
+      if (kept) parts.set(key, kept);
+    }
+  }
+  return { parts, failures };
+}
+
+/** Several parts as one static GTFS (a later part's ids win). */
+export function mergeStaticGtfs(parts: Iterable<StaticGtfs>): StaticGtfs {
+  const built = [...parts];
   if (built.length === 1) return built[0] as StaticGtfs;
   const merged: StaticGtfs = {
     routes: new Map(),
@@ -502,6 +536,18 @@ export async function loadStaticGtfs(
     }
   }
   return merged;
+}
+
+/** Fetch and build an operator's static GTFS, every part. Throws on any part's failure. */
+export async function loadStaticGtfs(
+  location: StaticGtfsLocation,
+  read: Read,
+  /** Ranged reads: with `only`, a big archive's few small files without the rest. */
+  readRange?: ReadRange,
+): Promise<StaticGtfs> {
+  const { parts, failures } = await loadStaticGtfsParts(location, read, readRange);
+  if (failures.length > 0) throw failures[0]?.error;
+  return mergeStaticGtfs(parts.values());
 }
 
 /** The point `along` metres along a shape (clamped). */

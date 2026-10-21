@@ -85,11 +85,127 @@ export function accept(candidate: unknown): LiveEntity | null {
 /** The largest upstream body read. Digitraffic's full AIS snapshot is ~6 MB. */
 export const MAX_UPSTREAM_BYTES = 40 * 1024 * 1024;
 
+/** The most redirects followed for one request. */
+export const MAX_REDIRECTS = 5;
+
 /**
- * GET a URL and return its body, or throw {@link LiveUpstreamError}.
+ * Headers that may follow a redirect to ANOTHER origin. Everything else — an
+ * API key (`x-api-key`, `Authorization`, `Ocp-Apim-Subscription-Key`,
+ * `KeyID`…), a client name — stays with the origin it was meant for.
+ */
+const CROSS_ORIGIN_HEADERS = new Set(['user-agent', 'accept', 'accept-encoding', 'range']);
+
+/**
+ * A `Retry-After` value in seconds: its delay-seconds form, or its HTTP-date
+ * form measured against `nowMs`; `null` for neither (or one in the past).
+ */
+export function retryAfterSeconds(value: string | null, nowMs: number = Date.now()): number | null {
+  if (!value) return null;
+  const trimmed = value.trim();
+  if (/^\d+$/.test(trimmed)) {
+    const seconds = Number(trimmed);
+    return seconds > 0 ? seconds : null;
+  }
+  const at = Date.parse(trimmed);
+  if (!Number.isFinite(at)) return null;
+  const seconds = Math.ceil((at - nowMs) / 1000);
+  return seconds > 0 ? seconds : null;
+}
+
+/**
+ * A response's body, counted as it arrives — DECOMPRESSED bytes, which is
+ * what `fetch` streams (a 3 MB gzip bomb is 3 GB of them; `content-length`
+ * is the compressed size and says nothing). Refused at `maxBytes`: an
+ * oversized, endless or bombed body costs at most the cap, never itself.
+ */
+export async function readBody(
+  response: Awaited<ReturnType<LiveFetch>>,
+  maxBytes: number,
+): Promise<Uint8Array> {
+  const tooLarge = (bytes: number) =>
+    new LiveUpstreamError(`upstream body too large (over ${maxBytes} bytes; ${bytes} read)`);
+  if (!response.body) {
+    const body = new Uint8Array(await response.arrayBuffer());
+    if (body.byteLength > maxBytes) throw tooLarge(body.byteLength);
+    return body;
+  }
+  const reader = response.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    total += value.byteLength;
+    if (total > maxBytes) {
+      await reader.cancel().catch(() => {});
+      throw tooLarge(total);
+    }
+    chunks.push(value);
+  }
+  const out = new Uint8Array(total);
+  let at = 0;
+  for (const chunk of chunks) {
+    out.set(chunk, at);
+    at += chunk.byteLength;
+  }
+  return out;
+}
+
+/**
+ * GET a URL and answer its response once it is not a redirect, or throw
+ * {@link LiveUpstreamError} for an error status. Redirects are followed by
+ * hand: to the same origin with every header, to another with none but the
+ * ones in {@link CROSS_ORIGIN_HEADERS} — a key never leaves for a host it was
+ * not issued for — and only from https to https.
+ */
+export async function getResponse(
+  fetch: LiveFetch,
+  url: string,
+  signal: AbortSignal,
+  headers: Record<string, string>,
+  { accept206 = false }: { accept206?: boolean } = {},
+): Promise<Awaited<ReturnType<LiveFetch>>> {
+  let current = url;
+  let sent = headers;
+  for (let hop = 0; ; hop++) {
+    const response = await fetch(current, { signal, headers: sent, redirect: 'manual' });
+    if (response.status >= 300 && response.status < 400 && response.status !== 304) {
+      const location = response.headers.get('location');
+      if (!location || hop >= MAX_REDIRECTS)
+        throw new LiveUpstreamError(
+          `upstream redirected ${response.status} without a usable location`,
+        );
+      const next = new URL(location, current);
+      const from = new URL(current);
+      if (from.protocol === 'https:' && next.protocol !== 'https:')
+        throw new LiveUpstreamError('upstream redirected from https to http');
+      if (next.origin !== from.origin) {
+        sent = Object.fromEntries(
+          Object.entries(sent).filter(([name]) => CROSS_ORIGIN_HEADERS.has(name.toLowerCase())),
+        );
+      }
+      current = next.toString();
+      continue;
+    }
+    const ok = response.status >= 200 && response.status < 300;
+    if (!ok && !(accept206 && response.status === 206)) {
+      throw new LiveUpstreamError(
+        `upstream answered ${response.status}`,
+        retryAfterSeconds(response.headers.get('retry-after')),
+        response.status,
+      );
+    }
+    return response;
+  }
+}
+
+/**
+ * GET a URL and return its body, bounded at `maxBytes` decompressed
+ * ({@link readBody}), or throw {@link LiveUpstreamError}.
  *
- * A 429 or 503 carries its `Retry-After` into the error, so the poller backs
- * off for as long as the upstream asked rather than by its own guess.
+ * A 429 or 503 carries its `Retry-After` (seconds or an HTTP date) into the
+ * error, so the poller backs off for as long as the upstream asked rather
+ * than by its own guess.
  */
 export async function getBytes(
   fetch: LiveFetch,
@@ -98,24 +214,8 @@ export async function getBytes(
   headers: Record<string, string>,
   maxBytes: number = MAX_UPSTREAM_BYTES,
 ): Promise<Uint8Array> {
-  const response = await fetch(url, { signal, headers });
-  if (response.status < 200 || response.status >= 300) {
-    const retryAfter = Number.parseInt(response.headers.get('retry-after') ?? '', 10);
-    throw new LiveUpstreamError(
-      `upstream answered ${response.status}`,
-      Number.isFinite(retryAfter) && retryAfter > 0 ? retryAfter : null,
-      response.status,
-    );
-  }
-  const length = Number.parseInt(response.headers.get('content-length') ?? '', 10);
-  if (Number.isFinite(length) && length > maxBytes) {
-    throw new LiveUpstreamError(`upstream body too large (${length} bytes)`);
-  }
-  const body = new Uint8Array(await response.arrayBuffer());
-  if (body.byteLength > maxBytes) {
-    throw new LiveUpstreamError(`upstream body too large (${body.byteLength} bytes)`);
-  }
-  return body;
+  const response = await getResponse(fetch, url, signal, headers);
+  return readBody(response, maxBytes);
 }
 
 /** GET and parse JSON, or throw {@link LiveUpstreamError}. */

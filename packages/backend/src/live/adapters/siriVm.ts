@@ -8,8 +8,9 @@
  * `VehicleLocation`, and the time it was recorded (`RecordedAtTime`). A
  * vehicle without a position or a time is refused, as every adapter refuses.
  *
- * The XML is read by a small, bounded tag reader rather than a DOM: SIRI-VM
- * is a flat, regular document, and the backend has no XML parser.
+ * The XML is read by a small one-pass tag reader rather than a DOM: SIRI-VM
+ * is a flat, regular document, and the backend has no XML parser. Linear in
+ * the document's size, depth-capped, and tolerant of a malformed one.
  */
 import type { GeoBoundingBox, LiveTransitMode, LiveTransitVehicle } from '@goway/contracts';
 import { accept, getBytes, heading, instant, position, text } from '../normalise';
@@ -33,12 +34,6 @@ export interface SiriVehicle {
   recordedAt: string | null;
 }
 
-/** The first `<Name>…</Name>` (any namespace prefix) inside `xml`. */
-function tag(xml: string, name: string): string | null {
-  const match = new RegExp(`<(?:\\w+:)?${name}(?:\\s[^>]*)?>([^<]*)</(?:\\w+:)?${name}>`).exec(xml);
-  return match ? decodeXml((match[1] ?? '').trim()) : null;
-}
-
 function decodeXml(value: string): string {
   return value
     .replace(/&lt;/g, '<')
@@ -54,24 +49,104 @@ const num = (value: string | null | undefined): number | null => {
   return Number.isFinite(n) ? n : null;
 };
 
-/** Every `VehicleActivity` of a SIRI-VM XML document. */
+/** Nesting deeper than this is not a SIRI-VM document: refused, not followed. */
+export const MAX_SIRI_DEPTH = 64;
+
+/** The fields read from an activity, by element name (first occurrence wins). */
+type Field = 'VehicleRef' | 'PublishedLineName' | 'LineRef' | 'Bearing' | 'RecordedAtTime';
+const FIELDS = new Set<string>([
+  'VehicleRef',
+  'PublishedLineName',
+  'LineRef',
+  'Bearing',
+  'RecordedAtTime',
+]);
+
+/** A tag's local name: `siri:VehicleRef attr="x"` → `VehicleRef`. */
+function localName(raw: string): string {
+  let end = 0;
+  while (end < raw.length && !/[\s/>]/.test(raw[end] as string)) end++;
+  const qualified = raw.slice(0, end);
+  const colon = qualified.indexOf(':');
+  return colon < 0 ? qualified : qualified.slice(colon + 1);
+}
+
+/**
+ * Every `VehicleActivity` of a SIRI-VM XML document, in ONE pass: each tag
+ * is found by `indexOf` and never revisited, so the time is linear in the
+ * document whatever it holds (a regular expression with lazy groups took
+ * 5.6 s on 576 KB of unclosed tags). Comments, CDATA and declarations are
+ * skipped; nesting past {@link MAX_SIRI_DEPTH} throws.
+ */
 export function parseSiriVmXml(xml: string): SiriVehicle[] {
   const out: SiriVehicle[] = [];
-  const activity = /<(?:\w+:)?VehicleActivity(?:\s[^>]*)?>([\s\S]*?)<\/(?:\w+:)?VehicleActivity>/g;
-  for (const match of xml.matchAll(activity)) {
-    const body = match[1] ?? '';
-    const location =
-      /<(?:\w+:)?VehicleLocation(?:\s[^>]*)?>([\s\S]*?)<\/(?:\w+:)?VehicleLocation>/.exec(
-        body,
-      )?.[1] ?? '';
-    out.push({
-      vehicleRef: tag(body, 'VehicleRef'),
-      line: tag(body, 'PublishedLineName') ?? tag(body, 'LineRef'),
-      latitude: num(tag(location, 'Latitude')),
-      longitude: num(tag(location, 'Longitude')),
-      bearing: num(tag(body, 'Bearing')),
-      recordedAt: tag(body, 'RecordedAtTime'),
-    });
+  const stack: string[] = [];
+  let activity: Partial<Record<Field | 'Latitude' | 'Longitude', string>> | null = null;
+  let depthOfActivity = -1;
+  let at = 0;
+  const capture = (raw: string) => {
+    if (!activity) return;
+    const name = stack[stack.length - 1];
+    if (!name) return;
+    const value = decodeXml(raw.trim());
+    if (value === '') return;
+    if (FIELDS.has(name)) {
+      activity[name as Field] ??= value;
+    } else if ((name === 'Latitude' || name === 'Longitude') && stack.includes('VehicleLocation')) {
+      activity[name] ??= value;
+    }
+  };
+  while (at < xml.length) {
+    const open = xml.indexOf('<', at);
+    if (open < 0) break;
+    if (open > at) capture(xml.slice(at, open));
+    if (xml.startsWith('<!--', open)) {
+      const close = xml.indexOf('-->', open + 4);
+      if (close < 0) break;
+      at = close + 3;
+      continue;
+    }
+    if (xml.startsWith('<![CDATA[', open)) {
+      const close = xml.indexOf(']]>', open + 9);
+      if (close < 0) break;
+      capture(xml.slice(open + 9, close));
+      at = close + 3;
+      continue;
+    }
+    const close = xml.indexOf('>', open + 1);
+    if (close < 0) break; // truncated: what was complete stands
+    const raw = xml.slice(open + 1, close);
+    at = close + 1;
+    if (raw.startsWith('?') || raw.startsWith('!')) continue;
+    if (raw.startsWith('/')) {
+      const name = localName(raw.slice(1));
+      // Close up to the matching open tag (a malformed document closing an
+      // outer one early closes the inner ones with it).
+      const index = stack.lastIndexOf(name);
+      if (index < 0) continue;
+      stack.length = index;
+      if (activity && stack.length <= depthOfActivity) {
+        out.push({
+          vehicleRef: activity.VehicleRef ?? null,
+          line: activity.PublishedLineName ?? activity.LineRef ?? null,
+          latitude: num(activity.Latitude),
+          longitude: num(activity.Longitude),
+          bearing: num(activity.Bearing),
+          recordedAt: activity.RecordedAtTime ?? null,
+        });
+        activity = null;
+        depthOfActivity = -1;
+      }
+      continue;
+    }
+    const name = localName(raw);
+    if (raw.endsWith('/')) continue; // self-closing: no text
+    if (name === 'VehicleActivity' && !activity) {
+      activity = {};
+      depthOfActivity = stack.length;
+    }
+    stack.push(name);
+    if (stack.length > MAX_SIRI_DEPTH) throw new Error('SIRI-VM document nested too deep');
   }
   return out;
 }
@@ -92,12 +167,19 @@ export function parseSiriVmJson(document: unknown): SiriVehicle[] {
     ?.ServiceDelivery?.VehicleMonitoringDelivery;
   const deliveries = Array.isArray(delivery) ? delivery : delivery ? [delivery] : [];
   const out: SiriVehicle[] = [];
+  // Anything not an object where an object belongs (a null activity, a
+  // string journey) is an activity without its fields — refused later for
+  // what it lacks, never a thrown poll.
+  const object = (node: unknown): Record<string, unknown> =>
+    typeof node === 'object' && node !== null && !Array.isArray(node)
+      ? (node as Record<string, unknown>)
+      : {};
   for (const d of deliveries) {
-    const activities = (d as { VehicleActivity?: unknown[] })?.VehicleActivity ?? [];
-    for (const a of Array.isArray(activities) ? activities : []) {
-      const activity = a as Record<string, unknown>;
-      const journey = (activity.MonitoredVehicleJourney ?? {}) as Record<string, unknown>;
-      const location = (journey.VehicleLocation ?? {}) as Record<string, unknown>;
+    const activities = object(d).VehicleActivity ?? [];
+    for (const a of Array.isArray(activities) ? activities : [activities]) {
+      const activity = object(a);
+      const journey = object(activity.MonitoredVehicleJourney);
+      const location = object(journey.VehicleLocation);
       out.push({
         vehicleRef: value(journey.VehicleRef),
         line: value(journey.PublishedLineName) ?? value(journey.LineRef),

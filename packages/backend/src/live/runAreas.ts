@@ -56,8 +56,36 @@ const pointsOf = (text: string, latitude: string, longitude: string): Point[] =>
 const routeTypesOf = (text: string): string[] =>
   column(text, 'route_type').map(([type]) => type ?? '');
 
+/**
+ * Where to read a source's static GTFS when its operator's own server
+ * refuses this run (Hamilton, STM and TriMet refuse connections from some
+ * networks): the Mobility Database's copy of the same feed (MobilityData,
+ * `files.mobilitydatabase.org/<id>/latest.zip`, the dataset its catalog lists
+ * for that URL). Only for deriving areas and modes — never what is polled.
+ */
+export const AREA_MIRRORS: Readonly<Record<string, string>> = {
+  'hamilton-hsr': 'https://files.mobilitydatabase.org/mdb-2618/latest.zip',
+  'montreal-stm': 'https://files.mobilitydatabase.org/mdb-2126/latest.zip',
+  'portland-trimet': 'https://files.mobilitydatabase.org/mdb-247/latest.zip',
+};
+
 async function gtfs(definition: LiveSourceDefinition): Promise<Read> {
-  const location = definition.staticGtfs;
+  try {
+    return await gtfsOf(definition, definition.staticGtfs);
+  } catch (error) {
+    const mirror = AREA_MIRRORS[definition.id];
+    if (!mirror) throw error;
+    console.log(
+      `${definition.id}: its server refused (${String(error)}); reading the Mobility Database's copy`,
+    );
+    return gtfsOf(definition, { zip: mirror });
+  }
+}
+
+async function gtfsOf(
+  _definition: LiveSourceDefinition,
+  location: LiveSourceDefinition['staticGtfs'],
+): Promise<Read> {
   if (!location) return { points: [], routeTypes: [] };
   const decoder = new TextDecoder();
   if ('routes' in location) {

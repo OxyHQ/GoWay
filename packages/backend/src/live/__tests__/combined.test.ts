@@ -9,7 +9,9 @@ import { createCombinedAdapter } from '../adapters/combined';
 import { sourceAreas } from '../areas';
 import { LIVE_SOURCES } from '../catalogue';
 import { buildStaticGtfs, findTrip } from '../staticGtfs';
-import type { LiveAdapter, LiveFetchContext, LivePollResult } from '../types';
+import { protobufWriter as w } from '../protobuf';
+import type { LiveAdapter, LiveFetch, LiveFetchContext, LivePollResult } from '../types';
+import { LiveUpstreamError } from '../types';
 
 const T0 = Date.parse('2026-10-12T20:00:00Z');
 
@@ -42,7 +44,8 @@ const fixed = (result: LivePollResult | Error): LiveAdapter => ({
   },
 });
 
-const context = {} as LiveFetchContext;
+const clock = { now: T0 };
+const context = { now: () => clock.now } as LiveFetchContext;
 const byTrain = (entity: LiveEntity) =>
   entity.kind === 'transit' && entity.vehicleLabel ? `train:${entity.vehicleLabel}` : entity.id;
 
@@ -77,7 +80,118 @@ describe('createCombinedAdapter', () => {
   });
 });
 
+describe('a part that fails', () => {
+  /** An adapter whose answers the test sets, counting its polls. */
+  const scripted = () => {
+    const part = {
+      calls: 0,
+      next: (): LivePollResult | Error => ({ entities: [], rejected: 0 }),
+      adapter: {
+        poll: async () => {
+          part.calls++;
+          const answer = part.next();
+          if (answer instanceof Error) throw answer;
+          return answer;
+        },
+      } as LiveAdapter,
+    };
+    return part;
+  };
+
+  it('keeps what it last sent, says so, and is not asked again before its Retry-After', async () => {
+    clock.now = T0;
+    const commuter = scripted();
+    const longDistance = scripted();
+    commuter.next = () => ({ entities: [train('15736', '15736', 'R11')], rejected: 0 });
+    longDistance.next = () => ({ entities: [train('ld-04179', '04179', null)], rejected: 0 });
+    const adapter = createCombinedAdapter([commuter.adapter, longDistance.adapter], byTrain);
+    expect((await adapter.poll(context)).degraded).toBeUndefined();
+
+    // The long-distance feed goes down, asking for two minutes.
+    longDistance.next = () => new LiveUpstreamError('upstream answered 503', 120, 503);
+    clock.now += 20_000;
+    const partial = await adapter.poll(context);
+    expect(partial.entities.map((e) => e.id).sort()).toEqual([
+      'renfe-cercanias:15736',
+      'renfe-cercanias:ld-04179',
+    ]);
+    expect(partial.degraded).toMatch(/1 of 2 feeds/);
+    // At +21 s and +42 s it is not asked; its trains still stand.
+    for (const step of [21_000, 21_000]) {
+      clock.now += step;
+      const again = await adapter.poll(context);
+      expect(again.entities).toHaveLength(2);
+    }
+    expect(longDistance.calls).toBe(2);
+    // After its two minutes it is asked again, and answers.
+    clock.now += 80_000;
+    longDistance.next = () => ({ entities: [train('ld-04179', '04179', null)], rejected: 0 });
+    expect((await adapter.poll(context)).degraded).toBeUndefined();
+    expect(longDistance.calls).toBe(3);
+  });
+
+  it('keeps a train in both feeds the same id when the first fails', async () => {
+    clock.now = T0;
+    const commuter = scripted();
+    const longDistance = scripted();
+    commuter.next = () => ({ entities: [train('15736', '15736', 'R11')], rejected: 0 });
+    longDistance.next = () => ({ entities: [train('ld-15736', '15736', null)], rejected: 0 });
+    const adapter = createCombinedAdapter([commuter.adapter, longDistance.adapter], byTrain);
+    expect((await adapter.poll(context)).entities.map((e) => e.id)).toEqual([
+      'renfe-cercanias:15736',
+    ]);
+    commuter.next = () => new Error('504');
+    clock.now += 20_000;
+    expect((await adapter.poll(context)).entities.map((e) => e.id)).toEqual([
+      'renfe-cercanias:15736',
+    ]);
+  });
+});
+
 describe('the Renfe source', () => {
+  it("draws a train in both of Renfe's feeds once, by its number, and prefixes the long-distance ids", async () => {
+    const renfe = LIVE_SOURCES.find((source) => source.id === 'renfe-cercanias');
+    if (!renfe) throw new Error('no Renfe');
+    const now = Math.floor(Date.now() / 1000);
+    const feed = (vehicles: [string, string][]) => {
+      const header = w.bytes(1, [...w.string(1, '2.0'), ...w.uint(3, now)]);
+      const entities = vehicles.flatMap(([id, label]) =>
+        w.bytes(2, [
+          ...w.string(1, id),
+          ...w.bytes(4, [
+            ...w.bytes(8, [...w.string(1, id), ...w.string(2, label)]),
+            ...w.bytes(2, [...w.float(1, 41.84), ...w.float(2, 2.8)]),
+            ...w.uint(5, now),
+          ]),
+        ]),
+      );
+      return new Uint8Array([...header, ...entities]);
+    };
+    const bodies: Record<string, Uint8Array> = {
+      'https://gtfsrt.renfe.com/vehicle_positions.pb': feed([['VP_15736', 'R11-15736-PLATF.(1)']]),
+      'https://gtfsrt.renfe.com/vehicle_positions_LD.pb': feed([
+        ['VP_15736', '15736'],
+        ['VP_04179', '04179'],
+      ]),
+    };
+    const fetch: LiveFetch = async (url) => {
+      const body = bodies[url] ?? new Uint8Array();
+      return {
+        status: 200,
+        headers: { get: () => null },
+        arrayBuffer: async () =>
+          body.buffer.slice(body.byteOffset, body.byteOffset + body.byteLength) as ArrayBuffer,
+      };
+    };
+    const result = await renfe
+      .create({ url: renfe.defaultUrl, userAgent: 'test', maxRegionsPerPoll: 1 })
+      .poll({ signal: new AbortController().signal, fetch, now: Date.now, demand: [] });
+    expect(result.entities.map((e) => e.id).sort()).toEqual([
+      'renfe-cercanias:VP_15736',
+      'renfe-cercanias:ld-VP_04179',
+    ]);
+  });
+
   it('reads the commuter AND the long-distance feed, with both static files', () => {
     const renfe = LIVE_SOURCES.find((source) => source.id === 'renfe-cercanias');
     expect(renfe?.staticGtfs).toEqual({

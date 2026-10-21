@@ -629,6 +629,7 @@ export {
   streetSceneManifestSchema,
   streetSceneReportSchema,
   liveSourcePageSchema,
+  liveSourceSchema,
   liveShapeSchema,
   roadAccessDecisionSchema,
   roadAccessInputSchema,

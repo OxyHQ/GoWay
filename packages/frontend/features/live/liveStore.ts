@@ -163,6 +163,11 @@ export class LiveStore {
     if (Number.isFinite(server)) this.offset = server - this.clientNow();
   }
 
+  /** One source's news (`live:source`): its status, freshness and count. */
+  upsertSource(source: LiveSource): void {
+    this.sourcesById.set(source.id, source);
+  }
+
   setSources(sources: readonly LiveSource[]): void {
     this.sourcesById.clear();
     for (const source of sources) this.sourcesById.set(source.id, source);

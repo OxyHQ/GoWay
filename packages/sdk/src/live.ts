@@ -50,6 +50,7 @@ import {
   liveDeltaSchema,
   liveSnapshotSchema,
   liveSourcePageSchema,
+  liveSourceSchema,
   liveSubscriptionSchema,
   liveSubscriptionStateSchema,
   isRegionalTransitMode,
@@ -160,6 +161,11 @@ export function parseLiveDelta(payload: unknown): LiveDelta | null {
 /** A `live:subscription` payload, or `null`. */
 export function parseLiveSubscriptionState(payload: unknown): LiveSubscriptionState | null {
   return parsed<LiveSubscriptionState>(liveSubscriptionStateSchema, payload);
+}
+
+/** A `live:source` payload — one source whose status changed — or `null`. */
+export function parseLiveSource(payload: unknown): LiveSource | null {
+  return parsed<LiveSource>(liveSourceSchema, payload);
 }
 
 /** A `live:sources` payload, or `null`. */

@@ -50,6 +50,8 @@ export type LiveClusterMessage =
       lastSuccessAt: number;
       /** The sender's lease epoch: a follower drops anything older than the newest it heard. */
       epoch: number;
+      /** Answered only in part (`LivePollResult.degraded`). */
+      degraded?: boolean;
     }
   /** A leader's poll failed: its status, so every task reports the same. */
   | {

@@ -46,6 +46,13 @@ describe('the fleet registry', () => {
     expect(fleetOf(transit('renfe-cercanias', 'REGIONAL'))).toBe('generic-train');
     expect(fleetOf(transit('renfe-cercanias', 'AVE'))).toBe('generic-train');
     expect(fleetOf(transit('renfe-cercanias', 'R11'))).toBe('rodalies-civia');
+    // A long-distance train its static file named no line for: still not a Civia.
+    expect(
+      fleetOf({
+        ...transit('renfe-cercanias', null),
+        id: 'renfe-cercanias:ld-VP_04179',
+      } as LiveEntity),
+    ).toBe('generic-train');
     expect(fleetOf(transit('fgc-geotren', 'S1'))).toBe('fgc-bv');
     expect(fleetOf(transit('fgc-geotren', 'R5'))).toBe('fgc-lla');
     expect(fleetOf(transit('mta-lirr', null))).toBe('lirr-emu');

@@ -309,6 +309,8 @@ interface FleetRule {
   mode?: string;
   line?: RegExp;
   vehicleLabel?: RegExp;
+  /** The entity id: a source's second feed is told apart by its id prefix. */
+  id?: RegExp;
 }
 
 /** First match wins. */
@@ -320,6 +322,9 @@ export const FLEET_RULES: readonly FleetRule[] = [
     line: /^(AVE|AVLO|ALVIA|AVANT|EUROMED|INTERCITY|MD|REGIONAL|REG\.EXP\.|PROXIMDAD|TRENCELTA)/i,
     fleet: 'generic-train',
   },
+  // Every train of that feed, line matched or not (its ids are `ld-…`): a
+  // long-distance train the static file did not name is still not a Civia.
+  { sourceId: 'renfe-cercanias', id: /^renfe-cercanias:ld-/, fleet: 'generic-train' },
   { sourceId: 'renfe-cercanias', line: /^R/, fleet: 'rodalies-civia' },
   { sourceId: 'renfe-cercanias', fleet: 'cercanias-civia' },
   // Barcelona–Vallès: S1, S2, L6, L7, L12; everything else FGC runs is Llobregat–Anoia or rural.
@@ -345,6 +350,7 @@ export function fleetOf(entity: LiveEntity): FleetKey {
   for (const rule of FLEET_RULES) {
     if (rule.sourceId && rule.sourceId !== entity.sourceId) continue;
     if (rule.mode && rule.mode !== entity.mode) continue;
+    if (rule.id && !rule.id.test(entity.id)) continue;
     if (rule.line && !(entity.line && rule.line.test(entity.line))) continue;
     if (rule.vehicleLabel && !(entity.vehicleLabel && rule.vehicleLabel.test(entity.vehicleLabel)))
       continue;

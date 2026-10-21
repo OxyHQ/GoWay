@@ -76,4 +76,47 @@ describe('SIRI-VM', () => {
     const result = normaliseSiriVm(OPTIONS, parseSiriVmJson(json), NOW);
     expect(result.entities.map((e) => e.kind === 'transit' && e.line)).toEqual(['L5']);
   });
+
+  it('reads a hostile document in linear time, and a namespaced one, comments and CDATA', () => {
+    // 576 KB of unclosed tags: a backtracking reader took 5.6 s on this.
+    const hostile = `<Siri>${'<VehicleActivity><RecordedAtTime>x'.repeat(16_000)}`;
+    expect(hostile.length).toBeGreaterThan(500_000);
+    const started = performance.now();
+    expect(() => parseSiriVmXml(hostile)).toThrow(/too deep/);
+    const flat = `<Siri>${'<VehicleRef>x'.repeat(50_000)}`;
+    parseSiriVmXml(flat.replaceAll('<VehicleRef>x', '<a>x</a>'));
+    expect(performance.now() - started).toBeLessThan(500);
+
+    const namespaced = `<siri:Siri><!-- a <VehicleActivity> in a comment --><siri:VehicleActivity>
+      <siri:RecordedAtTime>2026-10-12T18:00:00Z</siri:RecordedAtTime>
+      <siri:MonitoredVehicleJourney><siri:VehicleRef><![CDATA[V&1]]></siri:VehicleRef>
+      <siri:VehicleLocation><siri:Latitude>59.9</siri:Latitude><siri:Longitude>10.7</siri:Longitude></siri:VehicleLocation>
+      </siri:MonitoredVehicleJourney></siri:VehicleActivity></siri:Siri>`;
+    expect(parseSiriVmXml(namespaced)).toEqual([
+      {
+        vehicleRef: 'V&1',
+        line: null,
+        latitude: 59.9,
+        longitude: 10.7,
+        bearing: null,
+        recordedAt: '2026-10-12T18:00:00Z',
+      },
+    ]);
+  });
+
+  it('maps a null activity, journey or location to a refused vehicle, never a thrown poll', () => {
+    const json = {
+      Siri: {
+        ServiceDelivery: {
+          VehicleMonitoringDelivery: [
+            { VehicleActivity: [null, { MonitoredVehicleJourney: null }, 'x'] },
+            null,
+          ],
+        },
+      },
+    };
+    const vehicles = parseSiriVmJson(json);
+    expect(vehicles).toHaveLength(3);
+    expect(normaliseSiriVm(OPTIONS, vehicles, NOW)).toMatchObject({ entities: [], rejected: 3 });
+  });
 });
