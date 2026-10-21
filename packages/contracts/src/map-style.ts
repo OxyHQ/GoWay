@@ -78,6 +78,21 @@ export const MAP_STYLE_CATALOGUE: readonly MapStyleDefinition[] = [
 
 export const DEFAULT_MAP_STYLE: MapStyleId = 'standard';
 
+/**
+ * Whether a style is offered (`MapStyleDefinition.offer`): a style whose data
+ * is not published yet (the imagery) only in a development build of GoWay.
+ * The ONE answer the SDK's links, `/map/styles/index.json` and the app's
+ * picker and embed all give: a link to a style not offered would be a 404.
+ */
+export function isMapStyleOffered(id: MapStyleId, development = false): boolean {
+  return mapStyleDefinition(id).offer !== 'development' || development;
+}
+
+/** The styles offered to everyone (not only a development build), in catalogue order. */
+export const OFFERED_MAP_STYLE_IDS: readonly MapStyleId[] = MAP_STYLE_CATALOGUE.filter((entry) =>
+  isMapStyleOffered(entry.id),
+).map((entry) => entry.id);
+
 /** A style in one light: one document. */
 export interface MapStyleSelection {
   style: MapStyleId;

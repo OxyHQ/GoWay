@@ -136,7 +136,11 @@ function MapAttributionComponent({
   expanded,
   onToggle,
 }: {
-  /** The style itself draws elevation data (Outdoors' hillshade and contours). */
+  /**
+   * GoWay's elevation data is drawn now: the style's own (Outdoors' hillshade
+   * and contours), or the relief's hillshade or 3D terrain, as the canvas
+   * draws it — credited exactly while drawn, never from a switch.
+   */
   elevation?: boolean;
   extra?: readonly MapAttributionLink[];
   /**
@@ -151,10 +155,9 @@ function MapAttributionComponent({
   const { locale } = useTranslation();
   const theme = useTheme();
   const toggleLabel = localizedLabel(expanded ? CREDIT_LABELS.hide : CREDIT_LABELS.show, locale);
-  // The elevation credit rides along whenever the relief prototype draws
-  // terrain or a hillshade (`docs/MAP_TERRAIN_GLOBE.md`).
-  const relief = useMapRelief();
-  const attribution = resolveMapAttribution({ terrain: relief.terrain || elevation });
+  // The elevation credit rides along whenever elevation data is drawn: the
+  // style's, or the relief's terrain or hillshade (`docs/MAP_TERRAIN_GLOBE.md`).
+  const attribution = resolveMapAttribution({ terrain: elevation });
   const links = extra.length > 0 ? [...attribution.links, ...extra] : attribution.links;
   // The simulation's label: the whole line spelled out, one word folded.
   const shown = creditDisclosure(expanded, disclosure);

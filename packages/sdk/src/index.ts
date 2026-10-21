@@ -268,6 +268,8 @@ export {
   mapStyleDefinition,
   mapStylePath,
   resolveMapStyle,
+  isMapStyleOffered,
+  OFFERED_MAP_STYLE_IDS,
 } from './contract';
 
 export type {

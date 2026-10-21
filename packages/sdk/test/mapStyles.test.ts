@@ -4,10 +4,12 @@ import {
   DEFAULT_MAP_STYLE,
   GoWayValidationError,
   isMapStyleId,
+  isMapStyleOffered,
   MAP_LIGHT_PRESETS,
   MAP_STYLE_CATALOGUE,
   MAP_STYLE_IDS,
   type MapStyleId,
+  OFFERED_MAP_STYLE_IDS,
   parseMapStyleIndex,
   resolveMapStyle,
 } from '../src/index';
@@ -43,6 +45,22 @@ describe('map styles', () => {
   it('refuses a style or a light GoWay does not publish', () => {
     expect(() => client.links.mapStyle('hologram' as MapStyleId)).toThrow(GoWayValidationError);
     expect(() => client.links.mapStyle('standard', 'noon' as never)).toThrow(GoWayValidationError);
+  });
+
+  it('refuses a style GoWay does not offer yet: its documents would be a 404', () => {
+    for (const style of ['satellite', 'hybrid'] as const) {
+      expect(isMapStyleOffered(style)).toBe(false);
+      expect(OFFERED_MAP_STYLE_IDS).not.toContain(style);
+      expect(() => client.links.mapStyle(style)).toThrow(GoWayValidationError);
+      expect(() =>
+        client.links.embed({ latitude: 41.39, longitude: 2.17, zoom: 14 }, { style }),
+      ).toThrow(GoWayValidationError);
+    }
+    // Every style offered is one the catalogue publishes, in its order.
+    expect(OFFERED_MAP_STYLE_IDS).toEqual(
+      MAP_STYLE_CATALOGUE.filter((entry) => entry.offer !== 'development').map((e) => e.id),
+    );
+    for (const style of OFFERED_MAP_STYLE_IDS) expect(() => client.links.mapStyle(style)).not.toThrow();
   });
 
   it('builds an embed URL with a style and a light', () => {

@@ -33,7 +33,12 @@
 import type { StyleSpecification } from '@maplibre/maplibre-gl-style-spec';
 
 import { BUILDINGS_LIGHT } from './buildings3d';
-import type { MapLightPreset, MapStyleId, MapStyleSelection } from './catalogue';
+import {
+  type MapLightPreset,
+  type MapStyleId,
+  type MapStyleSelection,
+  mapStyleDefinition,
+} from './catalogue';
 import { buildCity3dGroundOverrides } from './city3dGround';
 import {
   buildLayers,
@@ -45,6 +50,7 @@ import {
 import { CITY3D_GROUND_METADATA_KEY } from './palette3d';
 import { buildQualityOverrides, QUALITY_LOW_METADATA_KEY } from './qualityOverrides';
 import { applyImageryStyle } from './imagery';
+import { SUN_LANDS_METADATA_KEY } from './sunLadder';
 import { styleTheme } from './themes';
 
 export { LABEL_ANCHOR_LAYER_ID, GOWAY_STYLE_LAYER_IDS, GOWAY_STYLE_LAYER_ID_LIST } from './layers';
@@ -139,6 +145,17 @@ const LIGHT_NAMES: Record<MapLightPreset, string> = {
   night: 'Night',
 };
 
+/** `goway:sun-lands`: the land of each published light, for a style whose light follows. */
+function sunLands(style: MapStyleId): Record<string, Partial<Record<MapLightPreset, string>>> {
+  const definition = mapStyleDefinition(style);
+  if (definition.light !== 'follows') return {};
+  return {
+    [SUN_LANDS_METADATA_KEY]: Object.fromEntries(
+      definition.presets.map((preset) => [preset, styleTheme({ style, preset }).palette.land]),
+    ),
+  };
+}
+
 /**
  * Build the complete style document for one style in one light.
  *
@@ -183,6 +200,10 @@ export function buildGowayMapStyle(
       // The same layers at Standard's density, for the low quality tier
       // (`qualityOverrides.ts`): empty for a style already drawn at it.
       [QUALITY_LOW_METADATA_KEY]: buildQualityOverrides(palette, options, endpoints.sourceId),
+      // The land of every light this style is published in, for a style whose
+      // light follows: what the globe's night eases this document onto where
+      // the next one takes over (`sunLadder.ts`). Absent for a fixed light.
+      ...sunLands(selection.style),
     },
     // The document-level light. It shades nothing but `building-3d`, and it is
     // here rather than in `buildings3d.ts` only because MapLibre puts `light`

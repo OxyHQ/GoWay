@@ -798,7 +798,13 @@
         ]
       }
     ],
-    "goway:quality-low": []
+    "goway:quality-low": [],
+    "goway:sun-lands": {
+      "day": "#f6f4eb",
+      "dawn": "#f4e9e4",
+      "dusk": "#ecdfcd",
+      "night": "#34445b"
+    }
   },
   "light": {
     "anchor": "viewport",

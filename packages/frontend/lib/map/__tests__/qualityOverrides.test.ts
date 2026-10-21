@@ -2,11 +2,11 @@
  * The low tier draws a dense style (Streets) at Standard's density
  * (`lib/map/style/qualityOverrides.ts`, `components/map/qualityOverrides.ts`,
  * `QualityProfile.basemap.density`): the overrides are exactly the layer
- * list at Standard's density, and the runtime undoes them exactly.
+ * list at Standard's density, and folded into the document they draw exactly that.
  */
 import { describe, expect, test } from 'bun:test';
 
-import { applyQualityOverrides, type QualityHost } from '@/components/map/qualityOverrides';
+import { hasQualityOverrides, withQualityOverrides } from '@/components/map/qualityOverrides';
 import { QUALITY_PRESETS } from '@/lib/map/quality/profile';
 import { buildGowayMapStyle } from '@/lib/map/style';
 import { buildLayers } from '@/lib/map/style/layers';
@@ -44,46 +44,29 @@ describe('the low tier draws a dense style at Standard’s density', () => {
     }
   });
 
-  test('the runtime applies them and undoes them exactly', () => {
-    const streets = buildGowayMapStyle({ style: 'streets', preset: 'day' }, ENDPOINTS);
-    const layers = new Map(
-      streets.layers.map((l) => [l.id, JSON.parse(JSON.stringify(l)) as Record<string, unknown>]),
+  test('folded into the published document, each layer is exactly its Standard-density twin', () => {
+    const streets = styleTheme({ style: 'streets', preset: 'day' });
+    // As published: through JSON, as both forks read it.
+    const document = JSON.parse(
+      JSON.stringify(buildGowayMapStyle({ style: 'streets', preset: 'day' }, ENDPOINTS)),
     );
-    const before = JSON.stringify([...layers.values()]);
-    const part = (id: string, key: 'layout' | 'paint') => {
-      const layer = layers.get(id) as Record<string, Record<string, unknown>>;
-      layer[key] ??= {};
-      return layer[key];
-    };
-    const set = (id: string, key: 'layout' | 'paint', p: string, v: unknown) => {
-      if (v === undefined) delete part(id, key)[p];
-      else part(id, key)[p] = v;
-    };
-    const host: QualityHost = {
-      getStyle: () => ({ metadata: streets.metadata }),
-      getLayer: (id) => layers.get(id) as { minzoom?: number } | undefined,
-      getFilter: (id) => layers.get(id)?.filter,
-      setFilter: (id, f) => {
-        (layers.get(id) as Record<string, unknown>).filter = f;
-      },
-      getLayoutProperty: (id, p) => part(id, 'layout')[p],
-      setLayoutProperty: (id, p, v) => set(id, 'layout', p, v),
-      getPaintProperty: (id, p) => part(id, 'paint')[p],
-      setPaintProperty: (id, p, v) => set(id, 'paint', p, v),
-      setLayerZoomRange: (id, min) => {
-        (layers.get(id) as Record<string, unknown>).minzoom = min;
-      },
-    };
-    const undo = applyQualityOverrides(host);
-    expect(undo).not.toBeNull();
-    expect(layers.get('label-poi-minor')?.minzoom).toBe(17);
-    undo?.();
-    expect(JSON.stringify([...layers.values()])).toBe(before);
+    const lean = buildLayers(streets.palette, 'openmaptiles', standardDensity(streets.options));
+    const folded = withQualityOverrides(document);
+    expect(folded).not.toBe(document);
+    const twins = new Map(lean.map((l) => [l.id, JSON.parse(JSON.stringify(l))]));
+    for (const layer of folded.layers as { id: string }[]) {
+      const twin = twins.get(layer.id);
+      if (twin) expect(layer, layer.id).toEqual(twin);
+    }
+    // The input is not touched.
+    expect(JSON.stringify(document)).toBe(
+      JSON.stringify(buildGowayMapStyle({ style: 'streets', preset: 'day' }, ENDPOINTS)),
+    );
   });
 
-  test('a style without overrides is left alone', () => {
+  test('a document without overrides comes back as it is', () => {
     const standard = buildGowayMapStyle({ style: 'standard', preset: 'day' }, ENDPOINTS);
-    const host = { getStyle: () => ({ metadata: standard.metadata }) } as unknown as QualityHost;
-    expect(applyQualityOverrides(host)).toBeNull();
+    expect(hasQualityOverrides(standard)).toBe(false);
+    expect(withQualityOverrides(standard)).toBe(standard);
   });
 });

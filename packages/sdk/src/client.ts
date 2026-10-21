@@ -106,8 +106,9 @@ import {
   isMapLightPreset,
   isMapStyleId,
   MAP_LIGHT_PRESETS,
-  MAP_STYLE_IDS,
   MAP_STYLE_INDEX_PATH,
+  isMapStyleOffered,
+  OFFERED_MAP_STYLE_IDS,
   mapStylePath,
   resolveMapStyle,
   roadAccessDecisionSchema,
@@ -1065,10 +1066,14 @@ function serializeQuery(query: Record<string, QueryValue>): string {
     .join('&');
 }
 
-/** A style id and an optional light, checked against the catalogue. */
+/**
+ * A style id and an optional light, checked against the catalogue: only a
+ * style GoWay offers (`isMapStyleOffered`), since a link to one that is not
+ * offered yet (its data unpublished: the imagery) would be a 404.
+ */
 function styleSelection(style: unknown, light: unknown): MapStyleSelection {
-  if (!isMapStyleId(style)) {
-    throw new GoWayValidationError(`style must be one of ${MAP_STYLE_IDS.join(', ')}`);
+  if (!isMapStyleId(style) || !isMapStyleOffered(style)) {
+    throw new GoWayValidationError(`style must be one of ${OFFERED_MAP_STYLE_IDS.join(', ')}`);
   }
   if (light !== undefined && !isMapLightPreset(light)) {
     throw new GoWayValidationError(`light must be one of ${MAP_LIGHT_PRESETS.join(', ')}`);

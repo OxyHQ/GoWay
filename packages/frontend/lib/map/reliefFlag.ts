@@ -55,31 +55,48 @@ export function withGlobeProjection<Style extends Pick<StyleSpecification, 'vers
 }
 
 /**
- * How the web map is handed its style, given whether the globe is on.
+ * How the web map is handed its style, given whether the globe is on and
+ * whether the document is drawn through a `transform` (the quality profile's
+ * density, `components/map/qualityOverrides.ts`).
  *
- * Off: exactly as it always was — the URL in the constructor, nothing else.
+ * Neither: exactly as it always was — the URL in the constructor, nothing else.
  *
- * On: no style in the constructor (the key ABSENT, not present-and-undefined;
- * see `engineOptions.test.ts`), and the URL handed to `setStyle` right after
- * with {@link withGlobeProjection} as its `transformStyle`. The globe is then
- * part of the document from the moment it is fetched, so the first frame is a
- * globe whenever the relief chunk arrives — before, the projection was set by
- * that chunk at `style.load`, and a chunk slower than the style document meant
- * a frame or more of flat mercator first (PR #124 review).
+ * Otherwise: no style in the constructor (the key ABSENT, not
+ * present-and-undefined; see `engineOptions.test.ts`), and the URL handed to
+ * `setStyle` right after with a `transformStyle` that folds them in. The
+ * globe is then part of the document from the moment it is fetched, so the
+ * first frame is a globe whenever the relief chunk arrives — before, the
+ * projection was set by that chunk at `style.load`, and a chunk slower than
+ * the style document meant a frame or more of flat mercator first (PR #124
+ * review) — and the low tier's first frame is already at its density.
  */
-export function mapStyleLoading(
+export function mapStyleLoading<Style extends Pick<StyleSpecification, 'version'>>(
   styleUrl: string,
   globe: boolean,
+  transform?: (style: Style) => Style,
 ): {
   construct: { style?: string };
-  deferred: { url: string; transformStyle: typeof withGlobeProjection } | null;
+  deferred: { url: string; transformStyle: (previous: unknown, next: Style) => Style } | null;
   /** The container's background before the first frame; `null` leaves it alone. */
   background: string | null;
 } {
-  if (!globe) return { construct: { style: styleUrl }, deferred: null, background: null };
+  if (!globe && !transform) {
+    return { construct: { style: styleUrl }, deferred: null, background: null };
+  }
+  if (!transform) {
+    return {
+      construct: {},
+      deferred: { url: styleUrl, transformStyle: withGlobeProjection },
+      background: GLOBE_SPACE_BASE,
+    };
+  }
   return {
     construct: {},
-    deferred: { url: styleUrl, transformStyle: withGlobeProjection },
-    background: GLOBE_SPACE_BASE,
+    deferred: {
+      url: styleUrl,
+      transformStyle: (previous, next) =>
+        globe ? withGlobeProjection(previous, transform(next)) : transform(next),
+    },
+    background: globe ? GLOBE_SPACE_BASE : null,
   };
 }

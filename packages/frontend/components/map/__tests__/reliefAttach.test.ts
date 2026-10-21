@@ -5,6 +5,14 @@
  */
 import { beforeAll, describe, expect, test } from 'bun:test';
 
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
+
+import type { GlobeNightLayer } from '@/components/map/globeNightLayer.web';
+import { BUILDING_3D_LAYER_ID } from '@/lib/map/style/buildings3d';
+import { globeNightFor } from '@/lib/map/style/globeNight';
+import { styleNightSky } from '@/lib/map/style/nightSky';
+import { sunLandsOf } from '@/lib/map/style/sunLadder';
 import {
   GLOBE_PROJECTION,
   HILLSHADE_BEFORE_LAYER_ID,
@@ -15,6 +23,8 @@ import {
 
 type AttachRelief = typeof import('@/components/map/reliefLayer.web').attachRelief;
 let attachRelief: AttachRelief;
+// The layer id, read once the adapter is loaded (its module reads `__DEV__`).
+const GLOBE_NIGHT_LAYER_ID = 'goway:globe-night';
 
 beforeAll(async () => {
   // A development global the adapter reads; Metro defines it, bun does not.
@@ -24,8 +34,14 @@ beforeAll(async () => {
 
 type Listener = (event?: unknown) => void;
 
-function fakeMap(options: { layers: string[]; loaded: boolean; pitch?: number }) {
+function fakeMap(options: {
+  layers: string[];
+  loaded: boolean;
+  pitch?: number;
+  metadata?: unknown;
+}) {
   const calls: unknown[][] = [];
+  const objects = new Map<string, unknown>();
   const listeners = new Map<string, Set<Listener>>();
   const sources = new Set<string>();
   const layers = [...options.layers];
@@ -36,7 +52,14 @@ function fakeMap(options: { layers: string[]; loaded: boolean; pitch?: number })
   const map = {
     calls,
     layers,
+    objects,
     container,
+    getStyle: () => ({ metadata: options.metadata }),
+    removeLayer: (id: string) => {
+      layers.splice(layers.indexOf(id), 1);
+      objects.delete(id);
+      calls.push(['removeLayer', id]);
+    },
     fire(type: string, event?: unknown) {
       for (const listener of [...(listeners.get(type) ?? [])]) listener(event);
     },
@@ -77,6 +100,7 @@ function fakeMap(options: { layers: string[]; loaded: boolean; pitch?: number })
       calls.push(['addSource', id, (spec as { type: string }).type]);
     },
     addLayer: (layer: { id: string }, before?: string) => {
+      objects.set(layer.id, layer);
       layers.splice(before ? layers.indexOf(before) : layers.length, 0, layer.id);
       calls.push(['addLayer', layer.id, before]);
     },
@@ -203,4 +227,74 @@ describe('attachRelief', () => {
     const added = map.calls.filter((call) => call[0] === 'addSource').map((call) => call[1]);
     expect(added).toEqual([RELIEF_SOURCE_IDS.hillshade, RELIEF_SOURCE_IDS.terrain]);
   });
+
+  describe('day and night on the globe', () => {
+    const LAYERS = [...GOWAY_LAYERS, BUILDING_3D_LAYER_ID];
+    const standardDusk = JSON.parse(
+      readFileSync(join(import.meta.dir, '../../../public/map/styles/standard/dusk.json'), 'utf8'),
+    );
+    const nightLayer = (map: ReturnType<typeof fakeMap>) =>
+      map.objects.get(GLOBE_NIGHT_LAYER_ID) as GlobeNightLayer | undefined;
+
+    test('a fixed-light style (Light, Dark) has no night side, whatever the profile says', () => {
+      for (const style of [
+        { style: 'light', preset: 'day' },
+        { style: 'dark', preset: 'night' },
+      ] as const) {
+        const map = fakeMap({ layers: LAYERS, loaded: true });
+        const handle = attachRelief(asMap(map), {
+          flags: { globe: true, terrain: false },
+          appearance: style.preset === 'day' ? 'light' : 'dark',
+          globeNight: true,
+          style,
+        });
+        expect(map.layers, style.style).not.toContain(GLOBE_NIGHT_LAYER_ID);
+        // The profile changes (Settings → Performance): still none.
+        handle.setGlobeNight(true);
+        expect(map.layers, style.style).not.toContain(GLOBE_NIGHT_LAYER_ID);
+        // Swapped to a style whose light follows: now it is drawn.
+        handle.setLook({
+          appearance: 'light',
+          style: { style: 'standard', preset: 'day' },
+          followsSun: false,
+        });
+        expect(map.layers).toContain(GLOBE_NIGHT_LAYER_ID);
+        handle.detach();
+      }
+    });
+
+    test('the night is the drawn style’s, over its light and its lands', () => {
+      const map = fakeMap({ layers: LAYERS, loaded: true, metadata: standardDusk.metadata });
+      const handle = attachRelief(asMap(map), {
+        flags: { globe: true, terrain: false },
+        appearance: 'light',
+        style: { style: 'standard', preset: 'dusk' },
+        followsSun: true,
+      });
+      const lands = sunLandsOf(standardDusk.metadata);
+      expect(lands).not.toBeNull();
+      const expected = globeNightFor(styleNightSky('standard').ambient, {
+        preset: 'dusk',
+        followsSun: true,
+        lands,
+      });
+      expect(nightLayer(map)?.getNight()).toEqual(expected);
+      // Another style's night is another night.
+      handle.setLook({
+        appearance: 'dark',
+        style: { style: 'navigation', preset: 'night' },
+        followsSun: true,
+      });
+      expect(nightLayer(map)?.getNight()).toEqual(
+        globeNightFor(styleNightSky('navigation').ambient, {
+          preset: 'night',
+          followsSun: true,
+          lands,
+        }),
+      );
+      expect(nightLayer(map)?.getNight()).not.toEqual(expected);
+      handle.detach();
+    });
+  });
 });
+

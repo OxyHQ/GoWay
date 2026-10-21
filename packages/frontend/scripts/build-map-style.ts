@@ -77,6 +77,7 @@ import {
 import { buildGowayMapStyle } from '../lib/map/style';
 import {
   DEFAULT_MAP_STYLE,
+  isMapStyleOffered,
   MAP_STYLE_INDEX_PATH,
   MAP_STYLES,
   type MapStyleSelection,
@@ -156,7 +157,7 @@ function buildStyleIndex(): Record<string, unknown> {
     default: DEFAULT_MAP_STYLE,
     // A style not offered yet (its data unpublished: the imagery) is left out
     // of the public index; its documents are still built and checked.
-    styles: MAP_STYLES.filter((entry) => entry.offer !== 'development').map((entry) => ({
+    styles: MAP_STYLES.filter((entry) => isMapStyleOffered(entry.id)).map((entry) => ({
       id: entry.id,
       light: entry.light,
       presets: entry.presets,

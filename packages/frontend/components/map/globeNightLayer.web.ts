@@ -39,6 +39,10 @@ export interface GlobeNightLayer extends CustomLayerInterface {
   setTime(at: Date | null): void;
   /** Draw or not (the quality profile's `relief.globeNight`). */
   setEnabled(enabled: boolean): void;
+  /** The map's document changed in place (a style or light swap): its night. */
+  setNight(night: GlobeNight): void;
+  /** The night it draws now (for the tests, and a console). */
+  getNight(): GlobeNight;
 }
 
 /** Inverse of a column-major 4×4, in float64; `null` when singular. */
@@ -175,7 +179,7 @@ function compile(gl: WebGL2RenderingContext, type: number, source: string): WebG
 }
 
 export function createGlobeNightLayer(options: {
-  /** The map's night and the light its document draws (`globeNightFor`, from its style). */
+  /** The map's night over the document it draws (`globeNightFor`, from its style). */
   night: GlobeNight;
   at: Date | null;
   enabled: boolean;
@@ -189,8 +193,7 @@ export function createGlobeNightLayer(options: {
   let at = options.at;
   let enabled = options.enabled;
   let timer: ReturnType<typeof setInterval> | null = null;
-  const night = new Float32Array(options.night.night);
-  const documentLight = new Float32Array(options.night.document);
+  let night = options.night;
 
   const repaint = () => map?.triggerRepaint();
   const syncTimer = () => {
@@ -231,8 +234,8 @@ export function createGlobeNightLayer(options: {
         'uInvMercator',
         'uGlobeness',
         'uSun',
-        'uNight',
-        'uDocument',
+        'uMorning',
+        'uEvening',
         'uOpacity',
       ]) {
         uniforms[name] = gl.getUniformLocation(program, name);
@@ -267,8 +270,8 @@ export function createGlobeNightLayer(options: {
       gl.uniformMatrix4fv(uniforms.uInvMercator, false, invMercator);
       gl.uniform1f(uniforms.uGlobeness, data.projectionTransition);
       gl.uniform3fv(uniforms.uSun, globeVector(sun.lat, sun.lng));
-      gl.uniform3fv(uniforms.uNight, night);
-      gl.uniform3fv(uniforms.uDocument, documentLight);
+      gl.uniform3fv(uniforms.uMorning, night.morning);
+      gl.uniform3fv(uniforms.uEvening, night.evening);
       gl.uniform1f(uniforms.uOpacity, opacity);
       // A multiply that keeps the canvas's alpha: dst.rgb × src.rgb.
       gl.disable(gl.DEPTH_TEST);
@@ -281,6 +284,15 @@ export function createGlobeNightLayer(options: {
     setTime(next) {
       at = next;
       syncTimer();
+      repaint();
+    },
+
+    getNight() {
+      return night;
+    },
+
+    setNight(next) {
+      night = next;
       repaint();
     },
 

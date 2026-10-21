@@ -231,6 +231,8 @@ export {
   isMapStyleId,
   isMapLightPreset,
   mapStyleDefinition,
+  isMapStyleOffered,
+  OFFERED_MAP_STYLE_IDS,
   mapStylePath,
   resolveMapStyle,
 } from '@goway/contracts';

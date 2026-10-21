@@ -42,6 +42,7 @@
  * on the main thread that is ten dropped frames per tile.
  */
 import type { CityNightSky } from '@/lib/map/style/nightSky';
+import type { SunLadder } from '@/lib/map/style/sunLadder';
 import * as THREE from 'three';
 
 import type { CityMaterial } from '@/lib/map/style/palette3d';
@@ -94,7 +95,13 @@ import { createMaterialWarmup } from './materialWarmup';
 import { createModelLayer, type ModelSpec, type ModelStatus } from './models';
 import type { CityLight } from './occlusion';
 import type { CityTileFormat, MeshWorkerRequest, MeshWorkerResponse } from './protocol';
-import { type CitySky, type CitySkyStats, type CitySkyView, createCitySky } from './sky';
+import {
+  type CitySky,
+  type CitySkyLook,
+  type CitySkyStats,
+  type CitySkyView,
+  createCitySky,
+} from './sky';
 import { createDetailedMaterial } from './tsl/detailedMaterial';
 import { type CityMaterialResponse, clayResponse } from './tsl/skyBuildingMaterial';
 import {
@@ -235,6 +242,11 @@ export interface CityEngineOptions {
      */
     nightSky?: CityNightSky;
     /**
+     * The document's place on its style's sun ladder (`sunLadder.ts`): the
+     * ground pass eases onto the next document's ground where it takes over.
+     */
+    ladder?: SunLadder | null;
+    /**
      * The art direction's material response for the one sky-lit shading
      * path (`tsl/skyBuildingMaterial.ts` documents the contract). Absent: the
      * detailed look's when {@link CityEngineOptions.material} is set, else
@@ -368,6 +380,11 @@ export interface CityEngine {
   /** The map's light, re-applied whenever `building-3d`'s would change (the sun). */
   setLight(light: CityLight): void;
   setPalette(palette: CityPalette): void;
+  /**
+   * The map's document changed in place: the sky's look (its appearance, its
+   * style's night, its sun ladder). Nothing without a sky.
+   */
+  setSkyLook(look: CitySkyLook): void;
   /** Coordinate-anchored models in the same scene (`models.ts`, SDK_MAP_MODELS phase 1). */
   setModels(specs: readonly ModelSpec[]): void;
   setModelPlacement(id: string, placement: ModelSpec['placement']): void;
@@ -522,6 +539,7 @@ export function createCityEngine(options: CityEngineOptions): CityEngine {
     ? createCitySky({
         appearance: options.sky.appearance,
         nightSky: options.sky.nightSky,
+        ladder: options.sky.ladder ?? null,
         shadows: quality.shadows,
         now,
         nightFactor: light.uNightFactor,
@@ -1504,6 +1522,11 @@ export function createCityEngine(options: CityEngineOptions): CityEngine {
       if (palette.treeCrown) treeUniforms.uCrown.value.copy(hexToVector(palette.treeCrown));
       if (palette.treeTrunk) treeUniforms.uTrunk.value.copy(hexToVector(palette.treeTrunk));
       if (palette.treeConifer) treeUniforms.uConifer.value.copy(hexToVector(palette.treeConifer));
+      options.requestRepaint();
+    },
+
+    setSkyLook(look) {
+      sky?.setLook(look);
       options.requestRepaint();
     },
 

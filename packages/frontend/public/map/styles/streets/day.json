@@ -1907,7 +1907,11 @@
           ]
         ]
       }
-    ]
+    ],
+    "goway:sun-lands": {
+      "day": "#f4f2ed",
+      "night": "#34445b"
+    }
   },
   "light": {
     "anchor": "viewport",

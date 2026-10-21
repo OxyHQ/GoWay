@@ -108,6 +108,8 @@ import {
   type ResolvedMapViewport,
 } from './types';
 import { useMapStyle } from './useMapStyle';
+import { useStyleDocument } from './useStyleDocument';
+import { useMapQuality } from '@/lib/map/quality/useMapQuality';
 import { useSunLight } from './useSunLight';
 
 /** Zoom used when a "fit" has nothing with area to fit — see `isDegenerateBounds`. */
@@ -203,6 +205,11 @@ export const MapCanvas = forwardRef<MapApi, MapCanvasProps>(function MapCanvas(
     () => resolveMapStyleUrl({ style: styleId, preset: stylePreset }),
     [styleId, stylePreset],
   );
+  // The low tier draws a dense style (Streets) at Standard's density, exactly
+  // as on the web: the document's own overrides folded into it
+  // (`qualityOverrides.ts` → `withQualityOverrides`, `useStyleDocument.ts`).
+  const standardDensity = useMapQuality().basemap.density === 'standard';
+  const styleDocument = useStyleDocument(styleUrl, standardDensity);
   // Satellite and hybrid are catalogue styles over GoWay's imagery: the
   // credit names each imagery source while it is on screen.
   const imageryMode = mapStyleDefinition(styleId).imagery ?? null;
@@ -582,7 +589,7 @@ export const MapCanvas = forwardRef<MapApi, MapCanvasProps>(function MapCanvas(
         key={reloadKey}
         ref={mapRef}
         style={{ flex: 1 }}
-        mapStyle={styleUrl}
+        mapStyle={styleDocument}
         dragPan={gestures.pan}
         touchZoom={gestures.zoom}
         touchRotate={gestures.rotate}
@@ -753,7 +760,7 @@ export const MapCanvas = forwardRef<MapApi, MapCanvasProps>(function MapCanvas(
       <MapBrand />
       <MapAttribution
         extra={imageryCredits}
-        elevation={styleDrawsRelief}
+        elevation={styleDrawsRelief || hillshade !== null}
         expanded={credit.expanded}
         onToggle={credit.toggle}
       />

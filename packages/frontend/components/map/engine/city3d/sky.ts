@@ -36,6 +36,7 @@
  * stay exactly as legible as before: the haze is under them.
  */
 import { CITY_NIGHT_SKY, type CityNightSky } from '@/lib/map/style/nightSky';
+import type { SunLadder } from '@/lib/map/style/sunLadder';
 import {
   Camera,
   ClampToEdgeWrapping,
@@ -161,6 +162,11 @@ export interface CitySky {
   readonly hostSky: HostSkyColours | null;
   setSun(sun: CitySun): void;
   /**
+   * The map's document changed in place (a style or light swap): the light it
+   * draws, its style's night and its place on the sun ladder. Relit at once.
+   */
+  setLook(look: CitySkyLook): void;
+  /**
    * MapLibre's offscreen pass: redraw the shadow map if it is stale — the
    * sun, the snapped box, or the tiles that can cast into it changed. Only
    * the buildings in `scene` cast (`frameSelection.ts` → `SHADOW_CASTER_LAYER`).
@@ -187,10 +193,20 @@ export interface CitySky {
   dispose(): void;
 }
 
-export function createCitySky(options: {
+/** What the sky lights the ground relative to: the document drawn (`createCitySky`). */
+export interface CitySkyLook {
   appearance: SkyAppearance;
   /** The style's night (`CityEngineOptions.sky.nightSky`); Standard's when absent. */
   nightSky?: CityNightSky;
+  /**
+   * The document's place on its style's sun ladder (`sunLadder.ts`), its
+   * lands the ground the ground pass lights: the ground is eased onto the
+   * next document's where that takes over. Absent: the appearance's curve.
+   */
+  ladder?: SunLadder | null;
+}
+
+export function createCitySky(options: CitySkyLook & {
   /**
    * The sun's shadows at this quality (`engine/quality.ts`): the map's side
    * and the PCF taps, or `null` for none — then no shadow map is allocated,
@@ -321,6 +337,12 @@ export function createCitySky(options: {
     passRefs.uSunDisc.value.set(...next.sunDisc);
   };
 
+  let look: CitySkyLook = {
+    appearance: options.appearance,
+    nightSky: options.nightSky,
+    ladder: options.ladder ?? null,
+  };
+
   const sky: CitySky = {
     nodes,
     passes: passes.group,
@@ -332,12 +354,27 @@ export function createCitySky(options: {
     },
     stats,
 
+    setLook(next) {
+      if (disposed) return;
+      look = { appearance: next.appearance, nightSky: next.nightSky, ladder: next.ladder ?? null };
+      refs.uFloodlight.value.set(...(look.nightSky ?? CITY_NIGHT_SKY).floodlight);
+      // Relight for the sun already up.
+      const current = sun;
+      sun = null;
+      if (current) sky.setSun(current);
+    },
+
     setSun(next) {
       if (disposed) return;
       if (sun && sun.azimuthDeg === next.azimuthDeg && sun.altitudeDeg === next.altitudeDeg) return;
       sun = next;
       const started = performance.now();
-      const nextState = skyStateFor(next.altitudeDeg, options.appearance, options.nightSky);
+      const nextState = skyStateFor(
+        next.altitudeDeg,
+        look.appearance,
+        look.nightSky,
+        look.ladder ? { ladder: look.ladder, morning: next.azimuthDeg < 180 } : undefined,
+      );
       stats.lastSkyMs = nextState === state ? 0 : performance.now() - started;
       if (nextState !== state) applyState(nextState);
       const direction = sunDirection(next);

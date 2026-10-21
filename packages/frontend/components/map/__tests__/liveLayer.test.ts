@@ -269,6 +269,8 @@ describe('attachLive', () => {
       pickModel: () => null,
       setNightFactor: () => {},
       setTime: () => {},
+      prepareRestyle: () => {},
+      restyle: () => true,
       detach: () => {},
       addPass: (pass) => {
         added.push(pass.id);

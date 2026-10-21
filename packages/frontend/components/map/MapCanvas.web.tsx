@@ -139,7 +139,8 @@ import {
 import { useCompactCredit } from './useCompactCredit';
 import { useImageryCredits } from './useImageryCredits';
 import { useMapStyle } from './useMapStyle';
-import { applyQualityOverrides, type QualityHost } from './qualityOverrides';
+import { withQualityOverrides } from './qualityOverrides';
+import { createStyleSwapper, type StyleSwapper } from './styleSwap.web';
 import { useSunLight } from './useSunLight';
 
 /**
@@ -276,15 +277,27 @@ export const MapCanvas = forwardRef<MapApi, MapCanvasProps>(function MapCanvas(
   const [runtime, setRuntime] = useState<{ handle: MapRuntime | null } | null>(null);
   /**
    * What the last engine was built for, and where its camera was when it went.
-   * A rebuild for a relief toggle, a new style or a new light starts where the
-   * person was looking — changing the map's look never moves the map; only a
-   * retry starts again at `initialViewport`.
+   * A rebuild for a relief toggle starts where the person was looking —
+   * changing the map's look never moves the map; only a retry starts again at
+   * `initialViewport`. (A new style or light is no rebuild at all: it is
+   * swapped into the same map, `styleSwap.web.ts`.)
    */
   const lastEngine = useRef<{
-    styleUrl: string;
     reloadKey: number;
     camera: MapViewport | null;
   } | null>(null);
+  // The in-place style swapper of the current engine, and the document it
+  // draws (`styleUrl` and the density folded into it).
+  const swapperRef = useRef<StyleSwapper | null>(null);
+  const drawnStyleRef = useRef<string | null>(null);
+  const wantedStyleRef = useRef<string | null>(null);
+  // Bumped after every in-place swap: what the document reset (the sun light)
+  // is laid on again. And bumped when the 3D city cannot be restyled in place.
+  const [styleEpoch, setStyleEpoch] = useState(0);
+  // The relief draws GoWay's elevation data (its hillshade, the 3D terrain):
+  // credited while it does (`MapAttribution`).
+  const [reliefElevation, setReliefElevation] = useState(false);
+  const [city3dEpoch, setCity3dEpoch] = useState(0);
   const markerSlots = useRef<Map<string, MarkerSlot>>(new Map());
   const userMarkerRef = useRef<maplibregl.Marker | null>(null);
 
@@ -316,7 +329,7 @@ export const MapCanvas = forwardRef<MapApi, MapCanvasProps>(function MapCanvas(
   const { style: styleId, preset: stylePreset } = mapStyleState.selection;
   const settleMapStyle = mapStyleState.settle;
   const resolvedAppearance = presetAppearance(stylePreset);
-  const styleFollowsLight = mapStyleDefinition(styleId).light === 'follows';
+  const followsSun = mapStyleState.followsSun;
   // A style with its own relief (Outdoors) shows elevation data whatever the
   // Terrain switch says, so its credit rides along.
   const styleDrawsRelief = mapStyleDefinition(styleId).relief === true;
@@ -328,6 +341,26 @@ export const MapCanvas = forwardRef<MapApi, MapCanvasProps>(function MapCanvas(
     () => resolveMapStyleUrl({ style: styleId, preset: stylePreset }),
     [styleId, stylePreset],
   );
+  // The low tier draws a dense style (Streets) at Standard's density: the
+  // document's own overrides folded into it (`qualityOverrides.ts`), on the
+  // first load and by an in-place swap when the tier changes.
+  const standardDensity = quality.basemap.density === 'standard';
+  // What the engine and the swaps read when they run: the look the canvas is
+  // drawing now, never the one a closure was made with.
+  const lookRef = useRef({
+    styleUrl,
+    standardDensity,
+    appearance: resolvedAppearance,
+    style: { style: styleId, preset: stylePreset },
+    followsSun,
+  });
+  lookRef.current = {
+    styleUrl,
+    standardDensity,
+    appearance: resolvedAppearance,
+    style: { style: styleId, preset: stylePreset },
+    followsSun,
+  };
   const gestures = resolveInteraction(interaction);
   const accent = theme.colors.primary;
 
@@ -335,19 +368,22 @@ export const MapCanvas = forwardRef<MapApi, MapCanvasProps>(function MapCanvas(
   // `settle` is stable, so the engine effect below can call it without being
   // re-run. See `useSunLight.ts`.
   //
-  // The engine id is exactly the engine effect's own dependencies — a new
-  // `styleUrl` (an appearance change) or `reloadKey` (a retry) builds a new
-  // `maplibregl.Map` at `initialViewport`, wherever the user had panned to —
-  // and the start is the same expression that effect builds it at. Without
-  // the id the hook kept the OLD engine's settled centre: the constructor's
-  // own `jumpTo` fires `moveend` inside `new Map()`, before the listener
-  // below exists, so nothing else ever reports the new camera.
+  // The engine id is what builds a new `maplibregl.Map`: a retry
+  // (`reloadKey`, at `initialViewport`) or a relief toggle. Without the id the
+  // hook kept the OLD engine's settled centre: the constructor's own `jumpTo`
+  // fires `moveend` inside `new Map()`, before the listener below exists, so
+  // nothing else ever reports the new camera. A style or light change is no
+  // new engine (it is swapped in place, the camera untouched), so it is not in
+  // the id — as on the native fork.
   const sunLight = useSunLight(
     resolvedAppearance,
-    `${styleUrl}#${reloadKey}`,
+    `${relief.globe ? 'g' : ''}${relief.terrain ? 't' : ''}#${reloadKey}`,
     isDrawableCoordinate(initialViewport) ? initialViewport : DEFAULT_VIEWPORT,
   );
   const settleSunLight = sunLight.settle;
+  // Read by the style swapper: whether the canvas lays its own light over the document's.
+  const sunLightRef = useRef(sunLight.light);
+  sunLightRef.current = sunLight.light;
 
   // Callbacks are read through refs inside the engine's own listeners so that
   // re-creating the map is driven ONLY by the style/reload key — a new inline
@@ -447,7 +483,13 @@ export const MapCanvas = forwardRef<MapApi, MapCanvasProps>(function MapCanvas(
     // With the globe flag on, the style goes in through `setStyle` with the
     // globe projection folded into the document, so the first frame is
     // already a globe; off, this is the constructor it always was.
-    const styleLoading = mapStyleLoading(styleUrl, relief.globe);
+    const look = lookRef.current;
+    const styleLoading = mapStyleLoading<maplibregl.StyleSpecification>(
+      look.styleUrl,
+      relief.globe,
+      look.standardDensity ? withQualityOverrides : undefined,
+    );
+    drawnStyleRef.current = `${look.styleUrl}|${look.standardDensity}`;
     if (styleLoading.background !== null) container.style.background = styleLoading.background;
     let map: maplibregl.Map;
     try {
@@ -540,25 +582,28 @@ export const MapCanvas = forwardRef<MapApi, MapCanvasProps>(function MapCanvas(
     map.once('load', startRuntime);
 
     // Relief (globe, sky, hillshade, terrain), off unless asked for. Attached
-    // per map, before its style loads; `resolvedAppearance` is read here
-    // because a change of it is a change of `styleUrl`, which rebuilds the map.
+    // per map, before its style loads, in the look of the moment the chunk
+    // arrives; a style swap hands it the next look (`setLook`).
     let reliefHandle: ReliefHandle | null = null;
     let reliefCancelled = false;
     if (relief.globe || relief.terrain) {
       loadReliefChunk()
         .then(({ attachRelief }) => {
           if (!reliefCancelled) {
+            const now = lookRef.current;
             reliefHandle = attachRelief(map, {
               flags: relief,
-              appearance: resolvedAppearance,
+              appearance: now.appearance,
               terrain3d: qualityRef.current.relief.terrain3d,
               terrainTextureScale: qualityRef.current.relief.terrainTextureScale,
-              // A style with a fixed light (the data basemaps) is not darkened
-              // by the sun: its night side would be a different map.
-              globeNight: qualityRef.current.relief.globeNight && styleFollowsLight,
+              // The profile's; the relief draws it only over a style whose
+              // light follows (a fixed light's night side is another map).
+              globeNight: qualityRef.current.relief.globeNight,
               // The globe's night is the style's, over the light its document draws.
-              style: { style: styleId, preset: stylePreset },
+              style: now.style,
+              followsSun: now.followsSun,
               at: skyAtRef.current,
+              onElevation: setReliefElevation,
             });
             reliefRef.current = reliefHandle;
           }
@@ -809,6 +854,32 @@ export const MapCanvas = forwardRef<MapApi, MapCanvasProps>(function MapCanvas(
     // Before `handleLoad`, so the camera the map opened at is reported before
     // `onReady` tells the caller the map is there (`loadedCamera.ts`).
     const detachCameraReports = attachCameraReports(map, () => handlers.current.onViewportChange);
+    // A style or light change, swapped into this map once the camera is
+    // still (`styleSwap.web.ts`): the 3D city keeps its engine and meshes.
+    const swapper = createStyleSwapper(
+      map,
+      container,
+      {
+        before: () => city3dRef.current?.prepareRestyle(),
+        after: () => {
+          drawnStyleRef.current = wantedStyleRef.current;
+          const now = lookRef.current;
+          reliefRef.current?.setLook({
+            appearance: now.appearance,
+            style: now.style,
+            followsSun: now.followsSun,
+          });
+          const city = city3dRef.current;
+          if (city && !city.restyle(now)) setCity3dEpoch((epoch) => epoch + 1);
+          queryLayers.current = resolveQueryLayers(map);
+          setStyleEpoch((epoch) => epoch + 1);
+        },
+        onError: (message) => emitError({ reason: 'style', message }),
+      },
+      { keepLight: () => sunLightRef.current !== null },
+    );
+    swapperRef.current = swapper;
+
     map.on('load', handleLoad);
     map.on('move', handleMove);
     map.on('moveend', handleMoveEnd);
@@ -820,6 +891,8 @@ export const MapCanvas = forwardRef<MapApi, MapCanvasProps>(function MapCanvas(
     map.on('error', handleError);
 
     return () => {
+      swapper.dispose();
+      if (swapperRef.current === swapper) swapperRef.current = null;
       detachCameraReports();
       map.off('load', handleLoad);
       map.off('move', handleMove);
@@ -864,7 +937,7 @@ export const MapCanvas = forwardRef<MapApi, MapCanvasProps>(function MapCanvas(
           pitch: map.getPitch(),
         };
       });
-      lastEngine.current = { styleUrl, reloadKey, camera };
+      lastEngine.current = { reloadKey, camera };
       map.remove();
       // The globe's space backdrop belongs to the engine that drew a globe.
       container.style.background = containerBackground;
@@ -873,8 +946,6 @@ export const MapCanvas = forwardRef<MapApi, MapCanvasProps>(function MapCanvas(
     // `initialViewport` is initial by contract — re-reading it here would make
     // a parent's inline object literal reset the camera on every render.
   }, [
-    styleUrl,
-    styleFollowsLight,
     reloadKey,
     relief,
     emitError,
@@ -893,12 +964,32 @@ export const MapCanvas = forwardRef<MapApi, MapCanvasProps>(function MapCanvas(
   // this runs on a settle or a clock tick that moved the sun a whole degree —
   // never per frame. maplibre-gl also diffs the light itself and eases the
   // change over its default 300 ms transition.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: `styleEpoch` is the trigger: a swapped-in document brings its static light back.
   useEffect(() => {
     const map = mapRef.current;
     const light = sunLight.light;
     if (!map || !ready || !light) return;
     runEngineCommand('setLight', () => map.setLight(light));
-  }, [sunLight.light, ready]);
+  }, [sunLight.light, ready, styleEpoch]);
+
+  // --- Style and light, in place -------------------------------------------
+
+  // A new style, light or density is swapped into the SAME map, never a new
+  // one (`styleSwap.web.ts`): the 3D city keeps its engine and its meshes,
+  // and the swap waits for the camera to be still — never mid-gesture, mid-
+  // animation or mid-flyover. Following the sun can change the light under a
+  // drag; it lands when the drag ends.
+  useEffect(() => {
+    const swapper = swapperRef.current;
+    if (!swapper || !ready) return;
+    const wanted = `${styleUrl}|${standardDensity}`;
+    wantedStyleRef.current = wanted;
+    if (drawnStyleRef.current === wanted) return;
+    swapper.request(
+      styleUrl,
+      standardDensity ? withQualityOverrides : (style: maplibregl.StyleSpecification) => style,
+    );
+  }, [styleUrl, standardDensity, ready]);
 
   // --- Interaction toggles ------------------------------------------------
 
@@ -1155,22 +1246,6 @@ export const MapCanvas = forwardRef<MapApi, MapCanvasProps>(function MapCanvas(
       map.off('pitch', check);
     };
   }, [city3dFeature, cityZoomReached, ready]);
-  // The low tier draws a dense style (Streets) at Standard's density: the
-  // loaded document's own overrides (`qualityOverrides.ts`), applied while
-  // the profile asks for them and undone when it stops, with no rebuild.
-  const standardDensity = quality.basemap.density === 'standard';
-  useEffect(() => {
-    const map = mapRef.current;
-    if (!map || !ready || !standardDensity) return;
-    let undo: (() => void) | null = null;
-    runEngineCommand('qualityOverrides', () => {
-      undo = applyQualityOverrides(map as unknown as QualityHost);
-    });
-    return () => {
-      if (mapRef.current === map) runEngineCommand('qualityOverrides', () => undo?.());
-    };
-  }, [ready, standardDensity]);
-
   const needsEngine = city3d || wantsModelEngine;
   // The quality profile reaches the attached engine by TIER: a new tier is a
   // new attach (budgets, shadow map, shaders); the rest of it is live below.
@@ -1189,8 +1264,9 @@ export const MapCanvas = forwardRef<MapApi, MapCanvasProps>(function MapCanvas(
         cancelled
           ? null
           : attachCity3d(map, {
-              appearance: resolvedAppearance,
-              style: { style: styleId, preset: stylePreset },
+              appearance: lookRef.current.appearance,
+              style: lookRef.current.style,
+              followsSun: lookRef.current.followsSun,
               light: city3dLightRef.current,
               quality: qualityRef.current,
               clock,
@@ -1271,9 +1347,9 @@ export const MapCanvas = forwardRef<MapApi, MapCanvasProps>(function MapCanvas(
     ready,
     runtime,
     qualityTier,
-    resolvedAppearance,
-    styleId,
-    stylePreset,
+    // A style the city cannot be restyled in place for (another clay, other
+    // street detail): attached again. Every other style change is `restyle`.
+    city3dEpoch,
     needsEngine,
     city3d,
     cityTiles,
@@ -1719,7 +1795,7 @@ export const MapCanvas = forwardRef<MapApi, MapCanvasProps>(function MapCanvas(
           credits of data the city-3D layer is drawing right now. */}
       <MapBrand />
       <MapAttribution
-        elevation={styleDrawsRelief}
+        elevation={styleDrawsRelief || reliefElevation}
         extra={credits}
         disclosure={cityLifeDisclosure}
         expanded={credit.expanded}

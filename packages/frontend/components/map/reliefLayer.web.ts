@@ -62,10 +62,11 @@ import { createGlobeNightLayer, GLOBE_NIGHT_LAYER_ID } from './globeNightLayer.w
 import {
   appearancePreset,
   type MapStyleSelection,
-  presetDocumentLight,
+  mapStyleDefinition,
 } from '@/lib/map/style/catalogue';
 import { globeNightFor } from '@/lib/map/style/globeNight';
 import { styleNightSky } from '@/lib/map/style/nightSky';
+import { sunLandsOf } from '@/lib/map/style/sunLadder';
 import { STYLE_HILLSHADE_LAYER_ID } from '@/lib/map/style/layers';
 import { reportMapDefect } from './shared';
 
@@ -84,7 +85,12 @@ export interface AttachReliefOptions {
    * is 2). Defaults to 2.
    */
   terrainTextureScale?: number;
-  /** The quality profile's `relief.globeNight`: day and night on the globe. Defaults to `true`. */
+  /**
+   * The quality profile's `relief.globeNight`: day and night on the globe.
+   * Defaults to `true`. Drawn only over a style whose light follows
+   * (`MapStyleDefinition.light`): a fixed-light style (Light, Dark, the
+   * imagery) is the same map at any hour, and its night side would be another.
+   */
   globeNight?: boolean;
   /**
    * The map's style and light: the globe's night is the style's
@@ -92,8 +98,29 @@ export interface AttachReliefOptions {
    * `globeNightFor`). Absent: Standard's, over a map in `appearance`'s light.
    */
   style?: MapStyleSelection;
+  /**
+   * Whether the map's light follows the sun (`useMapStyle`), so its documents
+   * hand over to each other as the sun goes down and the night eases each
+   * onto the next (`sunLadder.ts`). Defaults to `false`.
+   */
+  followsSun?: boolean;
   /** The instant the globe is lit for (the time-of-day scrubber's); `null`, the default, is now. */
   at?: Date | null;
+  /**
+   * Whether GoWay's elevation data is drawn now — the relief's hillshade, or
+   * MapLibre's 3D terrain over it — told on every change: the canvas credits
+   * the elevation data exactly while it is drawn (`MapAttribution`), whatever
+   * the switches say. Not told for a style's own hillshade (Outdoors), which
+   * the canvas credits from the catalogue.
+   */
+  onElevation?: (drawn: boolean) => void;
+}
+
+/** What the map draws, as the relief reads it: changed in place by a style swap. */
+export interface ReliefLook {
+  appearance: MapAppearance;
+  style: MapStyleSelection;
+  followsSun: boolean;
 }
 
 export interface ReliefHandle {
@@ -105,11 +132,25 @@ export interface ReliefHandle {
   setGlobeNight(enabled: boolean): void;
   /** The instant to light the globe for (the time-of-day scrubber); `null` is now. */
   setTime(at: Date | null): void;
+  /**
+   * The map's document was swapped in place (`map.setStyle` with a diff):
+   * lay the relief over the new one — its sky, hillshade, terrain and night.
+   */
+  setLook(look: ReliefLook): void;
   /** Stop listening and give the container its background back. Idempotent. */
   detach(): void;
 }
 
 const NOT_LOADED = 'Style is not done loading';
+
+/** The loaded document's metadata, or `undefined` before it is up. */
+function styleMetadata(map: MapLibreMap): unknown {
+  try {
+    return map.getStyle()?.metadata;
+  } catch {
+    return undefined;
+  }
+}
 
 /**
  * Size MapLibre's terrain textures — the 2D layers it caches per terrain tile —
@@ -140,21 +181,33 @@ export function applyTextureScale(map: MapLibreMap, scale: number): void {
  * never seen flat first.
  */
 export function attachRelief(map: MapLibreMap, options: AttachReliefOptions): ReliefHandle {
-  const { flags, appearance } = options;
+  const { flags } = options;
+  let appearance = options.appearance;
+  let style = options.style ?? { style: 'standard' as const, preset: appearancePreset(appearance) };
+  let followsSun = options.followsSun === true;
+  let profileNight = options.globeNight !== false;
+  // Day and night on the globe: the profile allows it, and the style's light follows.
+  const nightOn = () => profileNight && mapStyleDefinition(style.style).light === 'follows';
   const container = map.getContainer();
   const previousBackground = container.style.background;
   let detached = false;
   let terrainReady = false;
   let terrain3d = options.terrain3d !== false;
   let textureScale = options.terrainTextureScale ?? 2;
+  // The night over the document drawn: its style's night, its light, and
+  // the lands of its style's other lights, which it eases onto where they
+  // take over (`goway:sun-lands`, read off the loaded document).
+  const nightFor = () =>
+    globeNightFor(styleNightSky(style.style).ambient, {
+      preset: style.preset,
+      followsSun,
+      lands: sunLandsOf(styleMetadata(map)),
+    });
   const night = flags.globe
     ? createGlobeNightLayer({
-        night: globeNightFor(
-          styleNightSky(options.style?.style ?? 'standard').ambient,
-          presetDocumentLight(options.style?.preset ?? appearancePreset(appearance)),
-        ),
+        night: nightFor(),
         at: options.at ?? null,
-        enabled: options.globeNight !== false,
+        enabled: nightOn(),
         onDefect: (message) => reportMapDefect('relief:night', message),
       })
     : null;
@@ -193,6 +246,15 @@ export function attachRelief(map: MapLibreMap, options: AttachReliefOptions): Re
   };
   updateSpace();
 
+  let elevationTold: boolean | null = null;
+  const tellElevation = () => {
+    if (detached || !options.onElevation) return;
+    const drawn = map.getLayer(HILLSHADE_LAYER_ID) !== undefined || map.getTerrain() !== null;
+    if (drawn === elevationTold) return;
+    elevationTold = drawn;
+    options.onElevation(drawn);
+  };
+
   const syncTerrain = () => {
     if (detached || !terrainReady) return;
     const on = map.getTerrain() !== null;
@@ -204,6 +266,7 @@ export function attachRelief(map: MapLibreMap, options: AttachReliefOptions): Re
     } catch (cause) {
       reportMapDefect('relief:terrain', `relief: terrain not toggled (${String(cause)}).`);
     }
+    tellElevation();
   };
 
   const addTerrain = () => {
@@ -227,11 +290,15 @@ export function attachRelief(map: MapLibreMap, options: AttachReliefOptions): Re
     }
     // A style that carries its own hillshade (Outdoors, `docs/MAP_STYLES.md`)
     // keeps it: a second one over it would double the shading.
+    if (map.getLayer(HILLSHADE_LAYER_ID) && (!shaded || map.getLayer(STYLE_HILLSHADE_LAYER_ID))) {
+      map.removeLayer(HILLSHADE_LAYER_ID);
+    }
     if (shaded && !map.getLayer(HILLSHADE_LAYER_ID) && !map.getLayer(STYLE_HILLSHADE_LAYER_ID)) {
       map.addLayer(hillshadeLayer(appearance), HILLSHADE_BEFORE_LAYER_ID);
     }
     terrainReady = true;
     syncTerrain();
+    tellElevation();
   };
 
   // The night goes under the 3D layers (the city layer is put right before
@@ -239,7 +306,16 @@ export function attachRelief(map: MapLibreMap, options: AttachReliefOptions): Re
   // which stay legible on the night side. Only into a style with one of
   // those anchors: over somebody else's labels it would dim them.
   const addNight = () => {
-    if (!night || map.getLayer(GLOBE_NIGHT_LAYER_ID)) return;
+    if (!night) return;
+    night.setEnabled(nightOn());
+    // In the style only while it is drawn: a fixed-light style has none.
+    if (!nightOn()) {
+      if (map.getLayer(GLOBE_NIGHT_LAYER_ID)) map.removeLayer(GLOBE_NIGHT_LAYER_ID);
+      return;
+    }
+    // The document is up: its lands are readable now.
+    night.setNight(nightFor());
+    if (map.getLayer(GLOBE_NIGHT_LAYER_ID)) return;
     const labels = resolveMapAnchors().beforeLabels;
     const before = map.getLayer(BUILDING_3D_LAYER_ID)
       ? BUILDING_3D_LAYER_ID
@@ -320,13 +396,31 @@ export function attachRelief(map: MapLibreMap, options: AttachReliefOptions): Re
       }
     },
     setGlobeNight(enabled) {
-      night?.setEnabled(enabled);
+      profileNight = enabled;
+      if (detached) return;
+      try {
+        addNight();
+      } catch (cause) {
+        reportMapDefect('relief:night', `relief: night not toggled (${String(cause)}).`);
+      }
     },
     setTime(at) {
       night?.setTime(at);
     },
+    setLook(look) {
+      if (detached) return;
+      const appearanceChanged = look.appearance !== appearance;
+      appearance = look.appearance;
+      style = look.style;
+      followsSun = look.followsSun;
+      // The hillshade's paint is the appearance's: drawn again in the new one.
+      if (appearanceChanged && map.getLayer(HILLSHADE_LAYER_ID)) map.removeLayer(HILLSHADE_LAYER_ID);
+      applySafely();
+    },
     detach() {
       if (detached) return;
+      // What this map drew goes with it.
+      if (elevationTold) options.onElevation?.(false);
       detached = true;
       // Its live-clock timer; the layer goes with the map.
       night?.setEnabled(false);

@@ -79,9 +79,12 @@ import {
 import {
   appearancePreset,
   type MapStyleSelection,
+  mapStyleDefinition,
   presetDocumentLight,
 } from '@/lib/map/style/catalogue';
-import { styleTheme } from '@/lib/map/style/themes';
+import { hexToRgb } from '@/lib/map/colour';
+import type { SunLadder } from '@/lib/map/style/sunLadder';
+import { type StyleTheme, styleTheme } from '@/lib/map/style/themes';
 import { streetPaletteInput } from '@/lib/map/style/streetPalette';
 import { OPENMAPTILES_SOURCE_LAYERS } from '@/lib/map/style/schema';
 import type { QualityProfile } from '@/lib/map/quality/profile';
@@ -355,6 +358,12 @@ export interface AttachCity3dOptions {
    */
   style?: MapStyleSelection;
   /**
+   * Whether the map's light follows the sun (`useMapStyle`): the city sky's
+   * ground then eases onto the next document's where it takes over
+   * (`sunLadder.ts`). Defaults to `false`.
+   */
+  followsSun?: boolean;
+  /**
    * The light `MapCanvas.web.tsx` gives `building-3d`: `useSunLight`'s sun
    * light, or `null` when GoWay leaves the style document's own light alone
    * (`resolveOwnsStyleDocument`) — in which case this follows `map.getLight()`,
@@ -510,8 +519,43 @@ export interface City3dHandle {
    * `cameraClearance.web.ts` reads it on every camera change.
    */
   clearance(): ClearanceField | null;
+  /**
+   * The map's document is about to be swapped in place (`map.setStyle` with a
+   * diff): give the old one back what this layer changed in it (the detailed
+   * look's ground), so the diff starts from the document as published.
+   */
+  prepareRestyle(): void;
+  /**
+   * The swapped document is up: lay the city over it in its look — the
+   * buildings' ramp and trees, the sky's light, the ground — on the SAME
+   * engine (no re-mesh). `false` when that cannot be done in place (the new
+   * style's clay or street detail is another set of materials, or the swap
+   * rebuilt the map's style and took the layer with it): detach and attach.
+   */
+  restyle(look: { appearance: MapAppearance; style: MapStyleSelection; followsSun: boolean }): boolean;
   /** Remove the layer, free the engine, and show `building-3d` again. Idempotent. */
   detach(): void;
+}
+
+/**
+ * A theme's place on its style's sun ladder for the city sky's ground pass:
+ * the lands the pass lights (the detailed look's ground, or the map's land),
+ * or `null` for a style whose light does not follow (its curve alone).
+ */
+function cityLadder(theme: StyleTheme, followsSun: boolean, detailed: boolean): SunLadder | null {
+  const { style, preset } = theme.selection;
+  const definition = mapStyleDefinition(style);
+  if (definition.light !== 'follows') return null;
+  const land = (light: typeof preset) => {
+    const lit = styleTheme({ style, preset: light });
+    return hexToRgb((detailed ? lit.cityGround : lit.palette).land);
+  };
+  const lands = Object.fromEntries(definition.presets.map((light) => [light, land(light)]));
+  return {
+    preset,
+    followsSun,
+    lands: lands as unknown as NonNullable<SunLadder['lands']>,
+  };
 }
 
 /**
@@ -579,19 +623,28 @@ export async function attachCity3d(
     roadsPublished,
   );
 
-  const theme = styleTheme(
+  let appearance = options.appearance;
+  let followsSun = options.followsSun === true;
+  let theme = styleTheme(
     options.style ?? { style: 'standard', preset: appearancePreset(options.appearance) },
   );
-  const cartography = theme.palette;
-  const trees = treeColours(cartography);
   // The art-directed look (the registry's `detailedCity`).
   const detailed = buildings && options.detailed === true;
-  const palette = {
-    ...buildingHeightRamp(cartography),
-    treeCrown: trees.crown,
-    treeConifer: trees.conifer,
-    treeTrunk: trees.trunk,
+  const paletteOf = (of: StyleTheme) => {
+    const trees = treeColours(of.palette);
+    return {
+      ...buildingHeightRamp(of.palette),
+      treeCrown: trees.crown,
+      treeConifer: trees.conifer,
+      treeTrunk: trees.trunk,
+    };
   };
+  const palette = paletteOf(theme);
+  const skyLook = () => ({
+    appearance: presetDocumentLight(theme.selection.preset),
+    nightSky: theme.nightSky,
+    ladder: cityLadder(theme, followsSun, detailed),
+  });
   // Stylised trees in mapped woods and parks (`engine/city3d/trees.ts`), and
   // the styling fill of mapped woods: the registry's answers, handed in.
   const standTrees = options.trees === true;
@@ -624,7 +677,7 @@ export async function attachCity3d(
     landmarkList = drawableLandmarks(allLandmarks, coverage, failedLandmarks, coverageCovers);
     landmarkModule?.offerLandmarks(landmarkList.map(({ entry }) => entry.id));
   };
-  let night = nightFactor({ appearance: options.appearance });
+  let night = nightFactor({ appearance });
   if (landmarksOn) {
     const origin = typeof window !== 'undefined' ? window.location.origin : '';
     void import('@/lib/map/landmarks/load')
@@ -700,7 +753,7 @@ export async function attachCity3d(
   // MapLibre's own `sky` (drawn behind everything, and its fog blended into
   // distant 3D terrain) follows the city sky's colours while it is attached;
   // whatever was there before (the relief prototype's) comes back on detach.
-  const previousHostSky = sky ? (map.getSky?.() ?? null) : null;
+  let previousHostSky = sky ? (map.getSky?.() ?? null) : null;
   let appliedHostSky = '';
   // The simulation's label: reported through `onCityLife` rather than drawn
   // here, so it sits in the map's credit; tied to the renderer's own
@@ -831,9 +884,7 @@ export async function attachCity3d(
         // The next frame hands the engine the list without it.
         map.triggerRepaint();
       },
-      sky: sky
-        ? { appearance: presetDocumentLight(theme.selection.preset), nightSky: theme.nightSky }
-        : undefined,
+      sky: sky ? skyLook() : undefined,
       // The detailed response; the night seam blends its day and night.
       material: detailed ? cityMaterials(theme.materials) : undefined,
     });
@@ -865,7 +916,7 @@ export async function attachCity3d(
     };
     engine.setSun(rounded);
     const nextNight = nightFactor({
-      appearance: options.appearance,
+      appearance,
       sunAltitudeDeg: rounded.altitudeDeg,
     });
     if (nextNight !== night) {
@@ -987,7 +1038,7 @@ export async function attachCity3d(
   }
   // The detailed look's ground: the style's own generated overrides, undone on
   // detach. Only with the city drawn: models alone do not restyle the map.
-  const restoreGround = buildings && detailed ? applyCityGround(map) : null;
+  let restoreGround = buildings && detailed ? applyCityGround(map) : null;
   // The models' layer joins the style only once there is a model to draw, so
   // the city alone changes the style exactly as it always did.
   const ensureModelsLayer = () => {
@@ -1081,6 +1132,42 @@ export async function attachCity3d(
     setTime(at) {
       skyAt = at;
       map.triggerRepaint();
+    },
+    prepareRestyle() {
+      restoreGround?.();
+      restoreGround = null;
+    },
+    restyle(look) {
+      if (detached) return true;
+      const next = styleTheme(look.style);
+      const same = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b);
+      // A layer the swap took with it (a full rebuild), or materials compiled
+      // into the engine's shaders that this style changes: a new engine.
+      if (buildings && !map.getLayer(CITY3D_LAYER_ID)) return false;
+      if (detailed && !same(next.materials, theme.materials)) return false;
+      if (streets && !same(next.streets, theme.streets)) return false;
+      theme = next;
+      appearance = look.appearance;
+      followsSun = look.followsSun;
+      // The new document shows its own `building-3d` again.
+      if (buildings && map.getLayer(BUILDING_3D_LAYER_ID)) {
+        map.setLayoutProperty(BUILDING_3D_LAYER_ID, 'visibility', 'none');
+      }
+      restoreGround = buildings && detailed ? applyCityGround(map) : null;
+      engine?.setPalette(paletteOf(theme));
+      if (sky) engine?.setSkyLook(skyLook());
+      // The diff gave the map the new document's sky (and the relief its
+      // own over it): that is what a detach restores, and the city's goes
+      // back on over it.
+      if (sky) previousHostSky = map.getSky?.() ?? null;
+      appliedHostSky = '';
+      if (!sky) {
+        night = nightFactor({ appearance });
+        engine?.setNightFactor(night);
+      }
+      updateSun();
+      map.triggerRepaint();
+      return true;
     },
     detach() {
       if (detached) return;

@@ -27,7 +27,7 @@
  * plane through `fallbackMatrix`, mixed by `projectionTransition`).
  */
 
-import { TWILIGHT_DOCUMENT_DEG } from './catalogue';
+import { type Rgb3 as LadderRgb, type SunLadder, sunLadderLight } from './sunLadder';
 
 /** The zooms over which the night fades out: the city sky's EFFECT_ZOOM (pinned by the test). */
 export const GLOBE_NIGHT_FADE_ZOOM: readonly [number, number] = [12, 13];
@@ -52,57 +52,95 @@ type Rgb3 = [number, number, number];
 export const GLOBE_NIGHT_BRIGHTNESS = { light: 0.13, dark: 0.62 } as const;
 
 /**
- * The globe's light for one map: its night end, and the light its document
- * already draws (`1` but for a dawn or dusk map). Both from the style's night
- * (`palette3d.ts` → `CityNightSky`), as the city sky's.
+ * The altitudes the light is tabled at, for the shader: every degree from
+ * 12° up (where every document is undarkened) to 20° down (where every curve
+ * has flattened), interpolated linearly between. Each handover of the sun
+ * ladder (`sunLadder.ts` → `SUN_HANDOVERS`: 10°, 4°, −1°, −6°) is a whole
+ * degree, so it is a sample, exactly.
+ */
+export const GLOBE_LIGHT_TABLE = { fromDeg: 12, stepDeg: 1, count: 33 } as const;
+
+/**
+ * The globe's light for one map: its night end, and the light by altitude —
+ * for the morning side and the evening side of the globe, which a day map
+ * hands over to dawn on and to dusk on (`sunLadder.ts`).
  */
 export interface GlobeNight {
   /** The ground's light at full night: the city sky's ground pass at a sun 20° down. */
   night: Rgb3;
-  /** The light the document stands for, which is not drawn again. */
-  document: Rgb3;
+  /** The light at {@link GLOBE_LIGHT_TABLE}'s altitudes, rgb after rgb, where it is morning. */
+  morning: Float32Array;
+  /** The same where it is evening. */
+  evening: Float32Array;
 }
 
 /**
  * The globe's night for a style's night light (`CityNightSky.ambient`) over
- * a map drawn in `appearance`'s light:
+ * the document `ladder` describes:
  *
  * - at full night, the ground pass's own light, `pow(brightness × the night's
- *   tint, 1/2.2)`, clamped to 1 (a multiply cannot brighten);
- * - over a dawn or dusk map, the day map's night relative to the light that
- *   map already shows, the twilight at {@link TWILIGHT_DOCUMENT_DEG}: no
- *   darker than the document while the sun is above that, darker only as it
- *   goes on down. Without it the low sun's dimming was drawn twice, the
- *   document's and this one's, and the dusk map went dull.
+ *   tint, 1/2.2)`, clamped to 1 (a multiply cannot brighten), over a day map
+ *   and over a night map (their base curves, {@link GLOBE_TWILIGHT_DEG});
+ * - over a dawn or dusk map, the day map's light relative to the light that
+ *   map already shows (the low sun's dimming is not drawn twice), and then,
+ *   below the altitude it stands for, onto exactly what the night map draws
+ *   where the night map takes over (`sunLadder.ts`): no jump at −6°;
+ * - over a day map that follows the sun, onto what dawn, dusk or (for a style
+ *   without them) the night map draws where that takes over: no jump at 4°
+ *   or at the horizon.
  */
 export function globeNightFor(
   ambient: readonly [number, number, number],
-  appearance: 'light' | 'twilight' | 'dark',
+  ladder: SunLadder,
 ): GlobeNight {
   const luma = 0.2126 * ambient[0] + 0.7152 * ambient[1] + 0.0722 * ambient[2];
   const end = (brightness: number) =>
     ambient.map((v) =>
       Math.min(1, ((brightness * v) / Math.max(luma, 1e-12)) ** (1 / 2.2)),
     ) as Rgb3;
-  if (appearance === 'dark')
-    return { night: end(GLOBE_NIGHT_BRIGHTNESS.dark), document: [1, 1, 1] };
-  const night = end(GLOBE_NIGHT_BRIGHTNESS.light);
-  if (appearance === 'light') return { night, document: [1, 1, 1] };
-  return { night, document: falling(TWILIGHT_DOCUMENT_DEG, night) };
+  const nightLight = end(GLOBE_NIGHT_BRIGHTNESS.light);
+  const nightDark = end(GLOBE_NIGHT_BRIGHTNESS.dark);
+  const base = {
+    light: (a: number) => falling(a, nightLight),
+    dark: (a: number) => falling(a, nightDark),
+  };
+  const table = (morning: boolean) => {
+    const out = new Float32Array(GLOBE_LIGHT_TABLE.count * 3);
+    for (let i = 0; i < GLOBE_LIGHT_TABLE.count; i++) {
+      const alt = GLOBE_LIGHT_TABLE.fromDeg - i * GLOBE_LIGHT_TABLE.stepDeg;
+      out.set(sunLadderLight(alt, ladder, base, morning), i * 3);
+    }
+    return out;
+  };
+  return {
+    night: ladder.preset === 'night' ? nightDark : nightLight,
+    morning: table(true),
+    evening: table(false),
+  };
 }
 
 /** The light falling from 1 to `night` over the twilight, for a sun `altitudeDeg` up. */
-function falling(altitudeDeg: number, night: Rgb3): Rgb3 {
+function falling(altitudeDeg: number, night: Rgb3): LadderRgb {
   const [from, to] = GLOBE_TWILIGHT_DEG;
   const t = Math.max(0, Math.min(1, (altitudeDeg - from) / (to - from)));
   const s = t * t * (3 - 2 * t);
-  return night.map((n) => 1 + (n - 1) * s) as Rgb3;
+  return night.map((n) => 1 + (n - 1) * s) as unknown as LadderRgb;
 }
 
-/** The light, 0…1 per channel, for a sun `altitudeDeg` up — what the shader computes. */
-export function globeLight(altitudeDeg: number, globe: GlobeNight): Rgb3 {
-  const light = falling(altitudeDeg, globe.night);
-  return light.map((v, c) => Math.min(1, v / globe.document[c])) as Rgb3;
+/**
+ * The light, 0…1 per channel, for a sun `altitudeDeg` up on the morning or
+ * evening side — what the shader computes, from the same table.
+ */
+export function globeLight(altitudeDeg: number, globe: GlobeNight, morning = false): Rgb3 {
+  const table = morning ? globe.morning : globe.evening;
+  const { fromDeg, stepDeg, count } = GLOBE_LIGHT_TABLE;
+  const x = Math.max(0, Math.min(count - 1, (fromDeg - altitudeDeg) / stepDeg));
+  const i = Math.floor(x);
+  const j = Math.min(i + 1, count - 1);
+  const f = x - i;
+  return [0, 1, 2].map(
+    (c) => table[i * 3 + c] + (table[j * 3 + c] - table[i * 3 + c]) * f,
+  ) as Rgb3;
 }
 
 /** How much of the night is drawn at `zoom`, 0…1. */
@@ -148,31 +186,36 @@ uniform mat4 uInvMercator;
 uniform float uGlobeness;
 // The subsolar point on the unit sphere.
 uniform vec3 uSun;
-uniform vec3 uNight;
-// The light the document already draws (globeNightFor): divided out.
-uniform vec3 uDocument;
+// The light by altitude (globeNightFor → GLOBE_LIGHT_TABLE), morning and evening side.
+uniform vec3 uMorning[${GLOBE_LIGHT_TABLE.count}];
+uniform vec3 uEvening[${GLOBE_LIGHT_TABLE.count}];
 uniform float uOpacity;
 const float PI = 3.141592653589793;
-const float TWILIGHT_FROM = ${glslFloat(GLOBE_TWILIGHT_DEG[0])};
-const float TWILIGHT_TO = ${glslFloat(GLOBE_TWILIGHT_DEG[1])};
+const float TABLE_FROM = ${glslFloat(GLOBE_LIGHT_TABLE.fromDeg)};
+const float TABLE_STEP = ${glslFloat(GLOBE_LIGHT_TABLE.stepDeg)};
+const int TABLE_COUNT = ${GLOBE_LIGHT_TABLE.count};
 
 vec3 unproject(mat4 inv, float z) {
   vec4 p = inv * vec4(vClip, z, 1.0);
   return p.xyz / p.w;
 }
 
-// The sine of the sun's altitude at the surface point under this pixel, or
-// 2.0 where the ray misses the surface (space).
-float sunSine() {
-  float globe = 2.0;
+// The sine of the sun's altitude at the surface point under this pixel (x),
+// or 2.0 where the ray misses the surface (space); and how far the sun is to
+// the point's east (y: > 0 in the morning).
+vec2 sunAt() {
+  vec2 globe = vec2(2.0, 0.0);
   if (uGlobeness > 0.0) {
     vec3 o = unproject(uInvGlobe, -1.0);
     vec3 d = normalize(unproject(uInvGlobe, 1.0) - o);
     float b = dot(o, d);
     float disc = b * b - (dot(o, o) - 1.0);
-    if (disc >= 0.0) globe = dot(normalize(o + d * (-b - sqrt(disc))), uSun);
+    if (disc >= 0.0) {
+      vec3 p = normalize(o + d * (-b - sqrt(disc)));
+      globe = vec2(dot(p, uSun), dot(vec3(p.z, 0.0, -p.x), uSun));
+    }
   }
-  float plane = 2.0;
+  vec2 plane = vec2(2.0, 0.0);
   if (uGlobeness < 1.0) {
     vec3 a = unproject(uInvMercator, -1.0);
     vec3 e = unproject(uInvMercator, 1.0);
@@ -180,21 +223,30 @@ float sunSine() {
     vec2 m = mix(a.xy, e.xy, t);
     float lng = (m.x * 2.0 - 1.0) * PI;
     float lat = atan(sinh(PI * (1.0 - 2.0 * m.y)));
-    plane = dot(vec3(sin(lng) * cos(lat), sin(lat), cos(lng) * cos(lat)), uSun);
+    vec3 p = vec3(sin(lng) * cos(lat), sin(lat), cos(lng) * cos(lat));
+    plane = vec2(dot(p, uSun), dot(vec3(p.z, 0.0, -p.x), uSun));
   }
   if (uGlobeness >= 1.0) return globe;
-  if (uGlobeness <= 0.0 || globe > 1.5) return plane;
+  if (uGlobeness <= 0.0 || globe.x > 1.5) return plane;
   return mix(plane, globe, uGlobeness);
 }
 
+// globeLight(): the table, linearly between whole degrees.
+vec3 tabled(float alt, bool morning) {
+  float x = clamp((TABLE_FROM - alt) / TABLE_STEP, 0.0, float(TABLE_COUNT - 1));
+  int i = int(floor(x));
+  int j = min(i + 1, TABLE_COUNT - 1);
+  float f = x - float(i);
+  return morning ? mix(uMorning[i], uMorning[j], f) : mix(uEvening[i], uEvening[j], f);
+}
+
 void main() {
-  float s = sunSine();
-  if (s > 1.5) discard;
-  // globeLight(): a smoothstep over the sun's altitude, falling.
-  float alt = degrees(asin(clamp(s, -1.0, 1.0)));
-  float t = clamp((alt - TWILIGHT_FROM) / (TWILIGHT_TO - TWILIGHT_FROM), 0.0, 1.0);
-  float night = t * t * (3.0 - 2.0 * t);
-  vec3 light = min(vec3(1.0), mix(vec3(1.0), uNight, night) / uDocument);
+  vec2 sun = sunAt();
+  if (sun.x > 1.5) discard;
+  float alt = degrees(asin(clamp(sun.x, -1.0, 1.0)));
+  // Morning and evening meet at noon and at midnight: blended over a narrow
+  // band there, so the meridian is never a seam.
+  vec3 light = mix(tabled(alt, false), tabled(alt, true), smoothstep(-0.02, 0.02, sun.y));
   // Blended as a multiply (dst × src): 1 leaves the basemap as it is.
   fragColor = vec4(mix(vec3(1.0), light, uOpacity), 1.0);
 }

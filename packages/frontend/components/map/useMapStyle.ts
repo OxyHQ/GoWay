@@ -25,7 +25,7 @@ import {
   lightPresetFromSun,
   type MapStyleRequest,
   type MapStyleSelection,
-  resolveMapStyleRequest,
+  mapStyleFor,
 } from '@/lib/map/style/catalogue';
 
 import type { GeoCoordinate } from './types';
@@ -39,27 +39,26 @@ export interface MapStyleState {
   selection: MapStyleSelection;
   /** Report the centre of a camera that has come to rest. Stable identity. */
   settle: (centre: GeoCoordinate) => void;
+  /** Whether the light follows the sun, so the documents hand over as it moves (`sunLadder.ts`). */
+  followsSun: boolean;
 }
 
 export function useMapStyle(request: MapStyleRequest, start: GeoCoordinate): MapStyleState {
   const themeDark = useTheme().isDark;
   const { style, light } = useMapFeatures();
   const { style: askedStyle, lightPreset: askedPreset, appearance: askedAppearance } = request;
-  const followsSun = !askedPreset && !askedAppearance && light === 'sun';
   const centre = useRef(start);
   // The sun over the settled camera, kept only when the light it gives
   // changes, so a settle that does not change the light renders nothing.
   // Read once at mount from the opening camera (cheap, and pure).
   const [sun, setSun] = useState(() => sunPosition(new Date(), start.latitude, start.longitude));
-  const decide = useCallback(
-    (next: { altitudeDeg: number; azimuthDeg: number } | null) =>
-      resolveMapStyleRequest(
-        { style: askedStyle, lightPreset: askedPreset, appearance: askedAppearance },
-        { style, light },
-        themeDark,
-        next,
-      ),
-    [askedStyle, askedPreset, askedAppearance, style, light, themeDark],
+  // The decision, pure (`catalogue.ts` → `mapStyleFor`): whether the light
+  // follows the sun, and the selection over the sun last read.
+  const { selection, followsSun } = mapStyleFor(
+    { style: askedStyle, lightPreset: askedPreset, appearance: askedAppearance },
+    { style, light },
+    themeDark,
+    sun,
   );
 
   const refresh = useCallback(() => {
@@ -92,6 +91,5 @@ export function useMapStyle(request: MapStyleRequest, start: GeoCoordinate): Map
     [followsSun, refresh],
   );
 
-  const selection = decide(followsSun ? sun : null);
-  return { selection, settle };
+  return { selection, settle, followsSun };
 }

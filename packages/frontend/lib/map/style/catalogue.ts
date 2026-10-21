@@ -28,6 +28,7 @@ import {
   DEFAULT_MAP_STYLE,
   isMapLightPreset,
   isMapStyleId,
+  isMapStyleOffered,
   MAP_LIGHT_PRESETS,
   MAP_STYLE_CATALOGUE,
   MAP_STYLE_IDS,
@@ -45,6 +46,7 @@ export {
   DEFAULT_MAP_STYLE,
   isMapLightPreset,
   isMapStyleId,
+  isMapStyleOffered,
   MAP_LIGHT_PRESETS,
   MAP_STYLE_IDS,
   MAP_STYLE_INDEX_PATH,
@@ -56,15 +58,6 @@ export type { MapLightPreset, MapStyleDefinition, MapStyleId, MapStyleSelection 
 
 /** Every published style, in the order the picker shows them. */
 export const MAP_STYLES: readonly MapStyleDefinition[] = MAP_STYLE_CATALOGUE;
-
-/**
- * Whether a style is offered on this build (`MapStyleDefinition.offer`): a
- * style whose data is not published yet (the imagery) only in a development
- * build. The picker and the embed ask this; the documents exist either way.
- */
-export function isMapStyleOffered(id: MapStyleId, development: boolean): boolean {
-  return mapStyleDefinition(id).offer !== 'development' || development;
-}
 
 /**
  * The cartographic appearance a light belongs to: everything but night is
@@ -136,7 +129,7 @@ export function presetDocumentLight(preset: MapLightPreset): 'light' | 'twilight
 }
 
 /** The sun's apparent horizon: the upper limb with refraction. */
-const HORIZON_DEG = -0.833;
+export const SUN_HORIZON_DEG = -0.833;
 
 /**
  * The light the real sun gives at one place and instant.
@@ -150,7 +143,7 @@ export function lightPresetFromSun(sun: { altitudeDeg: number; azimuthDeg: numbe
   sunUp: boolean;
 } {
   if (!Number.isFinite(sun.altitudeDeg)) return { preset: 'day', sunUp: true };
-  const sunUp = sun.altitudeDeg >= HORIZON_DEG;
+  const sunUp = sun.altitudeDeg >= SUN_HORIZON_DEG;
   if (sun.altitudeDeg >= SUN_LIGHT_BAND.day) return { preset: 'day', sunUp };
   if (sun.altitudeDeg <= SUN_LIGHT_BAND.night) return { preset: 'night', sunUp };
   const morning = sun.azimuthDeg < 180;
@@ -202,4 +195,23 @@ export function resolveMapStyleRequest(
   if (request.lightPreset) return resolveMapStyle(style, request.lightPreset);
   if (request.appearance) return resolveMapStyle(style, appearancePreset(request.appearance));
   return selectMapStyle({ style, mode: device.light, themeDark, sun });
+}
+
+/**
+ * What `useMapStyle` draws: {@link resolveMapStyleRequest} over the sun the
+ * hook last read, and whether the light follows that sun — only when the
+ * screen asks for no light of its own and the device's light is Sun. The
+ * hook hands the sun over every time; this decides whether it counts.
+ */
+export function mapStyleFor(
+  request: MapStyleRequest,
+  device: { style: MapStyleId; light: MapLightMode },
+  themeDark: boolean,
+  sun: { altitudeDeg: number; azimuthDeg: number } | null,
+): { selection: MapStyleSelection; followsSun: boolean } {
+  const followsSun = !request.lightPreset && !request.appearance && device.light === 'sun';
+  return {
+    selection: resolveMapStyleRequest(request, device, themeDark, followsSun ? sun : null),
+    followsSun,
+  };
 }

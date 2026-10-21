@@ -54,6 +54,11 @@
  * shader does) give the same colour for the same surface.
  */
 import { TWILIGHT_DOCUMENT_DEG } from '@/lib/map/style/catalogue';
+import {
+  type MapLightPreset,
+  presetDocumentLight,
+} from '@/lib/map/style/catalogue';
+import { converging, type SunLadder, sunHandover } from '@/lib/map/style/sunLadder';
 import { CITY_NIGHT_SKY, type CityNightSky } from '@/lib/map/style/nightSky';
 
 export type Rgb = [number, number, number];
@@ -541,6 +546,31 @@ export interface SkyState {
   brightness: number;
   /** The warm street-level light on walls at night, exposed, linear; 0 by day. */
   streetGlow: Rgb;
+  /** The ground pass's light at a brightness of 1, before the sun's cap ({@link groundPassLight}). */
+  groundUnits: GroundUnits;
+}
+
+/** The light on the ground per unit of brightness: what the ground pass's light scales from. */
+export interface GroundUnits {
+  /** The sun's light on a surface facing it (before {@link MAX_SUN}'s cap). */
+  sun: Rgb;
+  /** The sky's (and night's) light on a surface facing up. */
+  ambient: Rgb;
+  /** `sin(altitude)`, 0 below the horizon: the sun on the flat ground. */
+  up: number;
+}
+
+/**
+ * The ground pass's light (`tsl/skyPasses.ts` → MULTIPLY) at brightness `b`,
+ * per channel: `pow(sun·sin(alt) + sky, 1/2.2)`, clamped as the multiply
+ * clamps it — what the map's ground is actually multiplied by.
+ */
+export function groundPassLight(units: GroundUnits, b: number): Rgb {
+  const sunRaw = units.sun.map((v) => v * b);
+  const scale = Math.min(1, MAX_SUN / Math.max(1e-9, ...sunRaw));
+  return [0, 1, 2].map((c) =>
+    Math.min(1, Math.max(0, sunRaw[c] * scale * units.up + units.ambient[c] * b) ** (1 / 2.2)),
+  ) as Rgb;
 }
 
 /**
@@ -564,7 +594,22 @@ function curve(table: readonly (readonly [number, number])[], x: number): number
   return table[table.length - 1][1];
 }
 
-/** The adapted brightness of a horizontal surface for a sun `altitudeDeg` up. */
+/**
+ * The map's place on its style's sun ladder (`sunLadder.ts`): the document's
+ * light, whether it follows the sun, the lands the ground pass lights, and
+ * whether it is morning (a day map hands over to dawn then, to dusk after).
+ */
+export interface SkyGround {
+  ladder: SunLadder;
+  morning: boolean;
+}
+
+/**
+ * The adapted brightness of a horizontal surface for a sun `altitudeDeg` up,
+ * over a document drawn in `appearance`'s light, on its own curve. On a sun
+ * ladder {@link computeSkyState} eases it onto the next document's
+ * (`ladderBrightness`).
+ */
 export function adaptedBrightness(altitudeDeg: number, appearance: SkyAppearance): number {
   if (appearance === 'twilight') {
     // The day map's light, over the light the twilight document already shows.
@@ -726,6 +771,8 @@ export function computeSkyState(
    * by default.
    */
   nightSky: CityNightSky = CITY_NIGHT_SKY,
+  /** The map's place on its sun ladder ({@link adaptedBrightness}); absent, the appearance's curve. */
+  ground?: SkyGround,
 ): SkyState {
   const altitude = altitudeDeg * DEG;
   const reference = referenceDaylight();
@@ -765,19 +812,33 @@ export function computeSkyState(
   const env: Rgb = [0, 1, 2].map((c) => bounce * (direct[c] + sky[c])) as Rgb;
   const horizontal: Rgb = [0, 1, 2].map((c) => direct[c] + sky[c] + env[c]) as Rgb;
 
-  // Eye adaptation: the colour is the physics', the brightness the curve's.
-  const brightness = adaptedBrightness(altitudeDeg, appearance);
-  const exposure = brightness / Math.max(luminance(horizontal), 1e-9);
-  // ...and partly the colour too: chromatic adaptation towards the light that
-  // falls on the ground (see CHROMATIC_ADAPTATION).
+  // Chromatic adaptation towards the light that falls on the ground (see
+  // CHROMATIC_ADAPTATION): the colour is the physics', partly balanced.
   const balance = whiteBalance(horizontal, altitudeDeg);
+  // By day the ambient keeps only part of the sky's blue (DAY_AMBIENT_SATURATION).
+  const ambientSaturation =
+    DAY_AMBIENT_SATURATION + (1 - DAY_AMBIENT_SATURATION) * skyNightness(altitudeDeg);
+  // The ground's light per unit of brightness: everything below scales with it.
+  const unitExposure = 1 / Math.max(luminance(horizontal), 1e-9);
+  const groundUnits: GroundUnits = {
+    sun: irradiance.sun.map((v, c) => v * unitExposure * balance[c]) as Rgb,
+    ambient: desaturate(
+      [0, 1, 2].map((c) => (sky[c] + env[c]) * unitExposure * balance[c]) as Rgb,
+      ambientSaturation,
+    ),
+    up: sinAlt,
+  };
+
+  // Eye adaptation: the brightness is the curve's — on a sun ladder, the one
+  // that draws what the next document draws where it takes over.
+  const brightness = ground
+    ? ladderBrightness(altitudeDeg, ground, nightSky, groundUnits)
+    : adaptedBrightness(altitudeDeg, appearance);
+  const exposure = brightness * unitExposure;
 
   const sunRaw = irradiance.sun.map((v, c) => v * exposure * balance[c]) as Rgb;
   const sunScale = Math.min(1, MAX_SUN / Math.max(1e-9, ...sunRaw));
   const sunColor = sunRaw.map((v) => v * sunScale) as Rgb;
-  // By day the ambient keeps only part of the sky's blue (DAY_AMBIENT_SATURATION).
-  const ambientSaturation =
-    DAY_AMBIENT_SATURATION + (1 - DAY_AMBIENT_SATURATION) * skyNightness(altitudeDeg);
   const skyAmbient = desaturate(
     [0, 1, 2].map((c) => (sky[c] + env[c]) * exposure * balance[c]) as Rgb,
     ambientSaturation,
@@ -833,7 +894,68 @@ export function computeSkyState(
     lut,
     brightness,
     streetGlow: nightSky.streetGlow.map((v) => v * brightness * nightness) as Rgb,
+    groundUnits,
   };
+}
+
+/** The brightness of `preset`'s document on its own curve ({@link BRIGHTNESS_CURVE}). */
+function ownBrightness(altitudeDeg: number, preset: MapLightPreset): number {
+  const document = presetDocumentLight(preset);
+  if (document === 'twilight') {
+    // The day map's light, over the light the twilight document already shows.
+    const anchor = curve(BRIGHTNESS_CURVE.light, TWILIGHT_DOCUMENT_DEG);
+    return Math.min(1, curve(BRIGHTNESS_CURVE.light, altitudeDeg) / anchor);
+  }
+  return curve(BRIGHTNESS_CURVE[document], altitudeDeg);
+}
+
+const rec709 = (rgb: readonly number[]) => 0.2126 * rgb[0] + 0.7152 * rgb[1] + 0.0722 * rgb[2];
+
+/**
+ * The brightness on the sun ladder (`sunLadder.ts`): the document's own
+ * curve, easing from the handover's `from` onto the brightness at which its
+ * ground DRAWS what the next document's ground draws at `at` — matched on the
+ * luma of land × the ground pass's light, clamped as the multiply clamps it,
+ * since the pass has one light for every document — and that document's
+ * drawing below it. `units` are this altitude's; the others are read from the
+ * cached sky states.
+ */
+function ladderBrightness(
+  altitudeDeg: number,
+  ground: SkyGround,
+  nightSky: CityNightSky,
+  units: GroundUnits,
+): number {
+  const { ladder, morning } = ground;
+  const lands = ladder.lands;
+  const unitsAt = (a: number) =>
+    a === altitudeDeg ? units : skyStateFor(a, 'light', nightSky).groundUnits;
+  const drawn = (a: number, preset: MapLightPreset, b: number) => {
+    const land = lands?.[preset] ?? [1, 1, 1];
+    const light = groundPassLight(unitsAt(a), b);
+    return rec709([0, 1, 2].map((c) => land[c] * light[c]));
+  };
+  const brightnessOf = (a: number, preset: MapLightPreset): number => {
+    const own = ownBrightness(a, preset);
+    const step = sunHandover({ ...ladder, preset }, morning);
+    if (!step || !lands) return own;
+    const below = (x: number) => drawn(x, step.below, brightnessOf(x, step.below));
+    const target =
+      a <= step.at
+        ? below(a)
+        : drawn(a, preset, own) + (below(step.at) - drawn(a, preset, own)) * converging(a, step);
+    // The brightness that draws it: monotone, so halved to a thousandth of a percent.
+    let lo = 0;
+    let hi = 1;
+    if (drawn(a, preset, hi) <= target) return hi;
+    for (let i = 0; i < 24; i++) {
+      const mid = (lo + hi) / 2;
+      if (drawn(a, preset, mid) < target) lo = mid;
+      else hi = mid;
+    }
+    return (lo + hi) / 2;
+  };
+  return brightnessOf(altitudeDeg, ladder.preset);
 }
 
 /** MapLibre's own sky colours, as `#rrggbb`: what the host's `sky` should say. */
@@ -880,6 +1002,18 @@ export function quantizeAltitude(altitudeDeg: number): number {
 }
 
 const CACHE_LIMIT = 48;
+
+/** A {@link SkyGround}'s cache key: everything the brightness reads. */
+function groundKey(ground: SkyGround | undefined): string {
+  if (!ground) return '-';
+  const { ladder, morning } = ground;
+  const lands = ladder.lands
+    ? (Object.entries(ladder.lands) as [string, readonly number[]][])
+        .map(([k, v]) => `${k}${v.map((c) => c.toFixed(4)).join(',')}`)
+        .join(';')
+    : 'none';
+  return `${ladder.preset}|${ladder.followsSun}|${morning}|${lands}`;
+}
 /** Per style's night (the theme's object, memoised): rounded altitude and appearance → state. */
 const caches = new WeakMap<CityNightSky, Map<string, SkyState>>();
 
@@ -891,6 +1025,7 @@ export function skyStateFor(
   altitudeDeg: number,
   appearance: SkyAppearance,
   nightSky: CityNightSky = CITY_NIGHT_SKY,
+  ground?: SkyGround,
 ): SkyState {
   let cache = caches.get(nightSky);
   if (!cache) {
@@ -898,7 +1033,7 @@ export function skyStateFor(
     caches.set(nightSky, cache);
   }
   const altitude = quantizeAltitude(altitudeDeg);
-  const key = `${appearance}:${altitude}`;
+  const key = `${appearance}:${groundKey(ground)}:${altitude}`;
   const hit = cache.get(key);
   if (hit) {
     // Refresh recency.
@@ -906,7 +1041,7 @@ export function skyStateFor(
     cache.set(key, hit);
     return hit;
   }
-  const state = computeSkyState(altitude, appearance, nightSky);
+  const state = computeSkyState(altitude, appearance, nightSky, ground);
   cache.set(key, state);
   if (cache.size > CACHE_LIMIT) {
     const oldest = cache.keys().next().value;
