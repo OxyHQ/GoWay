@@ -16,6 +16,7 @@
  * answer 404 for every route that router defines.
  */
 
+import { oxyTrustProxy } from '@oxy.so/core/server';
 import express, { type Express, type RequestHandler, Router } from 'express';
 import helmet from 'helmet';
 import { config } from './config';
@@ -75,10 +76,14 @@ export function createApp(options: CreateAppOptions = {}): Express {
   const app = express();
 
   app.disable('x-powered-by');
-  // One proxy hop: the shared ALB terminates TLS and sets X-Forwarded-*. A
-  // permissive value would let a client forge its own client address, which is
-  // the value the rate limiter keys on for unauthenticated callers.
-  app.set('trust proxy', 1);
+  // `req.ip` is the value the rate limiter keys on for unauthenticated callers,
+  // so it must be the real client whether or not Cloudflare proxies the
+  // hostname in front of the shared ALB. `oxyTrustProxy` trusts the socket peer
+  // only when private (the ALB) and the next hop only when it is a Cloudflare
+  // edge address, so a forged X-Forwarded-For is never believed. A fixed hop
+  // count cannot be right for both shapes: one hop answers Cloudflare's edge
+  // for a proxied hostname, two let a DNS-only caller choose its own address.
+  app.set('trust proxy', oxyTrustProxy);
 
   if (options.activity) app.use(options.activity);
 

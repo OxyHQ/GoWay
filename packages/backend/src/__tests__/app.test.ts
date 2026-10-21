@@ -135,6 +135,42 @@ describe('security middleware', () => {
   });
 });
 
+describe('the client address', () => {
+  /**
+   * `req.ip` as Express computes it under the app's own `trust proxy`, for a
+   * request whose TCP peer is `peer`. Built on the app's request prototype, so
+   * this is the real getter every rate limiter reads.
+   */
+  function ipOf(peer: string, forwardedFor?: string): string | undefined {
+    const app = createApp();
+    const socket = { remoteAddress: peer };
+    const request = Object.create(app.request) as express.Request;
+    Object.assign(request, {
+      headers: forwardedFor === undefined ? {} : { 'x-forwarded-for': forwardedFor },
+      socket,
+      connection: socket,
+    });
+    return request.ip;
+  }
+
+  it('is the client on a DNS-only hostname (the ALB appended it)', () => {
+    expect(ipOf('10.0.1.23', '203.0.113.5')).toBe('203.0.113.5');
+  });
+
+  it('is the client on a Cloudflare-proxied hostname, not the Cloudflare edge', () => {
+    expect(ipOf('10.0.1.23', '203.0.113.5, 172.70.1.2')).toBe('203.0.113.5');
+  });
+
+  it('never believes a forged left prefix', () => {
+    expect(ipOf('10.0.1.23', '1.2.3.4, 203.0.113.5')).toBe('203.0.113.5');
+    expect(ipOf('10.0.1.23', '1.2.3.4, 203.0.113.5, 172.70.1.2')).toBe('203.0.113.5');
+  });
+
+  it('is a public socket peer itself, whatever X-Forwarded-For it sends', () => {
+    expect(ipOf('198.51.100.7', '1.2.3.4')).toBe('198.51.100.7');
+  });
+});
+
 describe('GET /health', () => {
   it('reports the database as down when nothing is connected', async () => {
     // `connectPostgres()` was never called, so the pool does not exist. The
