@@ -167,7 +167,10 @@ module.exports = {
       // Shared Oxy native config: the iOS keychain group, expo-build-properties
       // defaults, and withOxySharedPermissions (GoWay runs on its own Android
       // UID and reaches the Commons/Accounts providers over signature IPC).
-      ['@oxy.so/app-preset', {}],
+      // `gifEnabled`/`webpEnabled: false` (Expo SDK 58+) leave Fresco's GIF and WebP
+      // decoders out of the Android build: nothing here draws a GIF or animated WebP
+      // through react-native's own Image (Bloom and @oxy.so/services use expo-image).
+      ['@oxy.so/app-preset', { android: { gifEnabled: false, webpEnabled: false } }],
       // Release-signs with the ONE Oxy ecosystem key (OXY_UPLOAD_* Gradle
       // properties) and swaps in the optimising ProGuard file. The preset above
       // does not apply it, and without it a local release build is debug-signed,
