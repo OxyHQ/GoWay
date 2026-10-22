@@ -30,6 +30,7 @@ import {
   type OxyRequestUser,
 } from '@oxy.so/core/server';
 import type { RequestHandler } from 'express';
+import { isCameraSnapshotRequest } from './cameraSnapshotRequest';
 import { isLiveShapeRequest } from './liveShapeRequest';
 import type { OxyActorChain } from '../oxy/caller';
 import { config } from '../config';
@@ -147,7 +148,7 @@ export function createGoWayRateLimit(
  * unlimited: a throttled probe reports a service down that is merely popular.
  */
 export const apiRateLimit: RequestHandler = createGoWayRateLimit({
-  exempt: (request) => isLiveShapeRequest(request),
+  exempt: (request) => isLiveShapeRequest(request) || isCameraSnapshotRequest(request),
 });
 
 /**
@@ -157,6 +158,18 @@ export const apiRateLimit: RequestHandler = createGoWayRateLimit({
  * read-only data, so the bucket is wider than the API's — not unlimited.
  */
 export const liveShapeRateLimit: RequestHandler = createGoWayRateLimit({
+  authenticatedMax: 3000,
+  anonymousMax: 3000,
+  windowMs: 15 * 60_000,
+});
+
+/**
+ * The limit for a camera's picture, INSTEAD of `apiRateLimit`: a viewer with a
+ * grid of cameras re-fetches each every half minute or so. Each answer is a
+ * copy the relay already holds (`cameras/relay.ts`), so the cost is bandwidth,
+ * not an upstream request — a wider bucket than the API's, not unlimited.
+ */
+export const cameraSnapshotRateLimit: RequestHandler = createGoWayRateLimit({
   authenticatedMax: 3000,
   anonymousMax: 3000,
   windowMs: 15 * 60_000,

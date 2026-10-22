@@ -288,6 +288,27 @@ export const PUBLIC_READ_ROUTES: readonly PublicRoute[] = [
     because: 'low emission and restricted access zones, the same for every caller',
   },
   {
+    method: 'GET',
+    path: '/cameras',
+    because: "the public cameras in a box, each with its provider's credit and licence",
+  },
+  { method: 'GET', path: '/cameras/:cameraId', because: 'one public camera, signed out' },
+  {
+    method: 'GET',
+    path: '/cameras/:cameraId/snapshot',
+    because: "GoWay's copy of a camera's picture, which a page embeds in an image tag",
+  },
+  {
+    method: 'GET',
+    path: '/cameras/:cameraId/observations',
+    because: 'what the video worker counted at a camera: aggregates, never a frame',
+  },
+  {
+    method: 'GET',
+    path: '/camera-providers',
+    because: "the camera providers' credits and licences, the same for every caller",
+  },
+  {
     method: 'POST',
     path: '/roads/access',
     /**
