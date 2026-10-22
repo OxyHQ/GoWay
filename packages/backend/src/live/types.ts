@@ -18,13 +18,8 @@
  * every viewer's socket.
  */
 
-import type {
-  GeoBoundingBox,
-  LiveEntity,
-  LiveKind,
-  LiveLink,
-  LiveTransitMode,
-} from '@goway/contracts';
+import type { GeoBoundingBox, LiveEntity, LiveKind, LiveTransitMode } from '@goway/contracts';
+import type { HubProviderDefinition } from '../hub/provider';
 import type { MatchHint, StaticGtfs, StaticGtfsLocation } from './staticGtfs';
 
 /** What a poll may use. Injected, so every adapter is tested without a network. */
@@ -83,12 +78,8 @@ export interface LiveAdapterSettings {
   maxRegionsPerPoll: number;
 }
 
-export interface LiveSourceDefinition {
-  id: string;
+export interface LiveSourceDefinition extends HubProviderDefinition {
   kind: LiveKind;
-  name: string;
-  attribution: LiveLink;
-  licence: LiveLink;
   /** `null` for worldwide. */
   coverage: GeoBoundingBox | null;
   /**
@@ -100,25 +91,12 @@ export interface LiveSourceDefinition {
   /** Whether it carries a whole network in its coverage (`LiveSource.completeness`). */
   completeness: 'network' | 'partial';
   /**
-   * The licence as READ, not assumed: the day it was checked and the words
-   * that allow public, commercial redistribution (AGENTS.md: GoWay Live
-   * re-serves only such feeds). `licence.test.ts` refuses an entry without it.
-   */
-  licenceCheck: { verifiedOn: string; quote: string; source: string };
-  /** The feed's public endpoint; `LIVE_SOURCE_<ID>_URL` overrides it. */
-  defaultUrl: string;
-  /** Needs `LIVE_SOURCE_<ID>_KEY`; off without one. */
-  requiresKey: boolean;
-  /** Where the owner registers for that key (required when `requiresKey`). */
-  keyRegistrationUrl?: string;
-  /**
    * What is still open outside the code before this source may be served —
    * the licence allows it, but the operator asks to be contacted first, or a
    * form must be filed. `LIVE_SOURCES=all` leaves it out; naming its id
    * (`all,adsb-lol`) turns it on once the owner has done it.
    */
   awaiting?: string;
-  pollIntervalSeconds: number;
   /**
    * `true` when one poll answers for only PART of the source's data (a
    * regional aggregator asked about the watched areas): an entity missing from
@@ -126,8 +104,6 @@ export interface LiveSourceDefinition {
    * removed as gone.
    */
   partialPolls?: boolean;
-  staleAfterSeconds: number;
-  dropAfterSeconds: number;
   /**
    * The operator's static GTFS, for line colours and for drawing vehicles on
    * their published shapes (`staticGtfs.ts`). Loaded when the source is first
