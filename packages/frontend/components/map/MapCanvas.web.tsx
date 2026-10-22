@@ -95,6 +95,7 @@ export const MapCanvas = forwardRef<MapApi, MapCanvasProps>(function MapCanvas(
     mapStyle,
     lightPreset,
     markers,
+    credits: callerCredits,
     renderMarker,
     overlays,
     live,
@@ -230,8 +231,9 @@ export const MapCanvas = forwardRef<MapApi, MapCanvasProps>(function MapCanvas(
       ...landmarkCredits,
       ...cityCredits,
       ...liveCredits,
+      ...(callerCredits ?? NO_LINKS),
     ],
-    [elevation, imageryCredits, landmarkCredits, cityCredits, liveCredits],
+    [elevation, imageryCredits, landmarkCredits, cityCredits, liveCredits, callerCredits],
   );
 
   // --- The engine plugin's props ------------------------------------------

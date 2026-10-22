@@ -113,6 +113,37 @@ export const MAP_FEATURE_LABELS: Readonly<Record<MapFeatureId, MapFeatureLabels>
       'zh-Hans': '标出实地采集、可以在 3D 中漫步的街道。',
     },
   },
+  cameras: {
+    name: {
+      en: 'Cameras',
+      ar: 'الكاميرات',
+      bn: 'ক্যামেরা',
+      ca: 'Càmeres',
+      de: 'Kameras',
+      es: 'Cámaras',
+      fr: 'Caméras',
+      hi: 'कैमरे',
+      ja: 'カメラ',
+      'pt-BR': 'Câmeras',
+      ru: 'Камеры',
+      'zh-Hans': '摄像头',
+    },
+    description: {
+      en: 'Shows public traffic and city cameras, with the latest picture from each.',
+      ar: 'يعرض كاميرات المرور والمدن العامة مع أحدث صورة من كل منها.',
+      bn: 'সর্বজনীন ট্রাফিক ও শহরের ক্যামেরা এবং প্রতিটির সর্বশেষ ছবি দেখায়।',
+      ca: 'Mostra càmeres públiques de trànsit i de ciutat, amb la darrera imatge de cadascuna.',
+      de: 'Zeigt öffentliche Verkehrs- und Stadtkameras mit dem jeweils neuesten Bild.',
+      es: 'Muestra cámaras públicas de tráfico y de ciudad, con la última imagen de cada una.',
+      fr: 'Affiche les caméras publiques de circulation et de ville, avec la dernière image de chacune.',
+      hi: 'सार्वजनिक ट्रैफ़िक और शहर के कैमरे, और हर एक की ताज़ा तस्वीर दिखाता है।',
+      ja: '公共の交通・街のカメラと、それぞれの最新の画像を表示します。',
+      'pt-BR':
+        'Mostra câmeras públicas de trânsito e de cidade, com a imagem mais recente de cada uma.',
+      ru: 'Показывает общедоступные камеры дорожного движения и городские камеры с последним снимком каждой.',
+      'zh-Hans': '显示公共交通和城市摄像头，以及各自的最新画面。',
+    },
+  },
   city3d: {
     name: {
       en: '3D city',
