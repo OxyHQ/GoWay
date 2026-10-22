@@ -9,7 +9,7 @@ import { StatusBar } from 'expo-status-bar';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { KeyboardProvider } from 'react-native-keyboard-controller';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
-import { OxyProvider } from '@oxy.so/services/ui/client';
+import { OxyProvider, useAccountColor } from '@oxy.so/services/ui/client';
 import { BloomProvider } from '@oxy.so/bloom/provider';
 import { PortalOutlet, PortalProvider } from '@oxy.so/bloom/portal';
 import { ConnectionStatusToasts } from '@oxy.so/bloom/connection-status';
@@ -64,6 +64,12 @@ export function ErrorBoundary(props: { error: Error; retry: () => void }) {
  *    internally, and a second mount of either silently duplicates every
  *    surface and every toast.
  */
+/** The account's colour, worn once: below both `OxyProvider` and `BloomProvider`. */
+function AccountColor() {
+  useAccountColor();
+  return null;
+}
+
 export default function RootLayout() {
   return (
     <SafeAreaProvider>
@@ -83,6 +89,7 @@ export default function RootLayout() {
               {/* Renders nothing itself — it pushes to the toast store that
                   OxyProvider's own <ToastOutlet /> renders. */}
               <ConnectionStatusToasts />
+              <AccountColor />
               <LocaleProvider>
                 <PortalProvider>
                   <Stack screenOptions={{ headerShown: false }}>
