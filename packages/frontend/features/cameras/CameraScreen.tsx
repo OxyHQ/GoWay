@@ -86,7 +86,7 @@ export function CameraScreen() {
     <Screen header={header}>
       <ScreenScrollView>
         {camera.data ? (
-          <CameraDetail camera={camera.data} t={t} />
+          <CameraDetail camera={camera.data} t={t} onFrame={() => void camera.refetch()} />
         ) : camera.isPending ? (
           <Loading variant="spinner" size="lg" text={t('cameras.loading')} />
         ) : camera.error instanceof GoWayNotFoundError ? (
@@ -102,7 +102,16 @@ export function CameraScreen() {
   );
 }
 
-function CameraDetail({ camera, t }: { camera: Camera; t: CameraText }) {
+function CameraDetail({
+  camera,
+  t,
+  onFrame,
+}: {
+  camera: Camera;
+  t: CameraText;
+  /** A new picture was shown: read the camera again, so its age is the picture's. */
+  onFrame: () => void;
+}) {
   const now = useNow();
   const [failed, setFailed] = useState(false);
   const observations = useCameraObservations(camera.id);
@@ -152,7 +161,10 @@ function CameraDetail({ camera, t }: { camera: Camera; t: CameraText }) {
             contentFit="contain"
             transition={150}
             onError={() => setFailed(true)}
-            onLoad={() => setFailed(false)}
+            onLoad={() => {
+              setFailed(false);
+              onFrame();
+            }}
             accessibilityIgnoresInvertColors
           />
         </View>

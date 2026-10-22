@@ -197,7 +197,9 @@ export function createCamerasRouter(options: CamerasRouterOptions = {}): Router 
       const lastTouch = touched.get(row.id) ?? 0;
       if (now().getTime() - lastTouch >= FRAME_TOUCH_INTERVAL_SECONDS * 1000) {
         touched.set(row.id, now().getTime());
-        void store.touchFrame(row.id, frameAt).catch(() => touched.delete(row.id));
+        // Awaited: a client that refetches the camera once this picture has
+        // loaded must read the time of the picture it is showing.
+        await store.touchFrame(row.id, frameAt).catch(() => touched.delete(row.id));
       }
       const age = Math.max(0, Math.floor((now().getTime() - snapshot.fetchedAt) / 1000));
       response.setHeader('ETag', snapshot.etag);
