@@ -18066,7 +18066,8 @@
             "enum": [
               "live",
               "stale",
-              "offline"
+              "offline",
+              "unknown"
             ]
           },
           "lastFrameAt": {

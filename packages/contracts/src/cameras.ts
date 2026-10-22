@@ -67,9 +67,10 @@ export type CameraMedia = z.infer<typeof cameraMediaSchema>;
 /**
  * How the camera is doing, as of the server's last look: `live` (a recent
  * frame), `stale` (older than its provider's freshness window, still shown as
- * old) or `offline` (no frame within the drop window).
+ * old), `offline` (no frame within the drop window) or `unknown` (its provider
+ * lists it and GoWay has not seen a frame yet).
  */
-export const CAMERA_STATUSES = ['live', 'stale', 'offline'] as const;
+export const CAMERA_STATUSES = ['live', 'stale', 'offline', 'unknown'] as const;
 export type CameraStatus = (typeof CAMERA_STATUSES)[number];
 export const cameraStatusSchema = z.enum(CAMERA_STATUSES);
 

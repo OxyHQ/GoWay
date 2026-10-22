@@ -3775,7 +3775,7 @@ The objects the operations above answer with, by name. Request bodies are descri
 | `media.refreshSeconds` | integer or null | yes | 1 to 3600 |
 | `media.width` | integer or null | yes | At least 1 |
 | `media.height` | integer or null | yes | At least 1 |
-| `status` | one of `"live"`, `"stale"`, `"offline"` | yes |  |
+| `status` | one of `"live"`, `"stale"`, `"offline"`, `"unknown"` | yes |  |
 | `lastFrameAt` | string (date-time) or null | yes | At least 1 character |
 | `attribution` | object | yes |  |
 | `attribution.label` | string | yes | 1 to 120 characters |
