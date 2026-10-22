@@ -13,7 +13,7 @@ import { createIowaSource, iowaFrameAt } from '../sources/iowa';
 import { createTorontoSource, unwrapJsonp } from '../sources/toronto';
 import type { CameraFetchContext, CameraSourceSettings } from '../types';
 
-const fixture = (name: string) => readFileSync(join(import.meta.dir, 'fixtures', name), 'utf8');
+const fixture = (name: string) => readFileSync(join(__dirname, 'fixtures', name), 'utf8');
 const settings = (url: string): CameraSourceSettings => ({ url, userAgent: 'GoWay-test/1.0' });
 
 function context(respond: (url: string, headers: Record<string, string>) => Response): {
@@ -28,7 +28,7 @@ function context(respond: (url: string, headers: Record<string, string>) => Resp
         const headers = (init?.headers ?? {}) as Record<string, string>;
         calls.push({ url: String(url), headers });
         return respond(String(url), headers);
-      }) as typeof fetch,
+      }),
       signal: new AbortController().signal,
       now: () => new Date('2026-10-22T13:30:00Z'),
     },

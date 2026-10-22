@@ -25,6 +25,7 @@
 
 import { SNAPSHOT_CACHE_MIN_SECONDS } from './config';
 import { assertPublicUrl, type Resolver } from './publicHost';
+import type { CameraFetch } from './types';
 
 export const MAX_SNAPSHOT_BYTES = 5 * 1024 * 1024;
 export const FETCH_TIMEOUT_MS = 10_000;
@@ -65,7 +66,7 @@ export class SnapshotUnavailableError extends Error {
 }
 
 export interface SnapshotRelayOptions {
-  fetch?: typeof fetch;
+  fetch?: CameraFetch;
   now?: () => number;
   resolve?: Resolver;
   userAgent?: string;
@@ -83,7 +84,7 @@ export function holdSeconds(refreshSeconds: number): number {
 }
 
 export class SnapshotRelay {
-  private readonly fetchFn: typeof fetch;
+  private readonly fetchFn: CameraFetch;
   private readonly now: () => number;
   private readonly resolve: Resolver | undefined;
   private readonly userAgent: string;

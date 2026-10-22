@@ -28,7 +28,7 @@ function harness(respond: (url: string) => Response | Promise<Response>): Harnes
     fetch: (async (input: URL | string) => {
       calls.push(String(input));
       return respond(String(input));
-    }) as typeof fetch,
+    }),
     now: () => clock.t,
     resolve: publicDns,
   });

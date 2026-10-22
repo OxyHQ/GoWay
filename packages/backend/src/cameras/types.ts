@@ -36,9 +36,12 @@ export interface CameraRecord {
   frameAt: Date | null;
 }
 
+/** The slice of `fetch` sources and the relay use; the global `fetch` is one. */
+export type CameraFetch = (input: string | URL, init?: RequestInit) => Promise<Response>;
+
 /** What a read may use. Injected, so every source is tested without a network. */
 export interface CameraFetchContext {
-  fetch: typeof fetch;
+  fetch: CameraFetch;
   signal: AbortSignal;
   now(): Date;
 }

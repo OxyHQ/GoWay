@@ -17,6 +17,7 @@ import { logger } from '../utils/logger';
 import { dedupe } from './normalise';
 import type {
   CameraBatch,
+  CameraFetch,
   CameraFetchContext,
   CameraProviderDefinition,
   CameraSourceSettings,
@@ -37,7 +38,7 @@ export interface CameraSyncReport {
 }
 
 export interface CameraSyncContext {
-  fetch: typeof fetch;
+  fetch: CameraFetch;
   now(): Date;
   settings(provider: CameraProviderDefinition): CameraSourceSettings;
 }

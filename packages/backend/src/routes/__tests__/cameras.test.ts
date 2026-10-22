@@ -133,7 +133,7 @@ const relay = new SnapshotRelay({
     return new Response(JPEG, {
       headers: { 'content-type': 'image/jpeg', 'last-modified': 'Thu, 22 Oct 2026 11:59:30 GMT' },
     });
-  }) as typeof fetch,
+  }),
   now: () => NOW.getTime(),
   resolve: async () => ['93.184.216.34'],
 });
