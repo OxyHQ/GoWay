@@ -58,6 +58,9 @@
       "name": "Transit"
     },
     {
+      "name": "Cameras"
+    },
+    {
       "name": "Road rules"
     }
   ],
@@ -11690,6 +11693,417 @@
         }
       }
     },
+    "/cameras": {
+      "get": {
+        "operationId": "listCameras",
+        "summary": "The public cameras in a box, ordered by id, each with the media GoWay serves for it, how it is doing, and its provider's credit and licence.",
+        "tags": [
+          "Cameras"
+        ],
+        "security": [],
+        "parameters": [
+          {
+            "name": "west",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "number",
+              "minimum": -180,
+              "maximum": 180
+            }
+          },
+          {
+            "name": "south",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "number",
+              "minimum": -90,
+              "maximum": 90
+            }
+          },
+          {
+            "name": "east",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "number",
+              "minimum": -180,
+              "maximum": 180
+            }
+          },
+          {
+            "name": "north",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "number",
+              "minimum": -90,
+              "maximum": 90
+            }
+          },
+          {
+            "name": "kind",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "traffic",
+                "city",
+                "harbour",
+                "mountain",
+                "weather"
+              ]
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "default": 200,
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 1000
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 512,
+              "pattern": "^[A-Za-z0-9_-]+$"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CameraPage"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Malformed request: `bad_request`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorBody"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Refused values: `validation_failed`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorBody"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Rate limited; `Retry-After` and `details.retryAfterSeconds` say when to retry: `rate_limited`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorBody"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Server defect: `internal_error`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorBody"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Degraded or unavailable; retry later: `service_unavailable`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/cameras/{cameraId}": {
+      "get": {
+        "operationId": "getCamera",
+        "summary": "One camera.",
+        "tags": [
+          "Cameras"
+        ],
+        "security": [],
+        "parameters": [
+          {
+            "name": "cameraId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[a-z0-9][a-z0-9._-]{2,127}$"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Camera"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Malformed request: `bad_request`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorBody"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found: `not_found`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorBody"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Rate limited; `Retry-After` and `details.retryAfterSeconds` say when to retry: `rate_limited`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorBody"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Server defect: `internal_error`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorBody"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Degraded or unavailable; retry later: `service_unavailable`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/cameras/{cameraId}/observations": {
+      "get": {
+        "operationId": "listCameraObservations",
+        "summary": "What the video worker counted at a camera, newest first: vehicles and people by class, flow, congestion and whether the picture can be trusted. Aggregates only; never a frame or an identity.",
+        "tags": [
+          "Cameras"
+        ],
+        "security": [],
+        "parameters": [
+          {
+            "name": "cameraId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[a-z0-9][a-z0-9._-]{2,127}$"
+            }
+          },
+          {
+            "name": "since",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "format": "date-time"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "default": 60,
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 500
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 512,
+              "pattern": "^[A-Za-z0-9_-]+$"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CameraObservationPage"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Malformed request: `bad_request`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorBody"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found: `not_found`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorBody"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Refused values: `validation_failed`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorBody"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Rate limited; `Retry-After` and `details.retryAfterSeconds` say when to retry: `rate_limited`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorBody"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Server defect: `internal_error`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorBody"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Degraded or unavailable; retry later: `service_unavailable`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/camera-providers": {
+      "get": {
+        "operationId": "listCameraProviders",
+        "summary": "The camera providers GoWay holds, with their licence, credit, whether their pictures are served by GoWay, and how many cameras each carries.",
+        "tags": [
+          "Cameras"
+        ],
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CameraProviderPage"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Rate limited; `Retry-After` and `details.retryAfterSeconds` say when to retry: `rate_limited`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorBody"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Server defect: `internal_error`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorBody"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Degraded or unavailable; retry later: `service_unavailable`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/roads/rule-sets": {
       "get": {
         "operationId": "listRoadRuleSets",
@@ -17537,6 +17951,449 @@
           "coordinates",
           "alongMeters",
           "lengthMeters"
+        ]
+      },
+      "Camera": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^[a-z0-9][a-z0-9._-]{2,127}$"
+          },
+          "providerId": {
+            "type": "string",
+            "pattern": "^[a-z0-9][a-z0-9-]{1,47}$"
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 120
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "traffic",
+              "city",
+              "harbour",
+              "mountain",
+              "weather"
+            ]
+          },
+          "position": {
+            "$ref": "#/components/schemas/GeoCoordinate"
+          },
+          "heading": {
+            "anyOf": [
+              {
+                "type": "number",
+                "minimum": 0,
+                "exclusiveMaximum": 360
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "roadName": {
+            "anyOf": [
+              {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 120
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "media": {
+            "type": "object",
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "snapshot",
+                  "mjpeg",
+                  "hls"
+                ]
+              },
+              "refreshSeconds": {
+                "anyOf": [
+                  {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 3600
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "width": {
+                "anyOf": [
+                  {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 9007199254740991
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "height": {
+                "anyOf": [
+                  {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 9007199254740991
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              }
+            },
+            "required": [
+              "kind",
+              "refreshSeconds",
+              "width",
+              "height"
+            ]
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "live",
+              "stale",
+              "offline",
+              "unknown"
+            ]
+          },
+          "lastFrameAt": {
+            "anyOf": [
+              {
+                "type": "string",
+                "minLength": 1,
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "attribution": {
+            "type": "object",
+            "properties": {
+              "label": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 120
+              },
+              "href": {
+                "type": "string",
+                "pattern": "^https:\\/\\/"
+              }
+            },
+            "required": [
+              "label",
+              "href"
+            ]
+          },
+          "licence": {
+            "type": "object",
+            "properties": {
+              "label": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 120
+              },
+              "href": {
+                "type": "string",
+                "pattern": "^https:\\/\\/"
+              }
+            },
+            "required": [
+              "label",
+              "href"
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "providerId",
+          "name",
+          "kind",
+          "position",
+          "heading",
+          "roadName",
+          "media",
+          "status",
+          "lastFrameAt",
+          "attribution",
+          "licence"
+        ]
+      },
+      "CameraPage": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Camera"
+            }
+          },
+          "nextCursor": {
+            "anyOf": [
+              {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 512,
+                "pattern": "^[A-Za-z0-9_-]+$"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "items",
+          "nextCursor"
+        ]
+      },
+      "CameraObservationPage": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "cameraId": {
+                  "type": "string",
+                  "pattern": "^[a-z0-9][a-z0-9._-]{2,127}$"
+                },
+                "windowStart": {
+                  "type": "string",
+                  "minLength": 1,
+                  "format": "date-time"
+                },
+                "windowEnd": {
+                  "type": "string",
+                  "minLength": 1,
+                  "format": "date-time"
+                },
+                "counts": {
+                  "type": "object",
+                  "propertyNames": {
+                    "type": "string",
+                    "enum": [
+                      "car",
+                      "truck",
+                      "bus",
+                      "motorcycle",
+                      "bicycle",
+                      "pedestrian"
+                    ]
+                  },
+                  "additionalProperties": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 9007199254740991
+                  }
+                },
+                "present": {
+                  "type": "object",
+                  "propertyNames": {
+                    "type": "string",
+                    "enum": [
+                      "car",
+                      "truck",
+                      "bus",
+                      "motorcycle",
+                      "bicycle",
+                      "pedestrian"
+                    ]
+                  },
+                  "additionalProperties": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 9007199254740991
+                  }
+                },
+                "flowPerMinute": {
+                  "anyOf": [
+                    {
+                      "type": "number",
+                      "minimum": 0
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "congestion": {
+                  "anyOf": [
+                    {
+                      "type": "string",
+                      "enum": [
+                        "free",
+                        "busy",
+                        "slow",
+                        "stopped"
+                      ]
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "health": {
+                  "type": "string",
+                  "enum": [
+                    "ok",
+                    "dark",
+                    "obstructed",
+                    "frozen"
+                  ]
+                }
+              },
+              "required": [
+                "cameraId",
+                "windowStart",
+                "windowEnd",
+                "counts",
+                "present",
+                "flowPerMinute",
+                "congestion",
+                "health"
+              ]
+            }
+          },
+          "nextCursor": {
+            "anyOf": [
+              {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 512,
+                "pattern": "^[A-Za-z0-9_-]+$"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "items",
+          "nextCursor"
+        ]
+      },
+      "CameraProviderPage": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string",
+                  "pattern": "^[a-z0-9][a-z0-9-]{1,47}$"
+                },
+                "name": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 80
+                },
+                "attribution": {
+                  "type": "object",
+                  "properties": {
+                    "label": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 120
+                    },
+                    "href": {
+                      "type": "string",
+                      "pattern": "^https:\\/\\/"
+                    }
+                  },
+                  "required": [
+                    "label",
+                    "href"
+                  ]
+                },
+                "licence": {
+                  "type": "object",
+                  "properties": {
+                    "label": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 120
+                    },
+                    "href": {
+                      "type": "string",
+                      "pattern": "^https:\\/\\/"
+                    }
+                  },
+                  "required": [
+                    "label",
+                    "href"
+                  ]
+                },
+                "redistribution": {
+                  "type": "string",
+                  "enum": [
+                    "relay",
+                    "catalogue-only"
+                  ]
+                },
+                "cameraCount": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 9007199254740991
+                },
+                "coverage": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/GeoBoundingBox"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                }
+              },
+              "required": [
+                "id",
+                "name",
+                "attribution",
+                "licence",
+                "redistribution",
+                "cameraCount",
+                "coverage"
+              ]
+            }
+          },
+          "nextCursor": {
+            "anyOf": [
+              {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 512,
+                "pattern": "^[A-Za-z0-9_-]+$"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "items",
+          "nextCursor"
         ]
       },
       "RoadRuleSet": {

@@ -122,6 +122,12 @@ import {
   liveSubscriptionStateSchema,
 } from './live';
 import { liveShapeSchema, liveSourcePageSchema, liveSourceSchema } from './live-source';
+import {
+  cameraObservationPageSchema,
+  cameraPageSchema,
+  cameraProviderPageSchema,
+  cameraSchema,
+} from './cameras';
 import { nearbyTransitSchema } from './transit';
 import {
   roadAccessDecisionSchema,
@@ -270,6 +276,10 @@ export const CONTRACT_SCHEMA_NAMES = [
   'LiveSnapshot',
   'LiveDelta',
   'LiveShape',
+  'Camera',
+  'CameraPage',
+  'CameraObservationPage',
+  'CameraProviderPage',
   'RoadRuleSet',
   'RoadRuleSetPage',
   'RoadZone',
@@ -400,6 +410,10 @@ export const CONTRACT_SCHEMAS: Readonly<Record<ContractSchemaName, ContractSchem
   LiveSnapshot: response(liveSnapshotSchema),
   LiveDelta: response(liveDeltaSchema),
   LiveShape: response(liveShapeSchema),
+  Camera: response(cameraSchema),
+  CameraPage: response(cameraPageSchema),
+  CameraObservationPage: response(cameraObservationPageSchema),
+  CameraProviderPage: response(cameraProviderPageSchema),
   RoadRuleSet: response(roadRuleSetSchema),
   RoadRuleSetPage: response(roadRuleSetPageSchema),
   RoadZone: response(roadZoneSchema),

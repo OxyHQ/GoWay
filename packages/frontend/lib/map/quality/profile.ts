@@ -93,6 +93,10 @@ export interface QualityProfile {
     /** Real-time entities drawn at most (`MAP_LIVE.md`), nearest first. */
     maxEntities: number;
   };
+  cameras: {
+    /** Camera markers drawn at most (`CAMERAS.md`), nearest the map's centre first. */
+    maxMarkers: number;
+  };
   landmarks: {
     /** Landmark models held in the scene at once. */
     max: number;
@@ -199,6 +203,7 @@ export const QUALITY_PRESETS: Readonly<Record<QualityTier, Omit<QualityProfile, 
     sky: { shadowMapSize: 0, shadowTaps: 4 },
     life: { cars: 300, people: 300 },
     live: { maxEntities: 500 },
+    cameras: { maxMarkers: 40 },
     landmarks: { max: 2 },
     streets: {
       groundErrorM: 0.015,
@@ -235,6 +240,7 @@ export const QUALITY_PRESETS: Readonly<Record<QualityTier, Omit<QualityProfile, 
     sky: { shadowMapSize: 1024, shadowTaps: 8 },
     life: { cars: 700, people: 700 },
     live: { maxEntities: 2_000 },
+    cameras: { maxMarkers: 100 },
     landmarks: { max: 4 },
     streets: {
       groundErrorM: 0.015,
@@ -271,6 +277,7 @@ export const QUALITY_PRESETS: Readonly<Record<QualityTier, Omit<QualityProfile, 
     sky: { shadowMapSize: 2048, shadowTaps: 12 },
     life: { cars: 1200, people: 1200 },
     live: { maxEntities: 5_000 },
+    cameras: { maxMarkers: 200 },
     landmarks: { max: 8 },
     streets: {
       groundErrorM: 0.015,

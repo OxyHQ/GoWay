@@ -65,6 +65,7 @@ describe('the registry', () => {
       ['cityStreets', true],
       ['landmarks', true],
       ['live', true],
+      ['cameras', false],
       ['flyover', true],
     ]);
     // Every stable feature is on and offered in production; every Labs one starts off.

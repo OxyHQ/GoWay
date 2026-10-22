@@ -9,11 +9,9 @@
 
 import { z } from 'zod';
 import { geoBoundingBoxSchema } from './geo';
+import { feedText, hubLinkSchema } from './hub';
 import { cursorSchema } from './pagination';
 import { instantSchema } from './time';
-
-/** Short display text from a feed: trimmed, bounded, never empty. */
-const feedText = (max: number) => z.string().trim().min(1).max(max);
 
 /**
  * What a live entity is. Closed: a client draws, toggles and credits per kind.
@@ -34,10 +32,7 @@ export const liveSourceIdSchema = z
   .regex(/^[a-z0-9][a-z0-9-]{1,47}$/, 'must be a live source id');
 
 /** A link a client renders as text: a credit or a licence. */
-export const liveLinkSchema = z.object({
-  label: feedText(120),
-  href: z.string().regex(/^https:\/\//, 'must be an https URL'),
-});
+export const liveLinkSchema = hubLinkSchema;
 export type LiveLink = z.infer<typeof liveLinkSchema>;
 
 /**

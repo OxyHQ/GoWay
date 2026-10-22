@@ -21,8 +21,9 @@ Every operation of the GoWay API (version 1), generated from the OpenAPI documen
 - [Street 3D API](#street-3d-api) (3 operations)
 - [Live API](#live-api) (2 operations)
 - [Transit API](#transit-api) (1 operation)
+- [Cameras API](#cameras-api) (4 operations)
 - [Road rules API](#road-rules-api) (4 operations)
-- [Schemas](#schemas) (70)
+- [Schemas](#schemas) (74)
 
 ## Lists API
 
@@ -3488,6 +3489,129 @@ The public-transport stops around a point and their next departures, each marked
 | `500` | `internal_error` |
 | `503` | `service_unavailable` |
 
+## Cameras API
+
+| Operation | Method and path | Authentication |
+| --- | --- | --- |
+| [listCameras](#listcameras) | `GET /cameras` | None |
+| [getCamera](#getcamera) | `GET /cameras/{cameraId}` | None |
+| [listCameraObservations](#listcameraobservations) | `GET /cameras/{cameraId}/observations` | None |
+| [listCameraProviders](#listcameraproviders) | `GET /camera-providers` | None |
+
+### listCameras
+
+`GET /cameras`
+
+The public cameras in a box, ordered by id, each with the media GoWay serves for it, how it is doing, and its provider's credit and licence.
+
+**Authentication:** None. No session is read.
+
+**Parameters**
+
+| Name | In | Required | Type | Notes |
+| --- | --- | --- | --- | --- |
+| `west` | query | yes | number | -180 to 180 |
+| `south` | query | yes | number | -90 to 90 |
+| `east` | query | yes | number | -180 to 180 |
+| `north` | query | yes | number | -90 to 90 |
+| `kind` | query | no | one of `"traffic"`, `"city"`, `"harbour"`, `"mountain"`, `"weather"` |  |
+| `limit` | query | no | integer | 1 to 1000; default `200` |
+| `cursor` | query | no | string | 1 to 512 characters; pattern `^[A-Za-z0-9_-]+$` |
+
+**Success response**
+
+- `200`: [`CameraPage`](#camerapage): a page of [`Camera`](#camera) (`{ items, nextCursor }`).
+
+**Errors**
+
+| Status | Codes |
+| --- | --- |
+| `400` | `bad_request` |
+| `422` | `validation_failed` |
+| `429` | `rate_limited` |
+| `500` | `internal_error` |
+| `503` | `service_unavailable` |
+
+### getCamera
+
+`GET /cameras/{cameraId}`
+
+One camera.
+
+**Authentication:** None. No session is read.
+
+**Parameters**
+
+| Name | In | Required | Type | Notes |
+| --- | --- | --- | --- | --- |
+| `cameraId` | path | yes | string | Pattern `^[a-z0-9][a-z0-9._-]{2,127}$` |
+
+**Success response**
+
+- `200`: [`Camera`](#camera).
+
+**Errors**
+
+| Status | Codes |
+| --- | --- |
+| `400` | `bad_request` |
+| `404` | `not_found` |
+| `429` | `rate_limited` |
+| `500` | `internal_error` |
+| `503` | `service_unavailable` |
+
+### listCameraObservations
+
+`GET /cameras/{cameraId}/observations`
+
+What the video worker counted at a camera, newest first: vehicles and people by class, flow, congestion and whether the picture can be trusted. Aggregates only; never a frame or an identity.
+
+**Authentication:** None. No session is read.
+
+**Parameters**
+
+| Name | In | Required | Type | Notes |
+| --- | --- | --- | --- | --- |
+| `cameraId` | path | yes | string | Pattern `^[a-z0-9][a-z0-9._-]{2,127}$` |
+| `since` | query | no | string (date-time) | At least 1 character |
+| `limit` | query | no | integer | 1 to 500; default `60` |
+| `cursor` | query | no | string | 1 to 512 characters; pattern `^[A-Za-z0-9_-]+$` |
+
+**Success response**
+
+- `200`: [`CameraObservationPage`](#cameraobservationpage): a page of object (`{ items, nextCursor }`).
+
+**Errors**
+
+| Status | Codes |
+| --- | --- |
+| `400` | `bad_request` |
+| `404` | `not_found` |
+| `422` | `validation_failed` |
+| `429` | `rate_limited` |
+| `500` | `internal_error` |
+| `503` | `service_unavailable` |
+
+### listCameraProviders
+
+`GET /camera-providers`
+
+The camera providers GoWay holds, with their licence, credit, whether their pictures are served by GoWay, and how many cameras each carries.
+
+**Authentication:** None. No session is read.
+
+**Success response**
+
+- `200`: [`CameraProviderPage`](#cameraproviderpage): a page of object (`{ items, nextCursor }`).
+
+**Errors**
+
+| Status | Codes |
+| --- | --- |
+| `429` | `rate_limited` |
+| `500` | `internal_error` |
+| `503` | `service_unavailable` |
+
 ## Road rules API
 
 | Operation | Method and path | Authentication |
@@ -3634,6 +3758,71 @@ May this vehicle enter this position now? The strictest decision among the zones
 ## Schemas
 
 The objects the operations above answer with, by name. Request bodies are described under their operation. Nested objects are expanded as `parent.child`, and objects inside a list as `list[].child`, to 3 levels.
+
+### Camera
+
+| Field | Type | Required | Notes |
+| --- | --- | --- | --- |
+| `id` | string | yes | Pattern `^[a-z0-9][a-z0-9._-]{2,127}$` |
+| `providerId` | string | yes | Pattern `^[a-z0-9][a-z0-9-]{1,47}$` |
+| `name` | string | yes | 1 to 120 characters |
+| `kind` | one of `"traffic"`, `"city"`, `"harbour"`, `"mountain"`, `"weather"` | yes |  |
+| `position` | [`GeoCoordinate`](#geocoordinate) | yes |  |
+| `heading` | number or null | yes | At least 0; less than 360 |
+| `roadName` | string or null | yes | 1 to 120 characters |
+| `media` | object | yes |  |
+| `media.kind` | one of `"snapshot"`, `"mjpeg"`, `"hls"` | yes |  |
+| `media.refreshSeconds` | integer or null | yes | 1 to 3600 |
+| `media.width` | integer or null | yes | At least 1 |
+| `media.height` | integer or null | yes | At least 1 |
+| `status` | one of `"live"`, `"stale"`, `"offline"`, `"unknown"` | yes |  |
+| `lastFrameAt` | string (date-time) or null | yes | At least 1 character |
+| `attribution` | object | yes |  |
+| `attribution.label` | string | yes | 1 to 120 characters |
+| `attribution.href` | string | yes | Pattern `^https:\/\/` |
+| `licence` | object | yes |  |
+| `licence.label` | string | yes | 1 to 120 characters |
+| `licence.href` | string | yes | Pattern `^https:\/\/` |
+
+### CameraObservationPage
+
+| Field | Type | Required | Notes |
+| --- | --- | --- | --- |
+| `items` | array of object | yes |  |
+| `items[].cameraId` | string | yes | Pattern `^[a-z0-9][a-z0-9._-]{2,127}$` |
+| `items[].windowStart` | string (date-time) | yes | At least 1 character |
+| `items[].windowEnd` | string (date-time) | yes | At least 1 character |
+| `items[].counts` | map of string to integer | yes |  |
+| `items[].present` | map of string to integer | yes |  |
+| `items[].flowPerMinute` | number or null | yes | At least 0 |
+| `items[].congestion` | one of `"free"`, `"busy"`, `"slow"`, `"stopped"` or null | yes |  |
+| `items[].health` | one of `"ok"`, `"dark"`, `"obstructed"`, `"frozen"` | yes |  |
+| `nextCursor` | string or null | yes | 1 to 512 characters; pattern `^[A-Za-z0-9_-]+$` |
+
+### CameraPage
+
+| Field | Type | Required | Notes |
+| --- | --- | --- | --- |
+| `items` | array of [`Camera`](#camera) | yes |  |
+| `nextCursor` | string or null | yes | 1 to 512 characters; pattern `^[A-Za-z0-9_-]+$` |
+
+### CameraProviderPage
+
+| Field | Type | Required | Notes |
+| --- | --- | --- | --- |
+| `items` | array of object | yes |  |
+| `items[].id` | string | yes | Pattern `^[a-z0-9][a-z0-9-]{1,47}$` |
+| `items[].name` | string | yes | 1 to 80 characters |
+| `items[].attribution` | object | yes |  |
+| `items[].attribution.label` | string | yes | 1 to 120 characters |
+| `items[].attribution.href` | string | yes | Pattern `^https:\/\/` |
+| `items[].licence` | object | yes |  |
+| `items[].licence.label` | string | yes | 1 to 120 characters |
+| `items[].licence.href` | string | yes | Pattern `^https:\/\/` |
+| `items[].redistribution` | one of `"relay"`, `"catalogue-only"` | yes |  |
+| `items[].cameraCount` | integer | yes | At least 0 |
+| `items[].coverage` | [`GeoBoundingBox`](#geoboundingbox) or null | yes |  |
+| `nextCursor` | string or null | yes | 1 to 512 characters; pattern `^[A-Za-z0-9_-]+$` |
 
 ### CaptureAsset
 

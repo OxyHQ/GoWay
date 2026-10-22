@@ -50,6 +50,8 @@
 export * from './categories';
 // Road rules reference nothing: a sync keeps them, `places` never reads them.
 export * from './roadRules';
+// Cameras reference nothing: a provider's sync keeps them (`cameras/`).
+export * from './cameras';
 export * from './places';
 // After `places`: a saved item references `places.id`.
 export * from './savedPlaces';

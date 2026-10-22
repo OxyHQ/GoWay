@@ -63,6 +63,7 @@ export const MapCanvas = forwardRef<MapApi, MapCanvasProps>(function MapCanvas(
     mapStyle,
     lightPreset,
     markers,
+    credits: callerCredits,
     renderMarker,
     overlays,
     showUserLocation = false,
@@ -114,8 +115,12 @@ export const MapCanvas = forwardRef<MapApi, MapCanvasProps>(function MapCanvas(
   // Elevation data is on screen while the hillshade or the style's own relief is.
   const elevation = terrain || definition.relief === true;
   const credits = useMemo<readonly MapAttributionLink[]>(
-    () => (elevation ? [TERRAIN_ATTRIBUTION_LINK, ...imageryCredits] : imageryCredits),
-    [elevation, imageryCredits],
+    () => [
+      ...(elevation ? [TERRAIN_ATTRIBUTION_LINK] : []),
+      ...imageryCredits,
+      ...(callerCredits ?? []),
+    ],
+    [elevation, imageryCredits, callerCredits],
   );
 
   // Models: every one is its fallback marker here; `moveModel` overrides hold

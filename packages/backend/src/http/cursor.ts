@@ -66,6 +66,8 @@ export const CURSOR_KINDS = [
   'capture-assets',
   'road-rule-sets',
   'road-zones',
+  'cameras',
+  'camera-observations',
 ] as const;
 export type CursorKind = (typeof CURSOR_KINDS)[number];
 

@@ -189,6 +189,11 @@ export const EXPECTED_OPERATIONS = [
   { method: 'get', path: '/live/sources', body: false, auth: false },
   { method: 'get', path: '/live/sources/{sourceId}/shapes/{shapeId}', body: false, auth: false },
   { method: 'get', path: '/transit/nearby', body: false, auth: false },
+  // Public cameras: the catalogue, the observations read off them (media routes are binary).
+  { method: 'get', path: '/cameras', body: false, auth: false },
+  { method: 'get', path: '/cameras/{cameraId}', body: false, auth: false },
+  { method: 'get', path: '/cameras/{cameraId}/observations', body: false, auth: false },
+  { method: 'get', path: '/camera-providers', body: false, auth: false },
   { method: 'get', path: '/roads/rule-sets', body: false, auth: false },
   { method: 'get', path: '/roads/rules', body: false, auth: false },
   { method: 'get', path: '/roads/zones', body: false, auth: false },

@@ -7,15 +7,6 @@ import type { LiveEntity, LiveSource } from '@goway.to/sdk/live';
 
 import type { LiveText } from './messages';
 
-/** "4 s", "3 min", "2 h": an age a person reads at a glance. */
-export function formatAge(seconds: number): string {
-  const s = Math.max(0, Math.round(seconds));
-  if (s < 90) return `${s} s`;
-  const minutes = Math.round(s / 60);
-  if (minutes < 90) return `${minutes} min`;
-  return `${Math.round(minutes / 60)} h`;
-}
-
 /** How fresh a source's last answer is, in words. */
 export function sourceFreshness(source: LiveSource, serverNow: number, t: LiveText): string {
   if (!source.lastUpdatedAt) return t('live.updated.never');

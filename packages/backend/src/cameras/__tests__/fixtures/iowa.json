@@ -1,0 +1,76 @@
+{
+  "objectIdFieldName": "FID",
+  "uniqueIdField": {
+    "name": "FID",
+    "isSystemMaintained": true
+  },
+  "globalIdFieldName": "",
+  "geometryType": "esriGeometryPoint",
+  "spatialReference": {
+    "wkid": 4326,
+    "latestWkid": 4326
+  },
+  "exceededTransferLimit": true,
+  "features": [
+    {
+      "attributes": {
+        "device_id": 59643258,
+        "Desc_": "WWD - US 30 # MM 135.5 (Quill Ave.)",
+        "Route": "Unknown",
+        "ImageURL": "https://atmsqf.iowadot.gov/SNAPSHOTS/PUBLIC/Metro/wwdtv06hd.jpeg",
+        "VideoURL": "https://video4.iowadot.gov:8888/cedarrapids/wwdtv06lb/playlist.m3u8",
+        "latitude": 42.034544,
+        "longitude": -93.849101,
+        "UpdateDate": 20261020,
+        "UpdateTime": 72845,
+        "UTCoffset": -500,
+        "Type": "Iowa DOT",
+        "REGION": "WWD"
+      },
+      "geometry": {
+        "x": -93.849101,
+        "y": 42.03454399999999
+      }
+    },
+    {
+      "attributes": {
+        "device_id": 59643979,
+        "Desc_": "DM - I-35 @ MM 100.15 (NE 158TH Ave.)",
+        "Route": "Unknown",
+        "ImageURL": "https://atmsqf.iowadot.gov/SNAPSHOTS/PUBLIC/Metro/dmtv064hd.jpeg",
+        "VideoURL": "https://video4.iowadot.gov:8888/ames/dmtv064lb/playlist.m3u8",
+        "latitude": 41.849747,
+        "longitude": -93.570599,
+        "UpdateDate": 20261022,
+        "UpdateTime": 64231,
+        "UTCoffset": -500,
+        "Type": "Iowa DOT",
+        "REGION": "Des Moines"
+      },
+      "geometry": {
+        "x": -93.57059899999999,
+        "y": 41.849746999999994
+      }
+    },
+    {
+      "attributes": {
+        "device_id": 59644011,
+        "Desc_": "RWIS - I-35 MM 140 @ Williams DMS (mini)",
+        "Route": "I-35",
+        "ImageURL": "https://atmsqf.iowadot.gov/snapshots/Public/RWIS/RWIS_84-01.jpg",
+        "VideoURL": null,
+        "latitude": 42.4093,
+        "longitude": -93.5711,
+        "UpdateDate": 20261022,
+        "UpdateTime": 64155,
+        "UTCoffset": -500,
+        "Type": "RWIS",
+        "REGION": "RWIS Cameras"
+      },
+      "geometry": {
+        "x": -93.57110000000002,
+        "y": 42.409299999999995
+      }
+    }
+  ]
+}

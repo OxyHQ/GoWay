@@ -13,7 +13,7 @@ import type { StreetCoverage, StreetSceneManifest, StreetSceneReportInput } from
 
 import { classifyGoWayError, shouldRetryGoWay } from '@/lib/goway/errors';
 
-import { isStreet3dEndpointMissing } from './availability';
+import { isEndpointMissing } from '@/lib/goway/endpointMissing';
 import { street3dApi } from './client';
 
 let endpointMissing = false;
@@ -35,7 +35,7 @@ export function useStreetCoverage(
     queryKey: ['goway', 'street3d', 'coverage', key],
     enabled: enabled && bounds != null && !endpointMissing,
     retry: (count, error) =>
-      !isStreet3dEndpointMissing(error) &&
+      !isEndpointMissing(error) &&
       classifyGoWayError(error).kind !== 'unavailable' &&
       shouldRetryGoWay(count, error),
     placeholderData: (previous) => previous,
@@ -45,7 +45,7 @@ export function useStreetCoverage(
       try {
         return await street3dApi.coverage(bounds as GeoBoundingBox, { signal });
       } catch (error) {
-        if (isStreet3dEndpointMissing(error)) endpointMissing = true;
+        if (isEndpointMissing(error)) endpointMissing = true;
         throw error;
       }
     },

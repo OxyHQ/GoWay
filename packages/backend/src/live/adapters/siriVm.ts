@@ -12,6 +12,7 @@
  * is a flat, regular document, and the backend has no XML parser.
  */
 import type { GeoBoundingBox, LiveTransitMode, LiveTransitVehicle } from '@goway/contracts';
+import { tag } from '../../hub/xml';
 import { accept, getBytes, heading, instant, position, text } from '../normalise';
 import type { LiveAdapter, LiveAdapterSettings, LiveFetchContext, LivePollResult } from '../types';
 
@@ -31,21 +32,6 @@ export interface SiriVehicle {
   longitude: number | null;
   bearing: number | null;
   recordedAt: string | null;
-}
-
-/** The first `<Name>…</Name>` (any namespace prefix) inside `xml`. */
-function tag(xml: string, name: string): string | null {
-  const match = new RegExp(`<(?:\\w+:)?${name}(?:\\s[^>]*)?>([^<]*)</(?:\\w+:)?${name}>`).exec(xml);
-  return match ? decodeXml((match[1] ?? '').trim()) : null;
-}
-
-function decodeXml(value: string): string {
-  return value
-    .replace(/&lt;/g, '<')
-    .replace(/&gt;/g, '>')
-    .replace(/&quot;/g, '"')
-    .replace(/&apos;/g, "'")
-    .replace(/&amp;/g, '&');
 }
 
 const num = (value: string | null | undefined): number | null => {

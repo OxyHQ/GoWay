@@ -19,7 +19,7 @@ import { classifyGoWayError } from '@/lib/goway/errors';
 import { createFixtureFetch } from '@/lib/goway/mockTransport';
 import { FIXTURE_SCENES } from '@/lib/goway/street3dFixtures';
 
-import { isStreet3dEndpointMissing } from '../availability';
+import { isEndpointMissing } from '@/lib/goway/endpointMissing';
 
 const API = 'https://api.example.test';
 const [scene] = [...FIXTURE_SCENES.values()];
@@ -61,7 +61,7 @@ describe('SDK street3d against the fixture transport', () => {
       .catch((e: unknown) => e);
     expect(error).toBeInstanceOf(GoWayNotFoundError);
     expect(classifyGoWayError(error).kind).toBe('notFound');
-    expect(isStreet3dEndpointMissing(error)).toBe(false);
+    expect(isEndpointMissing(error)).toBe(false);
   });
 
   test('a report needs a session, and goes through with one', async () => {
@@ -94,13 +94,13 @@ describe('SDK street3d against the fixture transport', () => {
   });
 });
 
-describe('isStreet3dEndpointMissing', () => {
+describe('isEndpointMissing', () => {
   test('a bare 404 (no GoWay body) means the deployment has no Street 3D routes', async () => {
     const error = await client(null, canned(404, '<html>'))
       .coverage(scene.bounds)
       .catch((e: unknown) => e);
     expect(error).toBeInstanceOf(GoWayApiError);
-    expect(isStreet3dEndpointMissing(error)).toBe(true);
+    expect(isEndpointMissing(error)).toBe(true);
   });
 
   test('a 503 is not a missing endpoint', async () => {
@@ -110,6 +110,6 @@ describe('isStreet3dEndpointMissing', () => {
     )
       .coverage(scene.bounds)
       .catch((e: unknown) => e);
-    expect(isStreet3dEndpointMissing(error)).toBe(false);
+    expect(isEndpointMissing(error)).toBe(false);
   });
 });

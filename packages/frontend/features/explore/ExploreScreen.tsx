@@ -90,6 +90,7 @@ import type { LocationErrorReason } from '@goway.to/maps';
 import { GuidanceBanner } from '@/features/directions/GuidanceBanner';
 import { slotName } from '@/features/directions/stops';
 import { useGuidance } from '@/features/directions/useGuidance';
+import { useCamerasLayer } from '@/features/cameras/useCamerasLayer';
 import { takeReturnBounds } from '@/features/street3d/handoff';
 import { useStreet3dLayer } from '@/features/street3d/useStreet3dLayer';
 
@@ -283,6 +284,8 @@ export default function ExploreScreen({
   // Street 3D coverage: off unless the feature flag is on, and out of the way
   // while the directions planner owns the map.
   const street3d = useStreet3dLayer({ enabled: !directions.active });
+  // Public cameras: the same, behind the `cameras` feature.
+  const cameras = useCamerasLayer({ enabled: !directions.active });
 
   /**
    * Coming back from a Street 3D scene: frame the map on the scene the user
@@ -330,14 +333,17 @@ export default function ExploreScreen({
   );
   const markers = useMemo(
     () =>
-      street3d.markers.length > 0 ? [...explore.markers, ...street3d.markers] : explore.markers,
-    [explore.markers, street3d.markers],
+      street3d.markers.length > 0 || cameras.markers.length > 0
+        ? [...explore.markers, ...street3d.markers, ...cameras.markers]
+        : explore.markers,
+    [explore.markers, street3d.markers, cameras.markers],
   );
   const handleMarkerPress = useCallback(
     (marker: MapMarker) => {
-      if (!street3d.handleMarkerPress(marker)) explore.onMarkerPress(marker);
+      if (street3d.handleMarkerPress(marker) || cameras.handleMarkerPress(marker)) return;
+      explore.onMarkerPress(marker);
     },
-    [explore, street3d],
+    [explore, street3d, cameras],
   );
 
   // Only what the chrome shows: whether the map is turned (the compass) and
@@ -451,8 +457,9 @@ export default function ExploreScreen({
       }
       explore.onViewportChange(change);
       street3d.onViewportChange(change);
+      cameras.onViewportChange(change);
     },
-    [cameraReadout, explore, street3d],
+    [cameraReadout, explore, street3d, cameras],
   );
 
   const handleLocate = useCallback(async () => {
@@ -509,14 +516,15 @@ export default function ExploreScreen({
    */
   const renderMarker = useCallback(
     (marker: MapMarker) =>
-      street3d.renderMarker(marker) ?? (
+      street3d.renderMarker(marker) ??
+      cameras.renderMarker(marker) ?? (
         <ExploreMarker
           marker={marker}
           capability={explore.ecosystem.get(marker.id)}
           onPress={() => explore.onMarkerPress(marker)}
         />
       ),
-    [explore, street3d],
+    [explore, street3d, cameras],
   );
 
   const locationNotice = locationNoticeFor(location.error, location.canAskAgain, t);
@@ -594,6 +602,7 @@ export default function ExploreScreen({
               ref={mapRef}
               initialViewport={initialViewport ?? undefined}
               markers={markers}
+              credits={cameras.credits}
               renderMarker={renderMarker}
               overlays={overlays}
               onMarkerPress={handleMarkerPress}

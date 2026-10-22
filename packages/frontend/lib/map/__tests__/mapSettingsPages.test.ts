@@ -70,7 +70,7 @@ describe('the settings pages', () => {
     ]);
   });
 
-  test('Labs revealed (development): the same layers as production', () => {
+  test('Labs revealed (development): the production layers plus those not served yet (cameras)', () => {
     const { features } = layout({ labs: true, development: true });
     expect(ids(features.layers)).toEqual([
       'street3d',
@@ -81,6 +81,7 @@ describe('the settings pages', () => {
       'cityLife',
       'landmarks',
       'live',
+      'cameras',
       'flyover',
     ]);
   });

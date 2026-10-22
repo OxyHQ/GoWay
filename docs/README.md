@@ -10,6 +10,12 @@ the GoWay SDK, map styles and tiles, and the HTTP API — are in
 
 ## Design notes
 
+- [`DATA_HUB.md`](DATA_HUB.md) — the one platform every outside feed rides on:
+  provider-as-data with a verified licence, rooms, how to add a provider or a
+  channel.
+- [`CAMERAS.md`](CAMERAS.md) — public cameras: the catalogue, GoWay's own copy
+  of each picture, the relay's safety rules, which providers are enrolled and
+  which are waiting, and what is not built yet.
 - [`STREET3D_LIFECYCLE.md`](STREET3D_LIFECYCLE.md) — capture expiry, cleanup
   operations, crash recovery and the remaining Street 3D release gates.
 - [`SDK_VISION.md`](SDK_VISION.md) — what `@goway.to/sdk` is for, and who for.

@@ -61,6 +61,7 @@ describe('resolveQuality', () => {
       p.life.cars,
       p.life.people,
       p.live.maxEntities,
+      p.cameras.maxMarkers,
       p.landmarks.max,
       p.streets.maxTiles,
       p.streets.drawTriangles,

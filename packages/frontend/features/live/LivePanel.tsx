@@ -16,7 +16,9 @@ import { useTheme } from '@oxy.so/bloom/theme';
 import { RiCloseLine } from '@oxy.so/bloom/icons/RiCloseLine';
 import type { LiveKind, LiveSource } from '@goway.to/sdk/live';
 
-import { entityDetails, formatAge, sourceFreshness } from './format';
+import { formatAge } from '@/lib/formatAge';
+
+import { entityDetails, sourceFreshness } from './format';
 import { LIVE_KIND_COLORS, LIVE_KIND_ORDER } from './kinds';
 import type { LiveClientState } from './liveClient';
 import type { LiveSample } from './liveStore';

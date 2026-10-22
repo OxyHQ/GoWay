@@ -1,0 +1,6 @@
+jsonTMCEarthCamerasCallback({"Data":[
+{"Number":"8001","Name":"YORK ST & BREMNER BLVD / RAPTORS WAY","Latitude":"43.643120","Longitude":"-79.381386","D1":"n","D2":"e","D3":"s","D4":"w","Group":"Arterial"},
+{"Number":"8002","Name":"LOWER SIMCOE ST & BREMNER BLVD","Latitude":"43.64222","Longitude":"-79.384068","D1":"n","D2":"e","D3":"s","D4":"w","Group":"Arterial"},
+{"Number":"8003","Name":"JARVIS ST & FRONT ST E / LOWER JARVIS ST","Latitude":"43.649461","Longitude":"-79.371267","D1":"n","D2":"e","D3":"s","D4":"w","Group":"Arterial"},
+{"Number":"8004","Name":"UNIVERSITY AVE & FRONT ST W / YORK ST","Latitude":"43.645153","Longitude":"-79.382574","D1":"n","D2":"e","D3":"s","D4":"w","Group":"Arterial"}
+]})

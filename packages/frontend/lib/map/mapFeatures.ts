@@ -244,6 +244,19 @@ export const MAP_FEATURES = [
     query: 'live',
   },
   {
+    id: 'cameras',
+    section: 'layers',
+    tier: 'labs',
+    // Public cameras (`docs/CAMERAS.md`). Not on production's API yet, so it
+    // is offered in development builds only and starts off; the deployment
+    // that serves `/cameras` deletes the `offer` line and turns it on.
+    defaultOn: false,
+    requires: [],
+    platforms: EVERYWHERE,
+    offer: 'development',
+    query: 'cameras',
+  },
+  {
     id: 'flyover',
     section: 'layers',
     tier: 'stable',

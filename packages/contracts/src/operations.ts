@@ -53,6 +53,7 @@ import {
   searchParametersSchema,
   structuredGeocodeQuerySchema,
 } from './search';
+import { cameraListQuerySchema, cameraObservationsQuerySchema, cameraPathSchema } from './cameras';
 import { liveShapePathSchema } from './live-source';
 import { streetCoverageQuerySchema } from './street3d';
 import { nearbyTransitQuerySchema } from './transit';
@@ -89,6 +90,7 @@ export type ApiTag =
   | 'Captures'
   | 'Street 3D'
   | 'Live'
+  | 'Cameras'
   | 'Road rules'
   | 'Transit';
 
@@ -1426,6 +1428,54 @@ export const API_OPERATIONS: readonly ApiOperation[] = [
     query: nearbyTransitQuerySchema,
     responses: { 200: 'NearbyTransit' },
     errors: [...READ_ERRORS, 'service_unavailable'],
+  },
+  // ── Cameras ───────────────────────────────────────────────────────────────
+  {
+    operationId: 'listCameras',
+    method: 'get',
+    path: '/cameras',
+    tag: 'Cameras',
+    summary:
+      "The public cameras in a box, ordered by id, each with the media GoWay serves for it, how it is doing, and its provider's credit and licence.",
+    auth: 'public',
+    query: cameraListQuerySchema,
+    responses: { 200: 'CameraPage' },
+    errors: [...READ_ERRORS, 'service_unavailable'],
+  },
+  {
+    operationId: 'getCamera',
+    method: 'get',
+    path: '/cameras/{cameraId}',
+    tag: 'Cameras',
+    summary: 'One camera.',
+    auth: 'public',
+    pathParameters: cameraPathSchema,
+    responses: { 200: 'Camera' },
+    errors: ['bad_request', 'not_found', 'service_unavailable'],
+  },
+  {
+    operationId: 'listCameraObservations',
+    method: 'get',
+    path: '/cameras/{cameraId}/observations',
+    tag: 'Cameras',
+    summary:
+      'What the video worker counted at a camera, newest first: vehicles and people by class, flow, congestion and whether the picture can be trusted. Aggregates only; never a frame or an identity.',
+    auth: 'public',
+    pathParameters: cameraPathSchema,
+    query: cameraObservationsQuerySchema,
+    responses: { 200: 'CameraObservationPage' },
+    errors: [...READ_ERRORS, 'not_found', 'service_unavailable'],
+  },
+  {
+    operationId: 'listCameraProviders',
+    method: 'get',
+    path: '/camera-providers',
+    tag: 'Cameras',
+    summary:
+      'The camera providers GoWay holds, with their licence, credit, whether their pictures are served by GoWay, and how many cameras each carries.',
+    auth: 'public',
+    responses: { 200: 'CameraProviderPage' },
+    errors: ['service_unavailable'],
   },
   // ── Road rules ────────────────────────────────────────────────────────────
   {

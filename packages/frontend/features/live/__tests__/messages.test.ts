@@ -13,7 +13,8 @@ import {
 
 import { formatMessage } from '@/lib/i18n';
 
-import { entityDetails, formatAge, sourceFreshness } from '../format';
+import { formatAge } from '@/lib/formatAge';
+import { entityDetails, sourceFreshness } from '../format';
 import { LIVE_EN, LIVE_ES } from '../messages';
 
 const t = (key: string, values?: Record<string, string | number>) =>

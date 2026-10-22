@@ -42,6 +42,8 @@ export * from './model';
 export * from './search';
 export * from './directions';
 export * from './road-access';
+export * from './cameras';
+export * from './hub';
 export * from './road-rules';
 export * from './live-source';
 export * from './transit';

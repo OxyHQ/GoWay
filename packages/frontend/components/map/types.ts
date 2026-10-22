@@ -266,6 +266,12 @@ export interface MapCanvasProps {
   lightPreset?: MapLightPreset;
   markers?: readonly MapMarker[];
   /**
+   * Credits owed for data the caller draws as markers or overlays (a camera
+   * provider's, whose licence asks for it while the camera is on screen). The
+   * map's own credits — terrain, imagery, live data — are added by the canvas.
+   */
+  credits?: readonly MapCreditLink[];
+  /**
    * Custom marker body. Receives the marker and returns Bloom UI; the renderer
    * positions it. Omit to get Bloom's `MapPriceMarker` / `MapClusterMarker`.
    */

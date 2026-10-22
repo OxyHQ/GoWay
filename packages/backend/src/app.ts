@@ -24,6 +24,7 @@ import { errorHandler, unknownRouteHandler } from './http/errorHandler';
 import {
   accountRoles,
   apiRateLimit,
+  cameraSnapshotRateLimit,
   liveShapeRateLimit,
   contributionRateLimit,
   fileReferences,
@@ -50,6 +51,7 @@ import { createPlaceReviewsRouter } from './routes/placeReviews';
 import { createPlacesRouter } from './routes/places';
 import { createSavedListsRouter } from './routes/savedLists';
 import { createRoutesRouter } from './routes/directions';
+import { createCamerasRouter } from './routes/cameras';
 import { createRoadRulesRouter } from './routes/roadRules';
 import { createSearchRouter } from './routes/search';
 import { createStreet3dRouter } from './routes/street3d';
@@ -214,6 +216,8 @@ export function createApp(options: CreateAppOptions = {}): Express {
   v1.use(createTransitRouter(options.live ?? null));
   /** Road rules: country rule sets, zones and "may this vehicle enter", signed out. */
   v1.use(createRoadRulesRouter());
+  /** Public cameras: the catalogue, GoWay's copy of each picture, and what was counted off them. */
+  v1.use(createCamerasRouter({ snapshotRateLimit: cameraSnapshotRateLimit }));
   api.use('/v1', v1);
 
   app.use('/api', api);
