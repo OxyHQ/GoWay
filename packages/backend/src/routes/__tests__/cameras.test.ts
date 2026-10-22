@@ -227,6 +227,8 @@ describe('GET /cameras/{id}', () => {
     const found = await get(`/cameras/${idOf('open-roads', 'a')}`);
     expect(found.status).toBe(200);
     expect(found.body.name).toBe('Camera a');
+    // Revalidated every time: its age moves with each picture.
+    expect(found.headers.get('cache-control')).toBe('no-cache');
     expect((await get('/cameras/open-roads.zzz')).status).toBe(404);
     expect((await get(`/cameras/${idOf('retired-provider', 'f')}`)).status).toBe(404);
   });

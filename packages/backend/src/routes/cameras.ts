@@ -58,6 +58,12 @@ import { z } from 'zod';
 
 /** A catalogue changes when a sync runs; a status moves with each frame. */
 const LIST_CACHE_CONTROL = 'public, max-age=30';
+/**
+ * One camera: revalidated every time. Its status and `lastFrameAt` move with
+ * each picture, and the camera screen reads it again as soon as a new picture
+ * has loaded — a cached copy would show the previous picture's age.
+ */
+const CAMERA_CACHE_CONTROL = 'no-cache';
 const PROVIDERS_CACHE_CONTROL = 'public, max-age=300';
 
 /** A list position: the last camera id served. */
@@ -165,7 +171,7 @@ export function createCamerasRouter(options: CamerasRouterOptions = {}): Router 
     route(async (request, response) => {
       const { cameraId } = parsePath(cameraPathSchema, request.params);
       const { camera } = await cameraOrNotFound(cameraId);
-      response.setHeader('Cache-Control', LIST_CACHE_CONTROL);
+      response.setHeader('Cache-Control', CAMERA_CACHE_CONTROL);
       response.json(camera);
     }),
   );
