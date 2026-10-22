@@ -59,6 +59,7 @@ starts off. Shipping it is deleting that line.
 | `cityStreets` | stable | **on** | web (needs `city3d`; draws only where the road archive is published) | `?cityStreets=0/1` | live (re-attach) — [`MAP_STREETS.md`](./MAP_STREETS.md) |
 | `landmarks` | stable | **on** | web (needs `city3d`; a model draws, and the tour offers it, only over published city tiles) | `?landmarks=0/1` | live (re-attach; the Landmarks control and "Landmark tour" come and go, a running tour ends) |
 | `live` | stable | **on** | web (draws only where the backend lists `LIVE_SOURCES`: `GET /live/sources` 503 → nothing, asked again while open; `docs/MAP_LIVE.md` → Production) | `?live=0/1` | live (mount/unmount: the panel in the top-right stack, the layer, its credits and the coverage channel come and go) |
+| `cameras` | stable | **on** | web, native (from zoom 12; a deployment without `/cameras` answers 404 and the layer stays off for the session; `docs/CAMERAS.md`) | `?cameras=0/1` | live (pins and their providers' credits come and go; `/camera/<id>` always opens) |
 | `flyover` | stable | **on** | web, native | `?flyover=0/1` | live ("Fly the route", `/studio`) |
 
 **Everything is on on goway.to** (owner, 2026-10-12: "everything should be

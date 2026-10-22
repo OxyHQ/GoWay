@@ -246,14 +246,14 @@ export const MAP_FEATURES = [
   {
     id: 'cameras',
     section: 'layers',
-    tier: 'labs',
-    // Public cameras (`docs/CAMERAS.md`). Not on production's API yet, so it
-    // is offered in development builds only and starts off; the deployment
-    // that serves `/cameras` deletes the `offer` line and turns it on.
-    defaultOn: false,
+    tier: 'stable',
+    // Public cameras (`docs/CAMERAS.md`). On for everyone: the API is the gate
+    // — a deployment without `/cameras` answers 404 and the layer switches
+    // itself off for the session (`features/cameras/queries.ts`); pins are
+    // capped by `cameras.maxMarkers`.
+    defaultOn: true,
     requires: [],
     platforms: EVERYWHERE,
-    offer: 'development',
     query: 'cameras',
   },
   {
