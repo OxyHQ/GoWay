@@ -50,6 +50,7 @@ describe('the settings pages', () => {
       'cityLife',
       'landmarks',
       'live',
+      'cameras',
       'flyover',
     ]);
   });
@@ -66,11 +67,12 @@ describe('the settings pages', () => {
       'cityLife',
       'landmarks',
       'live',
+      'cameras',
       'flyover',
     ]);
   });
 
-  test('Labs revealed (development): the production layers plus those not served yet (cameras)', () => {
+  test('Labs revealed (development): the same layers as production', () => {
     const { features } = layout({ labs: true, development: true });
     expect(ids(features.layers)).toEqual([
       'street3d',
@@ -89,6 +91,6 @@ describe('the settings pages', () => {
   test('native lists only what native draws', () => {
     const { features } = layout({ labs: true, platform: 'ios' });
     expect(ids(features.map)).toEqual(['terrain']);
-    expect(ids(features.layers)).toEqual(['street3d', 'flyover']);
+    expect(ids(features.layers)).toEqual(['street3d', 'cameras', 'flyover']);
   });
 });

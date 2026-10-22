@@ -65,7 +65,7 @@ describe('the registry', () => {
       ['cityStreets', true],
       ['landmarks', true],
       ['live', true],
-      ['cameras', false],
+      ['cameras', true],
       ['flyover', true],
     ]);
     // Every stable feature is on and offered in production; every Labs one starts off.
@@ -81,6 +81,7 @@ describe('the registry', () => {
     expect(ios.list.filter((state) => state.on).map((state) => state.id)).toEqual([
       'terrain',
       'street3d',
+      'cameras',
       'flyover',
     ]);
     // So the explore screen never offers a landmark tour native cannot draw.

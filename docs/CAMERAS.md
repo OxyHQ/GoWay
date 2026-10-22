@@ -93,8 +93,8 @@ picture's file name, and the first draft that used `device_id` silently dropped
 
 ## On the map
 
-`features/cameras/`: the `cameras` map feature (Labs, development builds only
-until production serves `/cameras`; `?cameras=1` in a development tab). Pins
+`features/cameras/`: the `cameras` map feature, on for everyone (`?cameras=0` in
+a development tab turns it off). Pins
 from zoom 12, fetched for a settled viewport, at most
 `QualityProfile.cameras.maxMarkers` nearest the centre, never clustered with
 places; each provider's credit is on the map while its pins are drawn. A pin
