@@ -225,8 +225,8 @@ export async function touchFrame(db: Database, id: string, frameAt: Date): Promi
 export async function saveObservation(db: Database, observation: CameraObservation): Promise<void> {
   const values = {
     cameraId: observation.cameraId,
-    windowFrom: new Date(observation.from),
-    windowTo: new Date(observation.to),
+    windowFrom: new Date(observation.windowStart),
+    windowTo: new Date(observation.windowEnd),
     counts: observation.counts,
     present: observation.present,
     flowPerMinute: observation.flowPerMinute,

@@ -151,8 +151,8 @@ describe('camera observations', () => {
   const cameraId = cameraIdOf('prov', 'madrid');
   const at = (minute: number): CameraObservation => ({
     cameraId,
-    from: new Date(Date.UTC(2026, 0, 1, 0, minute - 1)).toISOString(),
-    to: new Date(Date.UTC(2026, 0, 1, 0, minute)).toISOString(),
+    windowStart: new Date(Date.UTC(2026, 0, 1, 0, minute - 1)).toISOString(),
+    windowEnd: new Date(Date.UTC(2026, 0, 1, 0, minute)).toISOString(),
     counts: { car: minute },
     present: { car: 1 },
     flowPerMinute: minute,

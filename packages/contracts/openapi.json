@@ -18174,12 +18174,12 @@
                   "type": "string",
                   "pattern": "^[a-z0-9][a-z0-9._-]{2,127}$"
                 },
-                "from": {
+                "windowStart": {
                   "type": "string",
                   "minLength": 1,
                   "format": "date-time"
                 },
-                "to": {
+                "windowEnd": {
                   "type": "string",
                   "minLength": 1,
                   "format": "date-time"
@@ -18261,8 +18261,8 @@
               },
               "required": [
                 "cameraId",
-                "from",
-                "to",
+                "windowStart",
+                "windowEnd",
                 "counts",
                 "present",
                 "flowPerMinute",

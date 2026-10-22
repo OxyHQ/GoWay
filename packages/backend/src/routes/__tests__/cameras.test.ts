@@ -82,8 +82,8 @@ const ROWS = [
 ];
 const observation = (minute: number): CameraObservation => ({
   cameraId: ROWS[0]?.id ?? '',
-  from: new Date(Date.UTC(2026, 9, 22, 11, minute - 1)).toISOString(),
-  to: new Date(Date.UTC(2026, 9, 22, 11, minute)).toISOString(),
+  windowStart: new Date(Date.UTC(2026, 9, 22, 11, minute - 1)).toISOString(),
+  windowEnd: new Date(Date.UTC(2026, 9, 22, 11, minute)).toISOString(),
   counts: { car: minute },
   present: {},
   flowPerMinute: minute,
@@ -115,8 +115,10 @@ const store: CamerasStore = {
       [5, 4, 3, 2, 1]
         .map(observation)
         .filter((o) => o.cameraId === cameraId)
-        .map((item) => ({ item, position: [pgText(item.to), cameraId] as [string, string] }))
-        .filter((paged) => after === undefined || Date.parse(paged.item.to) < fromPgText(after[0]))
+        .map((item) => ({ item, position: [pgText(item.windowEnd), cameraId] as [string, string] }))
+        .filter(
+          (paged) => after === undefined || Date.parse(paged.item.windowEnd) < fromPgText(after[0]),
+        )
         .slice(0, limit),
     ),
   touchFrame: (cameraId, at) => {

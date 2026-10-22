@@ -150,8 +150,8 @@ export const cameraObservationSchema = z
   .object({
     cameraId: cameraIdSchema,
     /** The window the worker counted over. */
-    from: instantSchema,
-    to: instantSchema,
+    windowStart: instantSchema,
+    windowEnd: instantSchema,
     /** Distinct things that crossed the counting line, per class. */
     counts: z.partialRecord(observedClassSchema, z.number().int().min(0)),
     /** Things in frame at the window's end, per class. */
@@ -161,10 +161,13 @@ export const cameraObservationSchema = z
     congestion: congestionLevelSchema.nullable(),
     health: cameraHealthSchema,
   })
-  .refine((observation) => Date.parse(observation.from) <= Date.parse(observation.to), {
-    message: 'from must not be after to',
-    path: ['from'],
-  });
+  .refine(
+    (observation) => Date.parse(observation.windowStart) <= Date.parse(observation.windowEnd),
+    {
+      message: 'windowStart must not be after windowEnd',
+      path: ['windowStart'],
+    },
+  );
 export type CameraObservation = z.infer<typeof cameraObservationSchema>;
 
 export const DEFAULT_OBSERVATION_LIMIT = 60;

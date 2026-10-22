@@ -62,8 +62,8 @@ describe('goway.cameras', () => {
   it('reads observations, newest first, as aggregates', async () => {
     const observation = {
       cameraId: 'open-roads.cam-1',
-      from: '2026-10-22T11:58:00.000Z',
-      to: '2026-10-22T11:59:00.000Z',
+      windowStart: '2026-10-22T11:58:00.000Z',
+      windowEnd: '2026-10-22T11:59:00.000Z',
       counts: { car: 12, truck: 1 },
       present: { car: 3 },
       flowPerMinute: 13,

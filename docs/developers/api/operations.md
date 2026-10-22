@@ -3790,8 +3790,8 @@ The objects the operations above answer with, by name. Request bodies are descri
 | --- | --- | --- | --- |
 | `items` | array of object | yes |  |
 | `items[].cameraId` | string | yes | Pattern `^[a-z0-9][a-z0-9._-]{2,127}$` |
-| `items[].from` | string (date-time) | yes | At least 1 character |
-| `items[].to` | string (date-time) | yes | At least 1 character |
+| `items[].windowStart` | string (date-time) | yes | At least 1 character |
+| `items[].windowEnd` | string (date-time) | yes | At least 1 character |
 | `items[].counts` | map of string to integer | yes |  |
 | `items[].present` | map of string to integer | yes |  |
 | `items[].flowPerMinute` | number or null | yes | At least 0 |

@@ -91,8 +91,8 @@ const databaseStore: CamerasStore = {
     (await listObservations(getDb(), cameraId, filter, window)).map(({ row, position }) => ({
       item: cameraObservationSchema.parse({
         cameraId: row.cameraId,
-        from: row.windowFrom.toISOString(),
-        to: row.windowTo.toISOString(),
+        windowStart: row.windowFrom.toISOString(),
+        windowEnd: row.windowTo.toISOString(),
         counts: row.counts,
         present: row.present,
         flowPerMinute: row.flowPerMinute,
