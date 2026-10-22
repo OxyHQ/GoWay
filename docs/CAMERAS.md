@@ -91,6 +91,18 @@ CENTER, ENTRY and EXIT views share one `device_id`. Iowa's camera id is the
 picture's file name, and the first draft that used `device_id` silently dropped
 399 cameras as "duplicates". The live dry run found it; fixtures could not.
 
+## On the map
+
+`features/cameras/`: the `cameras` map feature (Labs, development builds only
+until production serves `/cameras`; `?cameras=1` in a development tab). Pins
+from zoom 12, fetched for a settled viewport, at most
+`QualityProfile.cameras.maxMarkers` nearest the centre, never clustered with
+places; each provider's credit is on the map while its pins are drawn. A pin
+opens `/camera/<id>`, composed from Bloom (`Screen`, `PageHeader`, `Badge`,
+`Admonition`, `GroupedSection`, `EmptyState`, `Loading`): the still on its
+camera's own beat, its age, its status in words ("Up to date", never "Live"
+for a still), the credit and the licence.
+
 ## Privacy
 
 - A frame is processed and discarded. GoWay stores no picture, face, plate or
@@ -110,5 +122,4 @@ picture's file name, and the first draft that used `device_id` silently dropped
   snapshots only; a playlist relay has to rewrite segment URLs and is built when
   a provider needs it.
 - **Realtime.** Camera status and observations over the `/live` rooms.
-- **Map layer and player** in `packages/frontend`.
 - **A schedule** for `cameras:sync`.
