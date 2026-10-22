@@ -3,26 +3,38 @@
  * old it is, the provider's credit and licence, and (when the video worker has
  * counted) what was counted.
  *
+ * Composed from Bloom only — `Screen`, `PageHeader`, `ScreenScrollView`,
+ * `Loading`, `EmptyState`, `Badge`, `Admonition`, `GroupedSection` — as Oxy's
+ * other apps compose their detail screens; the still is `expo-image`, as
+ * everywhere else in GoWay (Bloom 15.0.0 does not export its image).
+ *
  * Honest by construction: the picture is a still and says how old it is; a
  * stale or offline camera says so above the picture; the credit and licence
  * are always on screen. Public — no account, no location.
  */
 import { useCallback, useEffect, useState } from 'react';
-import { Linking, Pressable, ScrollView, View } from 'react-native';
+import { Linking, View } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Image } from 'expo-image';
-import { Button } from '@oxy.so/bloom/button';
+import { Admonition } from '@oxy.so/bloom/admonition';
+import { Badge } from '@oxy.so/bloom/badge';
+import { EmptyState } from '@oxy.so/bloom/empty-state';
+import { GroupedSection, GroupedSectionItem } from '@oxy.so/bloom/grouped-section';
+import { Loading } from '@oxy.so/bloom/loading';
+import { PageHeader } from '@oxy.so/bloom/page-header';
+import { Screen, ScreenScrollView } from '@oxy.so/bloom/screen';
 import { Text } from '@oxy.so/bloom/typography';
+import type { AccentTone } from '@oxy.so/bloom/theme';
 import {
   GoWayNotFoundError,
   OBSERVED_CLASSES,
   type Camera,
   type CameraObservation,
+  type CameraStatus,
 } from '@goway.to/sdk';
 
-import { gowayClient } from '@/lib/goway/client';
 import { formatAge } from '@/lib/formatAge';
+import { gowayClient } from '@/lib/goway/client';
 
 import { frameAgeSeconds, snapshotSource } from './cameraStyle';
 import { type CameraText, useCameraText } from './messages';
@@ -30,6 +42,13 @@ import { useCamera, useCameraObservations } from './queries';
 
 /** Re-render this often so the age ticks and the still advances on its beat. */
 const TICK_MS = 5_000;
+
+const STATUS_COLOR: Readonly<Record<CameraStatus, AccentTone>> = {
+  live: 'success',
+  stale: 'warning',
+  offline: 'error',
+  unknown: 'default',
+};
 
 function useNow(): number {
   const [now, setNow] = useState(() => Date.now());
@@ -40,10 +59,11 @@ function useNow(): number {
   return now;
 }
 
+const openLink = (href: string) => void Linking.openURL(href).catch(() => {});
+
 export function CameraScreen() {
   const t = useCameraText();
   const router = useRouter();
-  const { top, bottom } = useSafeAreaInsets();
   const params = useLocalSearchParams<{ cameraId?: string }>();
   const cameraId = typeof params.cameraId === 'string' ? params.cameraId : null;
   const camera = useCamera(cameraId);
@@ -53,49 +73,32 @@ export function CameraScreen() {
     else router.replace('/');
   }, [router]);
 
-  const notFound = camera.error instanceof GoWayNotFoundError;
+  const header = (
+    <PageHeader
+      title={camera.data?.name ?? ''}
+      subtitle={camera.data?.roadName ?? undefined}
+      onBack={close}
+      backLabel={t('cameras.close')}
+    />
+  );
 
   return (
-    <View className="flex-1 bg-background">
-      <ScrollView
-        contentContainerClassName="gap-space-12 px-space-16"
-        contentContainerStyle={{ paddingTop: top + 56, paddingBottom: bottom + 24 }}
-      >
+    <Screen header={header}>
+      <ScreenScrollView>
         {camera.data ? (
           <CameraDetail camera={camera.data} t={t} />
         ) : camera.isPending ? (
-          <Text className="text-muted-foreground" accessibilityLiveRegion="polite">
-            {t('cameras.loading')}
-          </Text>
+          <Loading variant="spinner" size="lg" text={t('cameras.loading')} />
+        ) : camera.error instanceof GoWayNotFoundError ? (
+          <EmptyState title={t('cameras.notFound')} />
         ) : (
-          <View className="gap-space-8">
-            <Text accessibilityRole="alert" className="text-error-text">
-              {notFound ? t('cameras.notFound') : t('cameras.failed')}
-            </Text>
-            {!notFound ? (
-              <Button appearance="plain" tone="neutral" onPress={() => void camera.refetch()}>
-                {t('cameras.retry')}
-              </Button>
-            ) : null}
-          </View>
+          <EmptyState
+            title={t('cameras.failed')}
+            action={{ label: t('cameras.retry'), onPress: () => void camera.refetch() }}
+          />
         )}
-      </ScrollView>
-      <View
-        pointerEvents="box-none"
-        className="absolute left-0 right-0 top-0 flex-row px-space-16"
-        style={{ paddingTop: top + 8 }}
-      >
-        <Button
-          size="sm"
-          appearance="solid"
-          tone="neutral"
-          onPress={close}
-          accessibilityLabel={t('cameras.close')}
-        >
-          {t('cameras.close')}
-        </Button>
-      </View>
-    </View>
+      </ScreenScrollView>
+    </Screen>
   );
 }
 
@@ -104,32 +107,33 @@ function CameraDetail({ camera, t }: { camera: Camera; t: CameraText }) {
   const [failed, setFailed] = useState(false);
   const observations = useCameraObservations(camera.id);
   const age = frameAgeSeconds(camera, now);
-  const served = camera.media.kind === 'snapshot';
   const latest = observations.data?.items[0];
 
   return (
-    <>
-      <View className="gap-space-4">
-        <Text variant="title-2-semibold" accessibilityRole="header">
-          {camera.name}
-        </Text>
-        {camera.roadName ? <Text className="text-muted-foreground">{camera.roadName}</Text> : null}
-        <Text
-          className={camera.status === 'live' ? 'text-foreground' : 'text-error-text'}
+    <View className="gap-space-16 p-space-16">
+      <View className="flex-row flex-wrap items-center gap-space-8">
+        <Badge
+          variant="subtle"
+          color={STATUS_COLOR[camera.status]}
+          content={t(`cameras.status.${camera.status}`)}
+          size="sm"
           testID="camera-status"
-        >
-          {t(`cameras.status.${camera.status}`)}
-        </Text>
+        />
+        {age !== null ? (
+          <Text className="text-caption text-muted-foreground" testID="camera-age">
+            {t('cameras.age', { age: formatAge(age) })}
+          </Text>
+        ) : null}
       </View>
 
       {camera.status === 'stale' ? (
-        <Text className="text-error-text">{t('cameras.stale')}</Text>
+        <Admonition type="warning">{t('cameras.stale')}</Admonition>
       ) : null}
       {camera.status === 'offline' ? (
-        <Text className="text-error-text">{t('cameras.offline')}</Text>
+        <Admonition type="warning">{t('cameras.offline')}</Admonition>
       ) : null}
 
-      {served ? (
+      {camera.media.kind === 'snapshot' ? (
         <View
           className="aspect-video w-full overflow-hidden rounded-radius-12 bg-muted"
           accessibilityRole="image"
@@ -153,15 +157,9 @@ function CameraDetail({ camera, t }: { camera: Camera; t: CameraText }) {
           />
         </View>
       ) : (
-        <Text className="text-muted-foreground">{t('cameras.notServed')}</Text>
+        <Admonition type="info">{t('cameras.notServed')}</Admonition>
       )}
-      {failed ? <Text className="text-error-text">{t('cameras.pictureFailed')}</Text> : null}
-
-      {age !== null ? (
-        <Text className="text-caption text-muted-foreground" testID="camera-age">
-          {t('cameras.age', { age: formatAge(age) })}
-        </Text>
-      ) : null}
+      {failed ? <Admonition type="error">{t('cameras.pictureFailed')}</Admonition> : null}
       {camera.media.refreshSeconds ? (
         <Text className="text-caption text-muted-foreground">
           {t('cameras.refreshes', { seconds: camera.media.refreshSeconds })}
@@ -170,46 +168,43 @@ function CameraDetail({ camera, t }: { camera: Camera; t: CameraText }) {
 
       {latest ? <Counts observation={latest} t={t} /> : null}
 
-      <View className="flex-row flex-wrap items-center gap-space-4">
-        <Text className="text-caption text-muted-foreground">{`${t('cameras.source')}:`}</Text>
-        <Pressable
+      <GroupedSection>
+        <GroupedSectionItem
+          title={t('cameras.source')}
+          value={camera.attribution.label}
+          onPress={() => openLink(camera.attribution.href)}
           accessibilityRole="link"
-          onPress={() => void Linking.openURL(camera.attribution.href).catch(() => {})}
-        >
-          <Text className="text-caption text-foreground underline">{camera.attribution.label}</Text>
-        </Pressable>
-        <Text className="text-caption text-muted-foreground">·</Text>
-        <Pressable
+          showChevron
+        />
+        <GroupedSectionItem
+          title={t('cameras.licence')}
+          value={camera.licence.label}
+          onPress={() => openLink(camera.licence.href)}
           accessibilityRole="link"
-          onPress={() => void Linking.openURL(camera.licence.href).catch(() => {})}
-        >
-          <Text className="text-caption text-foreground underline">{camera.licence.label}</Text>
-        </Pressable>
-      </View>
-    </>
+          showChevron
+        />
+      </GroupedSection>
+    </View>
   );
 }
 
 function Counts({ observation, t }: { observation: CameraObservation; t: CameraText }) {
-  const rows = OBSERVED_CLASSES.filter((cls) => (observation.counts[cls] ?? 0) > 0);
+  const classes = OBSERVED_CLASSES.filter((cls) => (observation.counts[cls] ?? 0) > 0);
   return (
-    <View className="gap-space-4 rounded-radius-12 bg-card p-space-12">
-      <Text variant="body-semibold">{t('cameras.counted')}</Text>
+    <GroupedSection title={t('cameras.counted')} footer={t('cameras.privacy')}>
       {observation.congestion ? (
-        <Text>{t(`cameras.congestion.${observation.congestion}`)}</Text>
+        <GroupedSectionItem title={t(`cameras.congestion.${observation.congestion}`)} />
       ) : null}
-      {rows.map((cls) => (
-        <View key={cls} className="flex-row justify-between">
-          <Text className="text-muted-foreground">{t(`cameras.class.${cls}`)}</Text>
-          <Text>{observation.counts[cls]}</Text>
-        </View>
+      {classes.map((cls) => (
+        <GroupedSectionItem
+          key={cls}
+          title={t(`cameras.class.${cls}`)}
+          value={String(observation.counts[cls])}
+        />
       ))}
       {observation.health !== 'ok' ? (
-        <Text className="text-caption text-muted-foreground">
-          {t(`cameras.health.${observation.health}`)}
-        </Text>
+        <GroupedSectionItem title={t(`cameras.health.${observation.health}`)} />
       ) : null}
-      <Text className="text-caption text-muted-foreground">{t('cameras.privacy')}</Text>
-    </View>
+    </GroupedSection>
   );
 }
