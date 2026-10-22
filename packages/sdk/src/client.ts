@@ -129,6 +129,13 @@ import {
   MAP_STYLE_INDEX_PATH,
   mapStylePath,
   resolveMapStyle,
+  cameraListQuerySchema,
+  cameraObservationPageSchema,
+  cameraObservationsQuerySchema,
+  cameraPageSchema,
+  cameraPathSchema,
+  cameraProviderPageSchema,
+  cameraSchema,
   roadAccessDecisionSchema,
   roadAccessInputSchema,
   roadRuleSetListQuerySchema,
@@ -239,6 +246,12 @@ import type {
   NearbyTransitQuery,
   RoadAccessDecision,
   RoadAccessInput,
+  Camera,
+  CameraListQuery,
+  CameraObservationPage,
+  CameraObservationsQuery,
+  CameraPage,
+  CameraProviderPage,
   RoadRuleSetListQuery,
   RoadRuleSetPage,
   RoadRules,
@@ -993,6 +1006,35 @@ export interface GoWayRoadsApi {
   access(input: RoadAccessInput, options?: GoWayRequestOptions): Promise<RoadAccessDecision>;
 }
 
+/**
+ * Public cameras: the catalogue GoWay holds and what it reads off the pictures.
+ * Public — none of it needs an account.
+ *
+ * A picture is always GoWay's own copy (`snapshotUrl`), never the operator's,
+ * and every camera carries its provider's credit and licence in `attribution`
+ * and `licence`: show them wherever the camera is drawn.
+ */
+export interface GoWayCamerasApi {
+  /** The cameras in a box, ordered by id. Pass `nextCursor` back, with the same filters, for the next page. */
+  list(query: CameraListQuery, options?: GoWayRequestOptions): Promise<CameraPage>;
+  /** One camera. */
+  get(cameraId: string, options?: GoWayRequestOptions): Promise<Camera>;
+  /** What the video worker counted at a camera, newest first: aggregates, never a frame. */
+  observations(
+    cameraId: string,
+    query?: CameraObservationsQuery,
+    options?: GoWayRequestOptions,
+  ): Promise<CameraObservationPage>;
+  /** The camera providers, with their licences, credits and how many cameras each carries. */
+  providers(options?: GoWayRequestOptions): Promise<CameraProviderPage>;
+  /**
+   * The URL of GoWay's copy of a camera's picture, for an image tag. Present it
+   * with the camera's `status` and `lastFrameAt`: it is a still, and old when
+   * the camera is `stale`.
+   */
+  snapshotUrl(cameraId: string): string;
+}
+
 export interface GoWayClient {
   readonly organizationLists: GoWayOrganizationListsApi;
   readonly places: GoWayPlacesApi;
@@ -1007,6 +1049,7 @@ export interface GoWayClient {
   readonly street3d: GoWayStreet3dApi;
   readonly live: GoWayLiveApi;
   readonly transit: GoWayTransitApi;
+  readonly cameras: GoWayCamerasApi;
   readonly roads: GoWayRoadsApi;
   readonly links: GoWayLinks;
 }
@@ -1146,6 +1189,11 @@ function sessionPath(sessionId: string): string {
 function assetPath(assetId: string): string {
   const path = validInput(assetPathSchema, { assetId }, 'path');
   return `/captures/assets/${pathSegment(path.assetId, 'assetId')}`;
+}
+
+function cameraPath(cameraId: string): string {
+  const path = validInput(cameraPathSchema, { cameraId }, 'path');
+  return `/cameras/${pathSegment(path.cameraId, 'cameraId')}`;
 }
 
 function scenePath(sceneId: string): string {
@@ -2444,6 +2492,48 @@ export function createGoWayClient(options: GoWayClientOptions = {}): GoWayClient
       ),
   });
 
+  const cameras: GoWayCamerasApi = Object.freeze({
+    list: async (query: CameraListQuery, callOptions: GoWayRequestOptions = {}) =>
+      request(
+        config,
+        {
+          method: 'GET',
+          path: '/cameras',
+          query: validInput(cameraListQuerySchema, query, 'query'),
+          signal: callOptions.signal,
+        },
+        cameraPageSchema,
+      ),
+    get: async (cameraId: string, callOptions: GoWayRequestOptions = {}) =>
+      request(
+        config,
+        { method: 'GET', path: cameraPath(cameraId), signal: callOptions.signal },
+        cameraSchema,
+      ),
+    observations: async (
+      cameraId: string,
+      query: CameraObservationsQuery = {},
+      callOptions: GoWayRequestOptions = {},
+    ) =>
+      request(
+        config,
+        {
+          method: 'GET',
+          path: `${cameraPath(cameraId)}/observations`,
+          query: validInput(cameraObservationsQuerySchema, query, 'query'),
+          signal: callOptions.signal,
+        },
+        cameraObservationPageSchema,
+      ),
+    providers: async (callOptions: GoWayRequestOptions = {}) =>
+      request(
+        config,
+        { method: 'GET', path: '/camera-providers', signal: callOptions.signal },
+        cameraProviderPageSchema,
+      ),
+    snapshotUrl: (cameraId: string) => `${config.apiBaseUrl}${cameraPath(cameraId)}/snapshot`,
+  });
+
   const roads: GoWayRoadsApi = Object.freeze({
     ruleSets: async (query: RoadRuleSetListQuery = {}, callOptions: GoWayRequestOptions = {}) =>
       request(
@@ -2505,6 +2595,7 @@ export function createGoWayClient(options: GoWayClientOptions = {}): GoWayClient
     street3d,
     live,
     transit,
+    cameras,
     roads,
     links: createLinks(webBaseUrl),
   });

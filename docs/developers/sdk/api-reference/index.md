@@ -55,6 +55,7 @@ Creates a client. Every option is optional; with none, the client reads anonymou
 | `routes` | `GoWayRoutesApi` |
 | `links` | `GoWayLinks` |
 | `live` | `GoWayLiveApi` |
+| `cameras` | `GoWayCamerasApi` |
 | `roads` | `GoWayRoadsApi` |
 | `captures` | `GoWayCapturesApi` |
 | `street3d` | `GoWayStreet3dApi` |
@@ -236,6 +237,18 @@ Each throws `GoWayValidationError` for an empty place id, a coordinate out of ra
 
 A deployment with live switched off answers `sources` with `GoWayUnavailableError`. The socket protocol is in [`@goway.to/sdk/live`](./live.md).
 
+### `client.cameras` (`GoWayCamerasApi`)
+
+| Method | Returns | Route | Auth |
+| --- | --- | --- | --- |
+| `list` | `Promise<CameraPage>` | `GET /cameras` | `list(query: CameraListQuery)`. public |
+| `get` | `Promise<Camera>` | `GET /cameras/{cameraId}` | `get(cameraId: string)`. public |
+| `observations` | `Promise<CameraObservationPage>` | `GET /cameras/{cameraId}/observations` | `observations(cameraId: string, query?: CameraObservationsQuery)`. public |
+| `providers` | `Promise<CameraProviderPage>` | `GET /camera-providers` | `providers()`. public |
+| `snapshotUrl` | `string` | `GET /cameras/{cameraId}/snapshot` | `snapshotUrl(cameraId: string)`. Builds the URL of GoWay's copy of the picture, for an image tag; makes no request. |
+
+A picture is always GoWay's own copy, never the operator's. Every camera carries its provider's credit in `attribution` and its `licence`: show them wherever the camera is drawn, and show `status` and `lastFrameAt` with a still, which is as old as the camera's last frame. Observations are aggregates counted off the pictures (vehicles and people by class, flow, congestion); a frame, a face or a plate is never part of one.
+
 ### `client.roads` (`GoWayRoadsApi`)
 
 | Method | Returns | Route | Auth |
@@ -385,6 +398,7 @@ For GoWay operators only. Every call needs an Oxy session on the deployment's op
 | `GoWayRoutesApi` | `client.routes` |
 | `GoWayLinks` | `client.links` |
 | `GoWayLiveApi` | `client.live` |
+| `GoWayCamerasApi` | `client.cameras` |
 | `GoWayRoadsApi` | `client.roads` |
 | `GoWayCapturesApi` | `client.captures` |
 | `GoWayStreet3dApi` | `client.street3d` |
@@ -671,6 +685,21 @@ These (except `parseMapStyleIndex`) are also exported from [`@goway.to/sdk/map`]
 | `ROUTE_EXCLUDES` | `['toll', 'motorway', 'ferry']` |
 | `MAX_WAYPOINTS` | `8` |
 | `MANEUVER_TYPES` | `['depart', 'continue', 'turn-left', 'turn-right', 'turn-slight-left', 'turn-slight-right', 'turn-sharp-left', 'turn-sharp-right', 'uturn', 'merge', 'fork', 'roundabout-enter', 'roundabout-exit', 'ferry', 'arrive']`. Open-ended. |
+
+### Cameras
+
+| Name | Value |
+| --- | --- |
+| `CAMERA_KINDS` | `['traffic', 'city', 'harbour', 'mountain', 'weather']` |
+| `CAMERA_MEDIA_KINDS` | `['snapshot', 'mjpeg', 'hls']` |
+| `CAMERA_STATUSES` | `['live', 'stale', 'offline', 'unknown']` |
+| `CAMERA_HEALTH` | `['ok', 'dark', 'obstructed', 'frozen']` |
+| `CONGESTION_LEVELS` | `['free', 'busy', 'slow', 'stopped']` |
+| `OBSERVED_CLASSES` | `['car', 'truck', 'bus', 'motorcycle', 'bicycle', 'pedestrian']` |
+| `DEFAULT_CAMERA_LIST_LIMIT` | `200` |
+| `MAX_CAMERA_LIST_LIMIT` | `1000` |
+| `DEFAULT_OBSERVATION_LIMIT` | `60` |
+| `MAX_OBSERVATION_LIMIT` | `500` |
 
 ### Road rules
 
@@ -981,6 +1010,26 @@ The map-style and tile constants are also exported from [`@goway.to/sdk/map`](./
 | `ManeuverType` | One of `MANEUVER_TYPES`, or a newer string. |
 | `TravelMode` | One of `TRAVEL_MODES`. |
 | `RouteExclude` | One of `ROUTE_EXCLUDES`. |
+
+### Cameras
+
+| Type | Description |
+| --- | --- |
+| `Camera` | One camera: `id`, `providerId`, `name`, `kind`, `position`, `heading`, `roadName`, `media`, `status`, `lastFrameAt`, `attribution`, `licence`. |
+| `CameraPage` | `Page<Camera>`. |
+| `CameraListQuery` | `{ west; south; east; north; kind?; limit?; cursor? }`. |
+| `CameraKind` | One of `CAMERA_KINDS`. |
+| `CameraMedia` | What GoWay serves for the camera: `{ kind; refreshSeconds; width; height }`. |
+| `CameraMediaKind` | One of `CAMERA_MEDIA_KINDS`. |
+| `CameraStatus` | One of `CAMERA_STATUSES`; `unknown` means listed and no frame seen yet. |
+| `CameraHealth` | One of `CAMERA_HEALTH`: whether the picture can be trusted. |
+| `CameraObservation` | What the video worker counted in a window: `counts`, `present`, `flowPerMinute`, `congestion`, `health`. Aggregates only. |
+| `CameraObservationPage` | `Page<CameraObservation>`. |
+| `CameraObservationsQuery` | `{ since?; limit?; cursor? }`. |
+| `CameraProvider` | A provider with its credit, licence, `redistribution` (`relay` or `catalogue-only`) and `cameraCount`. |
+| `CameraProviderPage` | `Page<CameraProvider>`. |
+| `CongestionLevel` | One of `CONGESTION_LEVELS`. |
+| `ObservedClass` | One of `OBSERVED_CLASSES`. |
 
 ### Road rules
 

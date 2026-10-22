@@ -30,6 +30,7 @@ const PATH_VALUES: Readonly<Record<string, string>> = {
   itemId: 'i1',
   language: 'es',
   sourceId: 'renfe-cercanias',
+  cameraId: 'open-roads.cam-1',
   shapeId: '51_R2N',
 };
 
@@ -172,6 +173,10 @@ async function callEverything(): Promise<Set<string>> {
     goway.live.sources(),
     goway.live.shape('renfe-cercanias', '51_R2N'),
     goway.transit.nearby({ latitude: 41.39, longitude: 2.16 }),
+    goway.cameras.list(box),
+    goway.cameras.get('open-roads.cam-1'),
+    goway.cameras.observations('open-roads.cam-1'),
+    goway.cameras.providers(),
     goway.roads.ruleSets(),
     goway.roads.rules({ latitude: 41.39, longitude: 2.16 }),
     goway.roads.zones({ country: 'ES' }),
