@@ -25,10 +25,9 @@ import {
   liveTilesFor,
   liveTilesOf,
 } from '@goway/contracts';
+import { roomKey } from '../hub/rooms';
 
-export function roomKey(tile: string, kind: LiveKind): string {
-  return `${tile}|${kind}`;
-}
+export { roomKey };
 
 interface Entry {
   entity: LiveEntity;

@@ -66,7 +66,8 @@ import {
   type PreviousMatch,
   type StaticGtfs,
 } from './staticGtfs';
-import { contains, type IndexChange, LiveTileIndex, moveOf, roomKey } from './tileIndex';
+import { type Room, RoomRegistry, parseRoom } from '../hub/rooms';
+import { contains, type IndexChange, LiveTileIndex, moveOf } from './tileIndex';
 import {
   type LiveAdapter,
   type LiveAdapterSettings,
@@ -159,18 +160,10 @@ export const STATIC_GTFS_IDLE_MS = 15 * 60_000;
 /** The largest static GTFS download (Renfe Cercanías' zip is ~14 MB). */
 export const MAX_STATIC_GTFS_BYTES = 120 * 1024 * 1024;
 
-interface Room {
-  tile: string;
-  kind: LiveKind;
-}
-
 export class LiveHub {
   private readonly index = new LiveTileIndex();
   private readonly states: SourceState[];
-  /** watcher id → the room keys it is in. */
-  private readonly watchers = new Map<string, Set<string>>();
-  /** room key → watcher count. */
-  private readonly roomWatchers = new Map<string, number>();
+  private readonly rooms = new RoomRegistry<LiveKind>();
   private readonly now: () => number;
   private readonly random: () => number;
   private timer: ReturnType<typeof setInterval> | null = null;
@@ -410,36 +403,15 @@ export class LiveHub {
    * JOINED (to snapshot) and LEFT. The rooms say nothing about who the watcher
    * is and are never logged.
    */
-  watch(watcherId: string, rooms: readonly Room[]): { joined: Room[]; left: Room[] } {
-    const next = new Set(rooms.map((room) => roomKey(room.tile, room.kind)));
-    const previous = this.watchers.get(watcherId) ?? new Set<string>();
-    const joined: Room[] = [];
-    const left: Room[] = [];
-    for (const key of previous) {
-      if (next.has(key)) continue;
-      this.decrement(key);
-      left.push(parseRoom(key));
-    }
-    for (const room of rooms) {
-      const key = roomKey(room.tile, room.kind);
-      if (previous.has(key)) continue;
-      this.roomWatchers.set(key, (this.roomWatchers.get(key) ?? 0) + 1);
-      joined.push(room);
-    }
-    if (next.size === 0) this.watchers.delete(watcherId);
-    else this.watchers.set(watcherId, next);
-    return { joined, left };
+  watch(
+    watcherId: string,
+    rooms: readonly Room<LiveKind>[],
+  ): { joined: Room<LiveKind>[]; left: Room<LiveKind>[] } {
+    return this.rooms.watch(watcherId, rooms);
   }
 
   unwatch(watcherId: string): void {
-    for (const key of this.watchers.get(watcherId) ?? []) this.decrement(key);
-    this.watchers.delete(watcherId);
-  }
-
-  private decrement(key: string): void {
-    const count = (this.roomWatchers.get(key) ?? 0) - 1;
-    if (count <= 0) this.roomWatchers.delete(key);
-    else this.roomWatchers.set(key, count);
+    this.rooms.unwatch(watcherId);
   }
 
   /** Everything in one room, now. */
@@ -504,8 +476,8 @@ export class LiveHub {
     const finest = levels[levels.length - 1];
     const regional =
       !definition.transitModes || definition.transitModes.some(isRegionalTransitMode);
-    for (const key of this.roomWatchers.keys()) {
-      const room = parseRoom(key);
+    for (const key of this.rooms.keys()) {
+      const room = parseRoom<LiveKind>(key);
       if (room.kind !== definition.kind) continue;
       if (room.kind === 'transit') {
         const zoom = Number(room.tile.slice(0, room.tile.indexOf('/')));
@@ -895,7 +867,7 @@ export class LiveHub {
       { upserts: Map<string, LiveEntity>; moves: Map<string, LiveEntity>; removes: Set<string> }
     >();
     for (const change of changes) {
-      if (!this.roomWatchers.has(change.room)) continue;
+      if (!this.rooms.has(change.room)) continue;
       let room = perRoom.get(change.room);
       if (!room) {
         room = { upserts: new Map(), moves: new Map(), removes: new Set() };
@@ -918,7 +890,7 @@ export class LiveHub {
     }
     for (const [key, room] of perRoom) {
       if (room.upserts.size === 0 && room.moves.size === 0 && room.removes.size === 0) continue;
-      const { tile, kind } = parseRoom(key);
+      const { tile, kind } = parseRoom<LiveKind>(key);
       this.options.publish({
         tile,
         kind,
@@ -1020,11 +992,6 @@ function unref<T>(handle: T): T {
 
 function round6(value: number): number {
   return Math.round(value * 1e6) / 1e6;
-}
-
-function parseRoom(key: string): Room {
-  const [tile, kind] = key.split('|') as [string, LiveKind];
-  return { tile, kind };
 }
 
 function describe(error: unknown): string {
