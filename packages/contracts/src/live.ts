@@ -35,6 +35,7 @@
 
 import { z } from 'zod';
 import { type GeoBoundingBox, geoBoundingBoxSchema, geoCoordinateSchema } from './geo';
+import { feedText } from './hub';
 import {
   LIVE_KINDS,
   type LiveKind,
@@ -78,9 +79,6 @@ export const hexColorSchema = z.string().regex(/^#[0-9A-F]{6}$/, 'must be #RRGGB
 
 /** Degrees clockwise from true north, `[0, 360)`. */
 const headingSchema = z.number().min(0).lt(360);
-
-/** Short display text from a feed: trimmed, bounded, never empty. */
-const feedText = (max: number) => z.string().trim().min(1).max(max);
 
 const liveEntityBase = {
   id: liveEntityIdSchema,
