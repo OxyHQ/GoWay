@@ -203,6 +203,9 @@ export function createCamerasRouter(options: CamerasRouterOptions = {}): Router 
       response.setHeader('ETag', snapshot.etag);
       // The type is the one GoWay read from the bytes; a browser must not second-guess it.
       response.setHeader('X-Content-Type-Options', 'nosniff');
+      // A public picture made to be embedded — by goway.to on another origin, or
+      // any site — so not helmet's `same-origin`, which blocks it in an <img>.
+      response.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
       response.setHeader(
         'Cache-Control',
         `public, max-age=${Math.max(1, holdSeconds(row.mediaRefreshSeconds) - age)}`,

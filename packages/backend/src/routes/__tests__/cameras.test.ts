@@ -240,6 +240,9 @@ describe('GET /cameras/{id}/snapshot', () => {
     expect(first.headers.get('content-type')).toBe('image/jpeg');
     expect(first.headers.get('last-modified')).toBe('Thu, 22 Oct 2026 11:59:30 GMT');
     expect(first.headers.get('cache-control')).toBe('public, max-age=30');
+    expect(first.headers.get('x-content-type-options')).toBe('nosniff');
+    // Embeddable from goway.to and any other origin (helmet's default is same-origin).
+    expect(first.headers.get('cross-origin-resource-policy')).toBe('cross-origin');
     expect(new Uint8Array(first.body as ArrayBuffer)).toEqual(JPEG);
     const etag = first.headers.get('etag') ?? '';
     const again = await get(`/cameras/${id}/snapshot`, { 'if-none-match': etag });
