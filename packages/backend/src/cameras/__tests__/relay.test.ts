@@ -25,10 +25,10 @@ function harness(respond: (url: string) => Response | Promise<Response>): Harnes
   const calls: string[] = [];
   const clock = { t: 1_000_000 };
   const relay = new SnapshotRelay({
-    fetch: (async (input: URL | string) => {
+    fetch: async (input: URL | string) => {
       calls.push(String(input));
       return respond(String(input));
-    }),
+    },
     now: () => clock.t,
     resolve: publicDns,
   });

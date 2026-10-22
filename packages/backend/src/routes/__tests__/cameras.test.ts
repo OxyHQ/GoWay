@@ -128,12 +128,12 @@ const store: CamerasStore = {
 const JPEG = new Uint8Array([0xff, 0xd8, 0xff, 0xd9]);
 let upstreamCalls = 0;
 const relay = new SnapshotRelay({
-  fetch: (async () => {
+  fetch: async () => {
     upstreamCalls++;
     return new Response(JPEG, {
       headers: { 'content-type': 'image/jpeg', 'last-modified': 'Thu, 22 Oct 2026 11:59:30 GMT' },
     });
-  }),
+  },
   now: () => NOW.getTime(),
   resolve: async () => ['93.184.216.34'],
 });

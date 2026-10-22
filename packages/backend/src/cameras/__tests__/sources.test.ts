@@ -24,11 +24,11 @@ function context(respond: (url: string, headers: Record<string, string>) => Resp
   return {
     calls,
     context: {
-      fetch: (async (url: string | URL, init?: RequestInit) => {
+      fetch: async (url: string | URL, init?: RequestInit) => {
         const headers = (init?.headers ?? {}) as Record<string, string>;
         calls.push({ url: String(url), headers });
         return respond(String(url), headers);
-      }),
+      },
       signal: new AbortController().signal,
       now: () => new Date('2026-10-22T13:30:00Z'),
     },
