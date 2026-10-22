@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'bun:test';
-import { holdSeconds, MAX_SNAPSHOT_BYTES, SnapshotRelay, SnapshotUnavailableError } from '../relay';
+import {
+  holdSeconds,
+  MAX_SNAPSHOT_BYTES,
+  SnapshotRelay,
+  SnapshotUnavailableError,
+  sniffImageType,
+} from '../relay';
 
 const JPEG = new Uint8Array([0xff, 0xd8, 0xff, 0xd9]);
 const target = {
@@ -31,6 +37,22 @@ function harness(respond: (url: string) => Response | Promise<Response>): Harnes
 
 const jpeg = (headers: Record<string, string> = {}) =>
   new Response(JPEG, { status: 200, headers: { 'content-type': 'image/jpeg', ...headers } });
+
+describe('sniffImageType', () => {
+  it('reads the type from the bytes, and refuses anything else', () => {
+    expect(sniffImageType(new Uint8Array([0xff, 0xd8, 0xff, 0xe0]))).toBe('image/jpeg');
+    expect(sniffImageType(new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]))).toBe(
+      'image/png',
+    );
+    expect(sniffImageType(new TextEncoder().encode('GIF89a'))).toBe('image/gif');
+    expect(sniffImageType(new TextEncoder().encode('RIFF\0\0\0\0WEBPVP8 '))).toBe('image/webp');
+    expect(sniffImageType(new TextEncoder().encode('<html><script>'))).toBeNull();
+    expect(
+      sniffImageType(new TextEncoder().encode('<svg xmlns="http://www.w3.org/2000/svg"/>')),
+    ).toBeNull();
+    expect(sniffImageType(new Uint8Array())).toBeNull();
+  });
+});
 
 describe('holdSeconds', () => {
   it('is half the camera refresh, floored and capped', () => {
@@ -84,6 +106,22 @@ describe('SnapshotRelay', () => {
     );
     await expect(inward.relay.snapshot(target)).rejects.toThrow('not a public address');
     expect(inward.calls).toEqual([target.upstreamUrl]);
+  });
+
+  it('serves what the bytes are, not what the operator labelled them (a PNG sent as image/jpeg)', async () => {
+    const png = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00]);
+    const { relay } = harness(
+      () => new Response(png, { headers: { 'content-type': 'image/jpeg' } }),
+    );
+    expect((await relay.snapshot(target)).contentType).toBe('image/png');
+  });
+
+  it('refuses HTML or SVG even when it is labelled as an image', async () => {
+    const html = harness(
+      () =>
+        new Response('<script>alert(1)</script>', { headers: { 'content-type': 'image/jpeg' } }),
+    );
+    await expect(html.relay.snapshot(target)).rejects.toThrow('not an image');
   });
 
   it('refuses a page that is not an image, an error status and a picture over the cap', async () => {

@@ -12,7 +12,9 @@
  * The URL is third-party data (`publicHost.ts`): every hop of a redirect is
  * checked to be a public host, the body is capped, and only an image is
  * accepted — never HTML, which would let a hostile upstream put markup on a
- * GoWay origin.
+ * GoWay origin. What an image IS is read from its bytes, not from the
+ * upstream's `Content-Type`: Toronto serves PNG files labelled `image/jpeg`,
+ * and a label is the one thing a third party can get wrong.
  *
  * ## One request per camera at a time
  *
@@ -32,7 +34,18 @@ const MAX_ENTRIES = 2000;
 const MAX_TOTAL_BYTES = 128 * 1024 * 1024;
 /** A failed camera is not asked again for this long. */
 const FAILURE_HOLD_MS = 15_000;
-const IMAGE_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp', 'image/gif']);
+
+/** The image type the first bytes say, or `null` when they are not an image GoWay serves. */
+export function sniffImageType(bytes: Uint8Array): string | null {
+  const at = (offset: number, ...values: number[]) =>
+    values.every((value, i) => bytes[offset + i] === value);
+  if (at(0, 0xff, 0xd8, 0xff)) return 'image/jpeg';
+  if (at(0, 0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a)) return 'image/png';
+  if (at(0, 0x47, 0x49, 0x46, 0x38)) return 'image/gif';
+  // RIFF....WEBP
+  if (at(0, 0x52, 0x49, 0x46, 0x46) && at(8, 0x57, 0x45, 0x42, 0x50)) return 'image/webp';
+  return null;
+}
 
 export interface Snapshot {
   bytes: Uint8Array;
@@ -158,18 +171,16 @@ export class SnapshotRelay {
       if (response.status !== 200) {
         throw new SnapshotUnavailableError(`The camera answered ${response.status}.`);
       }
-      const contentType = (response.headers.get('content-type') ?? '').split(';')[0]?.trim() ?? '';
-      if (!IMAGE_TYPES.has(contentType.toLowerCase())) {
-        throw new SnapshotUnavailableError(
-          `The camera sent ${contentType || 'no type'}, not an image.`,
-        );
-      }
       const bytes = await readCapped(response, MAX_SNAPSHOT_BYTES);
+      const contentType = sniffImageType(bytes);
+      if (!contentType) {
+        throw new SnapshotUnavailableError('The camera sent something that is not an image.');
+      }
       const modified = response.headers.get('last-modified');
       const frameAt = modified ? new Date(modified) : null;
       return {
         bytes,
-        contentType: contentType.toLowerCase(),
+        contentType,
         fetchedAt: this.now(),
         frameAt: frameAt && Number.isFinite(frameAt.getTime()) ? frameAt : null,
         etag: `"${await digest(bytes)}"`,

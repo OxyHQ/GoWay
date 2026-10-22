@@ -201,6 +201,8 @@ export function createCamerasRouter(options: CamerasRouterOptions = {}): Router 
       }
       const age = Math.max(0, Math.floor((now().getTime() - snapshot.fetchedAt) / 1000));
       response.setHeader('ETag', snapshot.etag);
+      // The type is the one GoWay read from the bytes; a browser must not second-guess it.
+      response.setHeader('X-Content-Type-Options', 'nosniff');
       response.setHeader(
         'Cache-Control',
         `public, max-age=${Math.max(1, holdSeconds(row.mediaRefreshSeconds) - age)}`,
