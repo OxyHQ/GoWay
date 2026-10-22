@@ -136,7 +136,7 @@ describe('Toronto', () => {
       position: { latitude: 43.64312, longitude: -79.381386 },
       heading: null,
       roadName: null,
-      media: { kind: 'snapshot', refreshSeconds: 120, width: null, height: null },
+      media: { kind: 'snapshot', refreshSeconds: 1500, width: null, height: null },
       upstreamUrl:
         'https://opendata.toronto.ca/transportation/tmc/rescucameraimages/CameraImages/loc8001.jpg',
       frameAt: null,

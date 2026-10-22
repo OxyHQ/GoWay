@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { createGoWayClient, GoWayValidationError } from '../src/index';
+import {
+  createGoWayClient,
+  DEFAULT_GOWAY_API_BASE_URL,
+  GOWAY_API_BASE_PATH,
+  GoWayValidationError,
+} from '../src/index';
 import { fakeFetch, queryOf, rejection } from './helpers';
 
 const camera = {
@@ -91,9 +96,13 @@ describe('goway.cameras', () => {
   });
 
   it("builds the URL of GoWay's copy of a picture, from the API origin, and no other", () => {
-    const goway = createGoWayClient({ apiBaseUrl: 'https://api.example.test/api/v1' });
+    // `apiBaseUrl` is the ORIGIN; the API's base path is the SDK's to add, as on every request.
+    const goway = createGoWayClient({ apiBaseUrl: 'https://api.example.test' });
     expect(goway.cameras.snapshotUrl('open-roads.cam-1')).toBe(
       'https://api.example.test/api/v1/cameras/open-roads.cam-1/snapshot',
+    );
+    expect(createGoWayClient().cameras.snapshotUrl('a.b')).toBe(
+      `${DEFAULT_GOWAY_API_BASE_URL}${GOWAY_API_BASE_PATH}/cameras/a.b/snapshot`,
     );
     expect(() => goway.cameras.snapshotUrl('a/../b')).toThrow(GoWayValidationError);
   });

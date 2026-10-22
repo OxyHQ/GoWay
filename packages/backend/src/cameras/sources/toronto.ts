@@ -18,7 +18,8 @@ import type {
 } from '../types';
 
 const IMAGE_BASE = 'https://opendata.toronto.ca/transportation/tmc/rescucameraimages/CameraImages';
-const REFRESH_SECONDS = 120;
+/** Measured 2026-10-22: one location's picture changed 13:23:30 → 13:48:57 UTC, about every 25 min. */
+const REFRESH_SECONDS = 1500;
 
 /** The JSON inside `callback({…})`. */
 export function unwrapJsonp(text: string): unknown {

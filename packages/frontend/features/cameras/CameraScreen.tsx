@@ -110,7 +110,7 @@ function CameraDetail({ camera, t }: { camera: Camera; t: CameraText }) {
   const latest = observations.data?.items[0];
 
   return (
-    <View className="gap-space-16 p-space-16">
+    <View className="mx-auto w-full max-w-2xl gap-space-16 p-space-16">
       <View className="flex-row flex-wrap items-center gap-space-8">
         <Badge
           variant="subtle"
@@ -170,15 +170,15 @@ function CameraDetail({ camera, t }: { camera: Camera; t: CameraText }) {
 
       <GroupedSection>
         <GroupedSectionItem
-          title={t('cameras.source')}
-          value={camera.attribution.label}
+          // The provider's own credit, as its licence words it ("Source: …").
+          title={camera.attribution.label}
           onPress={() => openLink(camera.attribution.href)}
           accessibilityRole="link"
           showChevron
         />
         <GroupedSectionItem
           title={t('cameras.licence')}
-          value={camera.licence.label}
+          description={camera.licence.label}
           onPress={() => openLink(camera.licence.href)}
           accessibilityRole="link"
           showChevron

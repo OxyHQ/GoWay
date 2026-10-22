@@ -103,8 +103,9 @@ export const CAMERA_PROVIDERS: readonly CameraProviderDefinition[] = [
     coverage: { west: -79.7, south: 43.55, east: -79.1, north: 43.9 },
     redistribution: 'relay',
     pollIntervalSeconds: 3600,
-    staleAfterSeconds: 600,
-    dropAfterSeconds: 3600,
+    // Its pictures change about every 25 minutes (`sources/toronto.ts`).
+    staleAfterSeconds: 3600,
+    dropAfterSeconds: 10800,
     create: createTorontoSource,
   },
   {

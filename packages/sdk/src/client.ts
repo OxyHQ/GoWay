@@ -268,6 +268,7 @@ import type {
 import { GoWayValidationError } from './errors';
 import type { GoWayAbortSignal, GoWayFetch } from './runtime';
 import {
+  buildUrl,
   pathSegment,
   request,
   type GoWayAccessTokenGetter,
@@ -2531,7 +2532,8 @@ export function createGoWayClient(options: GoWayClientOptions = {}): GoWayClient
         { method: 'GET', path: '/camera-providers', signal: callOptions.signal },
         cameraProviderPageSchema,
       ),
-    snapshotUrl: (cameraId: string) => `${config.apiBaseUrl}${cameraPath(cameraId)}/snapshot`,
+    snapshotUrl: (cameraId: string) =>
+      buildUrl(config.apiBaseUrl, `${cameraPath(cameraId)}/snapshot`, {}),
   });
 
   const roads: GoWayRoadsApi = Object.freeze({
