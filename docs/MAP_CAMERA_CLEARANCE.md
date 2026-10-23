@@ -200,7 +200,7 @@ eye is above every tile's tallest prism. Its memory is the profile's
 animates only through the map's clock and MapLibre's own camera (the still
 camera's one `easeTo`), never a timer or a frame loop of its own.
 
-## In CI: the visibility gate's `objects` leg
+## In CI: the visibility gate's `models` check
 
 `check-city3d-visible.ts` (`docs/MAP_NATIVE_3D.md` → The visibility gate), on
 its settled landmark view (the Sagrada Família's model in the synthetic city):
