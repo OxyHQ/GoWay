@@ -7,7 +7,6 @@ import '../global.css';
 import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
-import { KeyboardProvider } from 'react-native-keyboard-controller';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { OxyProvider, useAccountColor } from '@oxy.so/services/ui/client';
 import { BloomProvider } from '@oxy.so/bloom/provider';
@@ -74,36 +73,33 @@ export default function RootLayout() {
   return (
     <SafeAreaProvider>
       <GestureHandlerRootView style={{ flex: 1 }}>
-        <KeyboardProvider>
-          <BloomProvider
-            colorPreset="blue"
-            persistKey={THEME_PERSIST_KEY}
-            storage={themeStorage}
-            imageResolver={(id, variant) => oxyServices.assets.publicUrl(id, variant ?? 'thumb')}
-          >
-            <OxyProvider
-              oxyServices={oxyServices}
-              clientId={OXY_CLIENT_ID}
-              queryClient={queryClient}
-            >
-              {/* Renders nothing itself — it pushes to the toast store that
-                  OxyProvider's own <ToastOutlet /> renders. */}
-              <ConnectionStatusToasts />
-              <AccountColor />
-              <LocaleProvider>
-                <PortalProvider>
-                  <Stack screenOptions={{ headerShown: false }}>
-                    {/* 2D → 3D: the scene's poster scales in over a fade,
-                        rather than a sideways push away from the map. */}
-                    <Stack.Screen name="street3d/[sceneId]" options={{ animation: 'fade' }} />
-                  </Stack>
-                  <StatusBar style="auto" />
-                  <PortalOutlet />
-                </PortalProvider>
-              </LocaleProvider>
-            </OxyProvider>
-          </BloomProvider>
-        </KeyboardProvider>
+        {/* No KeyboardProvider here: OxyProvider mounts the one. A second one above it
+            took the native keyboard events, so every keyboard hook under OxyProvider read
+            a closed keyboard. */}
+        <BloomProvider
+          colorPreset="blue"
+          persistKey={THEME_PERSIST_KEY}
+          storage={themeStorage}
+          imageResolver={(id, variant) => oxyServices.assets.publicUrl(id, variant ?? 'thumb')}
+        >
+          <OxyProvider oxyServices={oxyServices} clientId={OXY_CLIENT_ID} queryClient={queryClient}>
+            {/* Renders nothing itself — it pushes to the toast store that
+                OxyProvider's own <ToastOutlet /> renders. */}
+            <ConnectionStatusToasts />
+            <AccountColor />
+            <LocaleProvider>
+              <PortalProvider>
+                <Stack screenOptions={{ headerShown: false }}>
+                  {/* 2D → 3D: the scene's poster scales in over a fade,
+                      rather than a sideways push away from the map. */}
+                  <Stack.Screen name="street3d/[sceneId]" options={{ animation: 'fade' }} />
+                </Stack>
+                <StatusBar style="auto" />
+                <PortalOutlet />
+              </PortalProvider>
+            </LocaleProvider>
+          </OxyProvider>
+        </BloomProvider>
       </GestureHandlerRootView>
     </SafeAreaProvider>
   );
