@@ -231,7 +231,7 @@ tile the camera sees**, each at the level of detail its distance affords
   at the fade's alpha (as until main @52dde03), 37% of the city's pixels at
   z16 mixed in a surface behind the front one: walls and streets through the
   blocks (Madrid, owner report). Checked by the visibility gate's mid-fade
-  view (`check-city3d-visible`, nosky leg).
+  view (`check-city3d-visible`, its `fade` check).
 
 #### Measured per tile (worker, Bun, one core)
 

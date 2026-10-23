@@ -456,7 +456,7 @@ on, sky off), four alternating rounds on a quiet host (load ~2.5):
 - **GPU** time is within the host's noise (medians 2.8 and 3.6 ms, rounds
   2.1–4.5 ms).
 
-**The visibility gate checks city life** (below, the `objects` leg): its
+**The visibility gate checks city life** (below, its `life` check): its
 traffic changes 0.10–0.13% of the view (0.10–0.11% on `main`).
 
 ## Phase 2: GoWay Live in 3D
@@ -779,15 +779,21 @@ geometry and rebuilds the ones that now read a lift. In-place re-grounding
 `packages/frontend/scripts/check-city3d-visible.ts` (`check:city3d-visible`)
 is the committed form of the check above. It is CI's `3D city visibility` job
 (`.github/workflows/ci.yml` → `city3d`), required by `CI complete` and by both
-deploys: a matrix of one leg per sky (`--skies=sky`, `--skies=nosky`) and one
-for the views that are not per sky (`--skies=objects`: city life, models),
-side by side, so the wall time stays one leg's as the views grow. **Every port PR runs it**, and its description reports the numbers.
+deploys. Its checks (`scripts/city3dShards.ts`: `sky-city`, `sky-streets`,
+`sky-pan`, `sky-night`, `nosky-city`, `nosky-streets`, `fade`, `models`,
+`life`) are each a few views and the assertions comparing them; CI deals them
+out to five shards side by side (`--shard=K/N`), longest first by their
+measured median cost, so every shard takes 5.5–5.8 min of views and the wall
+time stays one shard's as checks are added. A pull request runs it when it
+changes something the gate measures (`scripts/city3dAffected.ts`: the engine,
+its layers, styles, fixtures and the packages it runs); push to main always
+does. **Every port PR runs it**, and its description reports the numbers.
 The GPU-free gates (meshing, frame budget, `city3dGroundPacked`) cannot see
 this regression: they counted every buried tree as drawn.
 
 ```sh
 bun run --cwd packages/frontend export:web --dev --output-dir /tmp/city3d-gate
-bun run --cwd packages/frontend check:city3d-visible --dist=/tmp/city3d-gate [--skies=sky,nosky,objects] [--out=dir] [--debug]
+bun run --cwd packages/frontend check:city3d-visible --dist=/tmp/city3d-gate [--checks=sky-city,life | --shard=0/5] [--out=dir] [--debug]
 ```
 
 It runs the real app, from a development export (only a dev build publishes
@@ -848,7 +854,7 @@ Nothing comes from the network:
   six eased steps, at the low preset (no MSAA, pixel ratio 1) and with trees
   off on both sides of each comparison: every eased frame was a full terrain
   frame (40–60 s of rasterising per view, measured), and the buildings' and
-  trees' grounding order is the `sky`/`nosky` legs' subject, not theirs.
+  trees' grounding order is the city checks' subject, not theirs.
 - **Quality**: `?quality=high`. On SwiftShader the profile would resolve to
   low, which draws no 3D terrain, so nothing would ever be lifted and the
   gate would pass on the broken code (it did, until this was added).
@@ -857,15 +863,15 @@ Nothing comes from the network:
   camera (the keyboard's relative steps land short when frames are slower
   than the ease); city life, live data, landmarks and the flyover off.
 
-Per sky (on and off) it asserts:
+It asserts:
 
-- **Trees**: the engine drew trees, and the canopy-green share of the map is
+- **Trees** (`sky-city`, `nosky-city`): the engine drew trees, and the canopy-green share of the map is
   at least 1% and 3× the same view with trees off.
-- **Buildings**: the engine drew triangles, and the share of the map darker
+- **Buildings** (the same checks): the engine drew triangles, and the share of the map darker
   than the noon basemap (walls, windows) is at least 2% and 4× the same view
   with the 3D city off. That reference has no basemap buildings, so MapLibre's
   extrusions cannot stand in for the city.
-- **City life** (the `objects` leg, sky off, the low preset's 600 agents):
+- **City life** (`life`, sky off, the low preset's 600 agents):
   its simulated traffic on the fixture's streets, on and off, seen from
   z17.5 over a junction, must change at least 0.05% of the whole view (but
   the chips' corner). Measured over five runs: 0.10–0.13% on this branch,
@@ -874,14 +880,14 @@ Per sky (on and off) it asserts:
   because one street's traffic came and went (0–1.3%), and at the low preset
   because the high one's 2,400 agents kept two software-GL cores from
   finishing a frame for the screenshot.
-- **Streets** (since step 5): the street detail drew triangles from the
+- **Streets** (`sky-streets`, `nosky-streets`; since step 5): the street detail drew triangles from the
   fixture's road tiles (`syntheticCity.ts` → `roadTile`, schema 3: one-way
   three-lane streets with names, turn lanes, signals and zebra crossings in
   every gap between blocks), and over a junction turning the streets on
   changes at least 3% of the view (pixels moving more than 24 levels, below
   the chips' rows). Measured: 14.24% with the sky and 14.29% without, on
   `main` and TSL alike; streets drawn without their ground measure 0%.
-- **Streets on a sloped, creased ground** (the `nosky` leg): the same junction
+- **Streets on a sloped, creased ground** (`nosky-streets`): the same junction
   on a terrain of 3 m swells and 0.5 m folds a few DEM pixels across, every
   DEM tile generated from that one surface at its own zoom (as Mapterhorn's
   are). Turning the streets on must change at least 85% of what it changes on
@@ -891,18 +897,18 @@ Per sky (on and off) it asserts:
   once on the right DEM (#198), and **15.12%** against 15.02% with the street
   on the terrain's facets (CI, #210; `MAP_TERRAIN_GLOBE.md` → "Everything on
   the drawn ground"). The view's street triangles: 60,682 → 185,060 → 292,590.
-- **Models** (the `objects` leg, sky off; models draw alike under either): a landmark of the
+- **Models** (`models`, sky off; models draw alike under either): a landmark of the
   registry, the Sagrada Família, stands in the synthetic city. With
   `landmarks` on it must change at least 1% of the map against the same view
   with them off, below the top 110 rows where the layer's own chip appears;
   a model that failed to load fails the gate by name. Measured: 31.5%; both
   views settle in 10–12 s locally (they timed out at 240 s before).
-- **The camera stays out of the model** (the `objects` leg, on the landmark
+- **The camera stays out of the model** (`models`, on the landmark
   view): the camera jumped through the Sagrada Família at 60°, z19, over 41
   bearings, never draws its eye inside it, and at least one camera asked for
   an eye inside (else it tests nothing). Measured: 9 asked inside, 0 drawn;
   with the rule's answer discarded, 9 drawn inside (`MAP_CAMERA_CLEARANCE.md`).
-- **A pan holds still** (sky leg: its sun shadows): opened from straight
+- **A pan holds still** (`sky-pan`: the sky's sun shadows): opened from straight
   above at z18 at 09:00 (long shadows, no 3D terrain, so a drag moves the
   map by exactly the pointer's travel), dragged north in five 30 px steps,
   each settled and shot. Every frame, aligned with the one before (each

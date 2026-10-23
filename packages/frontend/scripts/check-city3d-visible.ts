@@ -44,34 +44,36 @@
  *  - **Moving things off** (simulated traffic, live data, landmarks, flyover):
  *    they differ between page loads. Street detail off: no road fixture.
  *
- * ## What it asserts, per sky (on and off)
+ * ## What it asserts (one check each, `city3dShards.ts`; CI runs them in shards)
  *
- *  - **Trees**: the engine drew trees, and the map's canopy-green share is at
- *    least 1% and 3× the same view with trees off.
- *  - **Buildings**: the engine drew buildings, and the share of the map darker
- *    than the noon basemap (walls, windows) is at least 2% and 4× the same view
- *    with the 3D city off.
- *  - **Streets**: the street detail drew the fixture's road tiles (`roadTile`),
- *    and over a junction turning it on changes at least 3% of the view.
- *  - **Streets on a sloped, creased ground** (the `nosky` leg): the same
+ *  - **Trees** (`sky-city`, `nosky-city`): the engine drew trees, and the
+ *    map's canopy-green share is at least 1% and 3× the same view with trees
+ *    off.
+ *  - **Buildings** (the same checks): the engine drew buildings, and the share
+ *    of the map darker than the noon basemap (walls, windows) is at least 2%
+ *    and 4× the same view with the 3D city off.
+ *  - **Streets** (`sky-streets`, `nosky-streets`): the street detail drew the
+ *    fixture's road tiles (`roadTile`), and over a junction turning it on
+ *    changes at least 3% of the view.
+ *  - **Streets on a sloped, creased ground** (`nosky-streets`): the same
  *    junction on a terrain with swells and metre-scale folds a few DEM pixels
  *    across ({@link creasedMetres}), served at every zoom from one surface as
  *    Mapterhorn's tiles are. Turning the street detail on must change at least
  *    {@link CREASED_MIN_SHARE} of what it changes on flat ground: where the
  *    drawn terrain rose through the street meshes (the Mallorca–Marina
  *    report), the street was hidden under it and changed nothing there.
- *  - **Models** (the `objects` leg, sky off): the Sagrada Família, a landmark
+ *  - **Models** (`models`, sky off): the Sagrada Família, a landmark
  *    of the registry, changes at least 1% of the map against landmarks off.
- *  - **City life** (the `objects` leg, sky off, low preset): its simulated
+ *  - **City life** (`life`, sky off, low preset): its simulated
  *    traffic on the fixture's streets changes at least 0.05% of the view from
  *    z17.5 over a junction (measured 0.10–0.13%; not drawn, 0%).
- *  - **No speckle at night** (the `sky` leg, or `--skies=night` alone): the
+ *  - **No speckle at night** (`sky-night`): the
  *    city sky at night over OSM city-tile walls, where under
  *    {@link NIGHT_MAX_SPECKLE_PCT}% of the map may be a pixel standing out
  *    from all four neighbours ({@link speckle}). Born of #188: the building
  *    flags reached the fragment interpolated, and the floodlight's
  *    `mod(flags, 2)` lit every wall on half its pixels.
- *  - **A pan holds still** (the `sky` leg: its sun shadows): dragged north in
+ *  - **A pan holds still** (`sky-pan`: the sky's sun shadows): dragged north in
  *    steps from straight above, each frame is the one before moved by the
  *    drag — under {@link PAN_MAX_CHANGED_PCT} of the map differs once
  *    aligned. Born of the shadow map read through a matrix it was not drawn
@@ -90,6 +92,7 @@ import { CITY_COVERAGE_PATH } from '../lib/map/cityTiles';
 import { BUILDINGS_3D_FADE } from '../lib/map/style/buildings3d';
 import { centreFor, landmarkPosition, sweepThrough } from './cameraClearanceDrive';
 import { type PublishedStats, type SettledWants, unsettled } from './city3dSettled';
+import { CHECK_NAMES, type CheckName, shardChecks } from './city3dShards';
 import { serveDevExport } from './serveDevExport';
 import {
   cityTile,
@@ -1155,6 +1158,8 @@ const outDir = resolve(arg('out', '.city3d-visible'));
 mkdirSync(outDir, { recursive: true });
 const dist = arg('dist');
 if (!dist) throw new Error('--dist=<an `expo export --platform web --dev` output> is required');
+const checks = selectedChecks();
+console.error(`checks: ${checks.join(', ')}`);
 const served = serveDevExport(dist, {
   respond: fixtureResponse,
   log: DEBUG
@@ -1172,310 +1177,357 @@ const results: Record<string, Record<string, number>> = {};
 const failures: string[] = [];
 /** City views that never settled (`settled` → `null`). */
 const unsettledViews: string[] = [];
-try {
-  // `--skies=sky,nosky,objects` (all by default): CI runs one per job. The
-  // `objects` leg holds the views that are not per sky (models, city life).
-  const skies = arg('skies', 'sky,nosky,objects').split(',');
-  for (const [label, { flags, choices }] of Object.entries(SKIES)) {
-    if (!skies.includes(label)) continue;
-    const withTrees = await view(browser, origin, flags, choices, outDir, `${label}-trees`);
-    if (DEBUG) {
-      console.error(
-        JSON.stringify({ label, trees: withTrees.trees, triangles: withTrees.triangles }),
-      );
-      break;
-    }
-    const noTrees = await view(
-      browser,
-      origin,
-      `${flags}&city3dTrees=0`,
-      choices,
-      outDir,
-      `${label}-notrees`,
+
+/** Trees and buildings under one sky: the city with trees, without, and no city at all. */
+async function cityCheck(label: keyof typeof SKIES): Promise<void> {
+  const { flags, choices } = SKIES[label];
+  const withTrees = await view(browser, origin, flags, choices, outDir, `${label}-trees`);
+  if (DEBUG) {
+    console.error(
+      JSON.stringify({ label, trees: withTrees.trees, triangles: withTrees.triangles }),
     );
-    // The streets from over a junction (the centre view looks at a wall).
-    const streets = await view(
+    return;
+  }
+  const noTrees = await view(
+    browser,
+    origin,
+    `${flags}&city3dTrees=0`,
+    choices,
+    outDir,
+    `${label}-notrees`,
+  );
+  const noCity = await view(
+    browser,
+    origin,
+    flags.replace('city3d=1&cityTiles=1', ''),
+    // A stored choice outranks a build default (`mapFeatures.ts`), so the
+    // reference is right whatever the export was built with.
+    { ...choices, city3d: false },
+    outDir,
+    `${label}-nocity`,
+    // Without the 3D city MapLibre extrudes the basemap's buildings itself;
+    // the reference is a map with no buildings standing at all.
+    'empty',
+  );
+  const r: Record<string, number> = {
+    trees: withTrees.trees,
+    triangles: noTrees.triangles,
+    canopyPct: await share(browser, withTrees.png, 'canopy'),
+    canopyPctWithoutTrees: await share(browser, noTrees.png, 'canopy'),
+    darkPct: await share(browser, noTrees.png, 'dark'),
+    darkPctWithoutCity: await share(browser, noCity.png, 'dark'),
+  };
+  results[`${label}-city`] = r;
+  if (r.trees === 0)
+    failures.push(`${label}: the engine drew no trees (the fixture is not reaching it)`);
+  else if (r.canopyPct < Math.max(1, 3 * r.canopyPctWithoutTrees))
+    failures.push(
+      `${label}: ${r.trees} trees drawn, canopy ${r.canopyPct}% (${r.canopyPctWithoutTrees}% without trees)`,
+    );
+  if (r.triangles === 0)
+    failures.push(`${label}: the engine drew no buildings (the fixture is not reaching it)`);
+  else if (r.darkPct < Math.max(2, 4 * r.darkPctWithoutCity))
+    failures.push(
+      `${label}: ${r.triangles} building triangles drawn, ${r.darkPct}% of the map dark (${r.darkPctWithoutCity}% without the 3D city)`,
+    );
+}
+
+/** The street detail under one sky, from over a junction (the centre view looks at a wall). */
+async function streetsCheck(label: keyof typeof SKIES): Promise<void> {
+  const { flags, choices } = SKIES[label];
+  const streets = await view(
+    browser,
+    origin,
+    flags,
+    choices,
+    outDir,
+    `${label}-streets`,
+    'buildings',
+    JUNCTION,
+  );
+  const noStreets = await view(
+    browser,
+    origin,
+    flags.replace('&cityStreets=1', ''),
+    choices,
+    outDir,
+    `${label}-nostreets`,
+    'buildings',
+    JUNCTION,
+  );
+  const r: Record<string, number> = {
+    streetTriangles: streets.streetTriangles,
+    streetsChangedPct: await differs(browser, streets.png, noStreets.png),
+  };
+  results[`${label}-streets`] = r;
+  if (r.streetTriangles === 0)
+    failures.push(`${label}: the engine drew no streets (the fixture is not reaching it)`);
+  else if (r.streetsChangedPct < 3)
+    failures.push(
+      `${label}: ${r.streetTriangles} street triangles drawn, but streets on change ${r.streetsChangedPct}% of the view over a junction`,
+    );
+  if (label !== 'nosky') return;
+  // The same junction on a sloped, creased ground, against the flat one above.
+  const creased = (name: string, withStreets: boolean) =>
+    view(
       browser,
       origin,
-      flags,
+      withStreets ? flags : flags.replace('&cityStreets=1', ''),
       choices,
       outDir,
-      `${label}-streets`,
+      name,
       'buildings',
       JUNCTION,
-    );
-    const noStreets = await view(
-      browser,
-      origin,
-      flags.replace('&cityStreets=1', ''),
-      choices,
-      outDir,
-      `${label}-nostreets`,
-      'buildings',
-      JUNCTION,
-    );
-    const noCity = await view(
-      browser,
-      origin,
-      flags.replace('city3d=1&cityTiles=1', ''),
-      // A stored choice outranks a build default (`mapFeatures.ts`), so the
-      // reference is right whatever the export was built with.
-      { ...choices, city3d: false },
-      outDir,
-      `${label}-nocity`,
-      // Without the 3D city MapLibre extrudes the basemap's buildings itself;
-      // the reference is a map with no buildings standing at all.
-      'empty',
-    );
-    const r: Record<string, number> = {
-      trees: withTrees.trees,
-      triangles: noTrees.triangles,
-      canopyPct: await share(browser, withTrees.png, 'canopy'),
-      canopyPctWithoutTrees: await share(browser, noTrees.png, 'canopy'),
-      darkPct: await share(browser, noTrees.png, 'dark'),
-      darkPctWithoutCity: await share(browser, noCity.png, 'dark'),
-      streetTriangles: streets.streetTriangles,
-      streetsChangedPct: await differs(browser, streets.png, noStreets.png),
-    };
-    results[label] = r;
-    if (label === 'nosky') {
-      // The same junction on a sloped, creased ground.
-      const creased = (name: string, withStreets: boolean) =>
-        view(
-          browser,
-          origin,
-          withStreets ? flags : flags.replace('&cityStreets=1', ''),
-          choices,
-          outDir,
-          name,
-          'buildings',
-          JUNCTION,
-          'high',
-          null,
-          'ease',
-          NOON,
-          'creased',
-        );
-      const on = await creased(`${label}-creased-streets`, true);
-      const off = await creased(`${label}-creased-nostreets`, false);
-      const pct = await differs(browser, on.png, off.png);
-      r.creasedStreetTriangles = on.streetTriangles;
-      r.creasedStreetsChangedPct = pct;
-      if (on.streetTriangles === 0)
-        failures.push(`${label}: no streets drawn on the creased ground`);
-      else if (pct < CREASED_MIN_SHARE * r.streetsChangedPct)
-        failures.push(
-          `${label}: on a creased ground the streets change ${pct}% of the view, on flat ground ${r.streetsChangedPct}%: the terrain covers the street detail`,
-        );
-    }
-    if (r.trees === 0)
-      failures.push(`${label}: the engine drew no trees (the fixture is not reaching it)`);
-    else if (r.canopyPct < Math.max(1, 3 * r.canopyPctWithoutTrees))
-      failures.push(
-        `${label}: ${r.trees} trees drawn, canopy ${r.canopyPct}% (${r.canopyPctWithoutTrees}% without trees)`,
-      );
-    if (r.triangles === 0)
-      failures.push(`${label}: the engine drew no buildings (the fixture is not reaching it)`);
-    else if (r.darkPct < Math.max(2, 4 * r.darkPctWithoutCity))
-      failures.push(
-        `${label}: ${r.triangles} building triangles drawn, ${r.darkPct}% of the map dark (${r.darkPctWithoutCity}% without the 3D city)`,
-      );
-    if (r.streetTriangles === 0)
-      failures.push(`${label}: the engine drew no streets (the fixture is not reaching it)`);
-    else if (r.streetsChangedPct < 3)
-      failures.push(
-        `${label}: ${r.streetTriangles} street triangles drawn, but streets on change ${r.streetsChangedPct}% of the view over a junction`,
-      );
-  }
-  if (!DEBUG && skies.includes('sky')) {
-    const { flags, choices } = SKIES.sky;
-    const changed = await panSteps(browser, origin, flags, choices, outDir);
-    results.pan = { maxChangedPct: Math.max(...changed), steps: changed.length };
-    console.error(`pan: changed ${changed.join(', ')}% per step`);
-    if (Math.max(...changed) > PAN_MAX_CHANGED_PCT)
-      failures.push(
-        `pan: a frame differs ${Math.max(...changed)}% from the one before once aligned (over ${PAN_MAX_CHANGED_PCT}%): the map changes under a pan`,
-      );
-  }
-  if (!DEBUG && (skies.includes('sky') || skies.includes('night'))) {
-    // The city sky at night, looking at the synthetic city's walls: windows
-    // lit, floodlights on, no sun. Born of #188: an interpolated building
-    // flag lit every wall's floodlight on half its pixels, pixel by pixel.
-    const { flags, choices } = SKIES.sky;
-    const night = await view(
-      browser,
-      origin,
-      flags,
-      choices,
-      outDir,
-      'sky-night',
-      'buildings',
-      NIGHT_VIEW,
       'high',
       null,
-      'jump',
-      MIDNIGHT,
-    );
-    const speckled = await speckle(browser, night.png);
-    results.night = { triangles: night.triangles, specklePct: speckled };
-    console.error(`night: speckle ${speckled}% of the map`);
-    if (night.triangles === 0)
-      failures.push('night: the engine drew no buildings (the fixture is not reaching it)');
-    else if (speckled > NIGHT_MAX_SPECKLE_PCT)
-      failures.push(
-        `night: ${speckled}% of the map is speckle (over ${NIGHT_MAX_SPECKLE_PCT}%): a surface value changes pixel by pixel`,
-      );
-  }
-  if (!DEBUG && (skies.includes('nosky') || skies.includes('fade'))) {
-    // Mid-fade, at a resting zoom inside `BUILDINGS_3D_FADE`: the city must
-    // draw as ONE solid layer, never a wall or a street behind a building
-    // showing through it. Born of main @cd11022: every surface was blended at
-    // the fade's alpha, so walls and streets showed through the blocks. Without
-    // the sky, whose passes draw over the backdrop; trees off (their contact
-    // shadows are blended by design).
-    const { flags, choices } = SKIES.nosky;
-    // Street detail off: it starts above this zoom, and would never settle.
-    const mid = await view(
-      browser,
-      origin,
-      `${flags.replace('&cityStreets=1', '')}&city3dTrees=0`,
-      choices,
-      outDir,
-      'fade-mid',
-      'buildings',
-      { ...SYNTHETIC_CENTRE, zoom: 18 },
-      // At z16 the high preset draws a city of tiles that two software-GL
-      // cores take minutes a frame over; what is under test is the blend.
-      'low',
-      null,
-      'jump',
+      'ease',
       NOON,
-      'flat',
-      undefined,
-      true,
-      16,
+      'creased',
     );
-    const [black, white] = mid.backdrops ?? [mid.png, mid.png];
-    const layered = await layeredPct(browser, black, white);
-    results.fade = { triangles: mid.triangles, layeredPct: layered };
-    console.error(`fade: ${layered}% of the city's pixels show a surface behind another`);
-    if (mid.triangles === 0)
-      failures.push('fade: the engine drew no buildings mid-fade (the fixture is not reaching it)');
-    else if (layered > FADE_MAX_LAYERED_PCT)
-      failures.push(
-        `fade: ${layered}% of the city's pixels show a surface behind another (over ${FADE_MAX_LAYERED_PCT}%): walls and streets show through the buildings`,
-      );
+  const on = await creased(`${label}-creased-streets`, true);
+  const off = await creased(`${label}-creased-nostreets`, false);
+  const pct = await differs(browser, on.png, off.png);
+  r.creasedStreetTriangles = on.streetTriangles;
+  r.creasedStreetsChangedPct = pct;
+  if (on.streetTriangles === 0) failures.push(`${label}: no streets drawn on the creased ground`);
+  else if (pct < CREASED_MIN_SHARE * r.streetsChangedPct)
+    failures.push(
+      `${label}: on a creased ground the streets change ${pct}% of the view, on flat ground ${r.streetsChangedPct}%: the terrain covers the street detail`,
+    );
+}
+
+async function panCheck(): Promise<void> {
+  const { flags, choices } = SKIES.sky;
+  const changed = await panSteps(browser, origin, flags, choices, outDir);
+  results.pan = { maxChangedPct: Math.max(...changed), steps: changed.length };
+  console.error(`pan: changed ${changed.join(', ')}% per step`);
+  if (Math.max(...changed) > PAN_MAX_CHANGED_PCT)
+    failures.push(
+      `pan: a frame differs ${Math.max(...changed)}% from the one before once aligned (over ${PAN_MAX_CHANGED_PCT}%): the map changes under a pan`,
+    );
+}
+
+async function nightCheck(): Promise<void> {
+  // The city sky at night, looking at the synthetic city's walls: windows
+  // lit, floodlights on, no sun. Born of #188: an interpolated building
+  // flag lit every wall's floodlight on half its pixels, pixel by pixel.
+  const { flags, choices } = SKIES.sky;
+  const night = await view(
+    browser,
+    origin,
+    flags,
+    choices,
+    outDir,
+    'sky-night',
+    'buildings',
+    NIGHT_VIEW,
+    'high',
+    null,
+    'jump',
+    MIDNIGHT,
+  );
+  const speckled = await speckle(browser, night.png);
+  results.night = { triangles: night.triangles, specklePct: speckled };
+  console.error(`night: speckle ${speckled}% of the map`);
+  if (night.triangles === 0)
+    failures.push('night: the engine drew no buildings (the fixture is not reaching it)');
+  else if (speckled > NIGHT_MAX_SPECKLE_PCT)
+    failures.push(
+      `night: ${speckled}% of the map is speckle (over ${NIGHT_MAX_SPECKLE_PCT}%): a surface value changes pixel by pixel`,
+    );
+}
+
+async function fadeCheck(): Promise<void> {
+  // Mid-fade, at a resting zoom inside `BUILDINGS_3D_FADE`: the city must
+  // draw as ONE solid layer, never a wall or a street behind a building
+  // showing through it. Born of main @cd11022: every surface was blended at
+  // the fade's alpha, so walls and streets showed through the blocks. Without
+  // the sky, whose passes draw over the backdrop; trees off (their contact
+  // shadows are blended by design).
+  const { flags, choices } = SKIES.nosky;
+  // Street detail off: it starts above this zoom, and would never settle.
+  const mid = await view(
+    browser,
+    origin,
+    `${flags.replace('&cityStreets=1', '')}&city3dTrees=0`,
+    choices,
+    outDir,
+    'fade-mid',
+    'buildings',
+    { ...SYNTHETIC_CENTRE, zoom: 18 },
+    // At z16 the high preset draws a city of tiles that two software-GL
+    // cores take minutes a frame over; what is under test is the blend.
+    'low',
+    null,
+    'jump',
+    NOON,
+    'flat',
+    undefined,
+    true,
+    16,
+  );
+  const [black, white] = mid.backdrops ?? [mid.png, mid.png];
+  const layered = await layeredPct(browser, black, white);
+  results.fade = { triangles: mid.triangles, layeredPct: layered };
+  console.error(`fade: ${layered}% of the city's pixels show a surface behind another`);
+  if (mid.triangles === 0)
+    failures.push('fade: the engine drew no buildings mid-fade (the fixture is not reaching it)');
+  else if (layered > FADE_MAX_LAYERED_PCT)
+    failures.push(
+      `fade: ${layered}% of the city's pixels show a surface behind another (over ${FADE_MAX_LAYERED_PCT}%): walls and streets show through the buildings`,
+    );
+}
+
+async function modelsCheck(): Promise<void> {
+  // Models (`models.ts`, drawn by the TSL pass): the landmark on and off,
+  // without the sky (models are drawn the same way under either).
+  const { flags: skyless, choices } = SKIES.nosky;
+  // Trees off on both sides of the comparison: they are other checks'
+  // subject, and at this zoom they are 1.5 M of the view's 1.8 M triangles —
+  // on two software-GL cores the frames queued while the view settles took
+  // the GPU minutes to drain, and the screenshot (which waits for the next
+  // frame) timed out behind them (#186's first CI run).
+  const flags = `${skyless}&city3dTrees=0`;
+  const withLandmark = await view(
+    browser,
+    origin,
+    `${flags}&landmarks=1`,
+    { ...choices, landmarks: true },
+    outDir,
+    'landmark',
+    'buildings',
+    LANDMARK,
+    'low',
+    LANDMARK.id,
+    'jump',
+    NOON,
+    'flat',
+    // The camera rule (`docs/MAP_CAMERA_CLEARANCE.md`): swept through the
+    // model, the drawn eye is never inside it.
+    clearanceSweep,
+  );
+  const without = await view(
+    browser,
+    origin,
+    flags,
+    choices,
+    outDir,
+    'nolandmark',
+    'buildings',
+    LANDMARK,
+    'low',
+    null,
+    'jump',
+  );
+  const changed = await differs(browser, withLandmark.png, without.png);
+  results.landmark = { changedPct: changed };
+  const sweep = withLandmark.inspected;
+  if (sweep) results.clearance = sweep;
+  if (!sweep || sweep.askedInside === 0)
+    failures.push(
+      `camera clearance: the sweep never asked for an eye inside ${LANDMARK.id}: it tests nothing`,
+    );
+  else if (sweep.inside > 0 || sweep.drawnInside > 0)
+    failures.push(
+      `camera clearance: ${sweep.inside} of ${sweep.steps} cameras drew the eye inside ${LANDMARK.id} (${sweep.maxDepthM.toFixed(1)} m deep)`,
+    );
+  if (withLandmark.landmarkFailed)
+    failures.push(`landmark: ${LANDMARK.id}'s model failed to load (its buildings stayed)`);
+  else if (changed < 1)
+    failures.push(
+      `landmark: ${LANDMARK.id} changes ${changed}% of the map (on against off): it is not on the screen`,
+    );
+}
+
+async function lifeCheck(): Promise<void> {
+  // City life (`cityLife/`, drawn by the TSL pass): its simulated traffic on
+  // the fixture's streets, on and off, over the junction, without the sky
+  // (the agents are drawn the same way under either, and city life keeps
+  // the map rendering: on software GL a frame with the sky's passes takes
+  // seconds, and a screenshot waits for one). The simulation is seeded and
+  // the clock fixed, but the agents move with real time: the share is a
+  // floor, not a match.
+  const { flags: skyless, choices } = SKIES.nosky;
+  // Trees off on both sides of the comparison: they are other checks'
+  // subject, and at this zoom they are 1.5 M of the view's 1.8 M triangles —
+  // on two software-GL cores the frames queued while the view settles took
+  // the GPU minutes to drain, and the screenshot (which waits for the next
+  // frame) timed out behind them (#186's first CI run).
+  const flags = `${skyless}&city3dTrees=0`;
+  // The low preset's 300 cars and 300 people (`profile.ts` → `life`): the
+  // high one's 2,400 agents keep two software-GL cores from ever finishing
+  // a frame for the screenshot. From z17.5 over the junction several
+  // streets are in view, so their traffic shows whenever the shot is taken;
+  // the whole frame counts but the chips' corner.
+  const withLife = await view(
+    browser,
+    origin,
+    `${flags}&cityLife=1`,
+    { ...choices, cityLife: true },
+    outDir,
+    'life',
+    'buildings',
+    TRAFFIC,
+    'low',
+    null,
+    'jump',
+  );
+  const without = await view(
+    browser,
+    origin,
+    flags,
+    choices,
+    outDir,
+    'nolife',
+    'buildings',
+    TRAFFIC,
+    'low',
+    null,
+    'jump',
+  );
+  const changed = await differs(browser, withLife.png, without.png, 24, 0);
+  results.life = { changedPct: changed };
+  if (changed < 0.05)
+    failures.push(`city life: its agents change ${changed}% of the view: not on the screen`);
+}
+
+const CHECKS: Record<CheckName, () => Promise<void>> = {
+  'sky-city': () => cityCheck('sky'),
+  'sky-streets': () => streetsCheck('sky'),
+  'sky-pan': panCheck,
+  'sky-night': nightCheck,
+  'nosky-city': () => cityCheck('nosky'),
+  'nosky-streets': () => streetsCheck('nosky'),
+  fade: fadeCheck,
+  models: modelsCheck,
+  life: lifeCheck,
+};
+
+/**
+ * The checks this run makes: `--shard=K/N` (CI: `strategy.job-index` of
+ * `strategy.job-total`, see `city3dShards.ts`), or `--checks=a,b` by name,
+ * or every check.
+ */
+function selectedChecks(): CheckName[] {
+  const shard = arg('shard');
+  if (shard) {
+    const [index, total] = shard.split('/').map(Number);
+    return shardChecks(index, total);
   }
-  if (!DEBUG && skies.includes('objects')) {
-    // Models (`models.ts`, drawn by the TSL pass): the landmark on and off,
-    // without the sky (models are drawn the same way under either).
-    const { flags: skyless, choices } = SKIES.nosky;
-    // Trees off on both sides of the comparison: they are the other legs'
-    // subject, and at this zoom they are 1.5 M of the view's 1.8 M triangles —
-    // on two software-GL cores the frames queued while the view settles took
-    // the GPU minutes to drain, and the screenshot (which waits for the next
-    // frame) timed out behind them (#186's first CI run).
-    const flags = `${skyless}&city3dTrees=0`;
-    const withLandmark = await view(
-      browser,
-      origin,
-      `${flags}&landmarks=1`,
-      { ...choices, landmarks: true },
-      outDir,
-      'landmark',
-      'buildings',
-      LANDMARK,
-      'low',
-      LANDMARK.id,
-      'jump',
-      NOON,
-      'flat',
-      // The camera rule (`docs/MAP_CAMERA_CLEARANCE.md`): swept through the
-      // model, the drawn eye is never inside it.
-      clearanceSweep,
-    );
-    const without = await view(
-      browser,
-      origin,
-      flags,
-      choices,
-      outDir,
-      'nolandmark',
-      'buildings',
-      LANDMARK,
-      'low',
-      null,
-      'jump',
-    );
-    const changed = await differs(browser, withLandmark.png, without.png);
-    results.landmark = { changedPct: changed };
-    const sweep = withLandmark.inspected;
-    if (sweep) results.clearance = sweep;
-    if (!sweep || sweep.askedInside === 0)
-      failures.push(
-        `camera clearance: the sweep never asked for an eye inside ${LANDMARK.id}: it tests nothing`,
-      );
-    else if (sweep.inside > 0 || sweep.drawnInside > 0)
-      failures.push(
-        `camera clearance: ${sweep.inside} of ${sweep.steps} cameras drew the eye inside ${LANDMARK.id} (${sweep.maxDepthM.toFixed(1)} m deep)`,
-      );
-    if (withLandmark.landmarkFailed)
-      failures.push(`landmark: ${LANDMARK.id}'s model failed to load (its buildings stayed)`);
-    else if (changed < 1)
-      failures.push(
-        `landmark: ${LANDMARK.id} changes ${changed}% of the map (on against off): it is not on the screen`,
-      );
-  }
-  if (!DEBUG && skies.includes('objects')) {
-    // City life (`cityLife/`, drawn by the TSL pass): its simulated traffic on
-    // the fixture's streets, on and off, over the junction, without the sky
-    // (the agents are drawn the same way under either, and city life keeps
-    // the map rendering: on software GL a frame with the sky's passes takes
-    // seconds, and a screenshot waits for one). The simulation is seeded and
-    // the clock fixed, but the agents move with real time: the share is a
-    // floor, not a match.
-    const { flags: skyless, choices } = SKIES.nosky;
-    // Trees off on both sides of the comparison: they are the other legs'
-    // subject, and at this zoom they are 1.5 M of the view's 1.8 M triangles —
-    // on two software-GL cores the frames queued while the view settles took
-    // the GPU minutes to drain, and the screenshot (which waits for the next
-    // frame) timed out behind them (#186's first CI run).
-    const flags = `${skyless}&city3dTrees=0`;
-    // The low preset's 300 cars and 300 people (`profile.ts` → `life`): the
-    // high one's 2,400 agents keep two software-GL cores from ever finishing
-    // a frame for the screenshot. From z17.5 over the junction several
-    // streets are in view, so their traffic shows whenever the shot is taken;
-    // the whole frame counts but the chips' corner.
-    const withLife = await view(
-      browser,
-      origin,
-      `${flags}&cityLife=1`,
-      { ...choices, cityLife: true },
-      outDir,
-      'life',
-      'buildings',
-      TRAFFIC,
-      'low',
-      null,
-      'jump',
-    );
-    const without = await view(
-      browser,
-      origin,
-      flags,
-      choices,
-      outDir,
-      'nolife',
-      'buildings',
-      TRAFFIC,
-      'low',
-      null,
-      'jump',
-    );
-    const changed = await differs(browser, withLife.png, without.png, 24, 0);
-    results.life = { changedPct: changed };
-    if (changed < 0.05)
-      failures.push(`city life: its agents change ${changed}% of the view: not on the screen`);
+  const named = arg('checks');
+  if (!named) return CHECK_NAMES;
+  const names = named.split(',');
+  const unknown = names.filter((n) => !CHECK_NAMES.includes(n as CheckName));
+  if (unknown.length > 0)
+    throw new Error(`--checks: no check ${unknown.join(', ')} (${CHECK_NAMES.join(', ')})`);
+  return names as CheckName[];
+}
+
+try {
+  for (const name of checks) {
+    await CHECKS[name]();
+    // `--debug` stops after one view: the first check's first.
+    if (DEBUG) break;
   }
 } finally {
   await browser.close();
