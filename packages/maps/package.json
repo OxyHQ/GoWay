@@ -70,8 +70,7 @@
     "build": "node scripts/build.mjs",
     "clean": "rm -rf dist",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "test": "bun test",
-    "prepublishOnly": "bun run typecheck && bun run test && bun run build"
+    "test": "bun test"
   },
   "dependencies": {
     "supercluster": "^8.0.1"
