@@ -82,6 +82,16 @@ dev = [
 # fused-ssim compiles a CUDA kernel against the installed torch, so it must see it.
 no-build-isolation-package = ["fused-ssim"]
 
+# ...which also means its metadata can only come from running its setup.py
+# beside torch, so without this a resolve (`uv lock`, and every Dependabot
+# update of any other dependency) fails with "No module named 'torch'". Its
+# setup.py declares no version and no requirements; state that here so the
+# resolver never builds it. Re-check it when the pinned rev moves.
+[[tool.uv.dependency-metadata]]
+name = "fused-ssim"
+version = "0.0.0"
+requires-dist = []
+
 [tool.uv.sources]
 fused-ssim = { git = "https://github.com/rahul-goel/fused-ssim", rev = "328dc9836f513d00c4b5bc38fe30478b4435cbb5" }
 torch = { index = "pytorch-cu130" }

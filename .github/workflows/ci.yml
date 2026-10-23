@@ -500,6 +500,12 @@ jobs:
         with:
           enable-cache: true
           cache-dependency-glob: packages/reconstruction-worker/uv.lock
+      # `--locked` trusts the lock as written and never re-resolves fused-ssim,
+      # so it passed while every relock (Dependabot's included) died building
+      # fused-ssim without torch. Re-resolving that one package, in a runner
+      # with no torch, is what proves the lock can still be regenerated.
+      - name: The lock re-resolves without a built environment
+        run: uv lock --dry-run --upgrade-package fused-ssim
       - name: Install the locked environment
         run: uv sync --locked
       - name: Test the worker
