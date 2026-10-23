@@ -48,7 +48,7 @@ dependencies = [
   "packaging>=24",
   "jaxtyping>=0.3",
   "numpy>=2.2,<3",
-  "pillow>=11,<13",
+  "pillow>=11,<14",
   # HEIC/HEIF, which the backend accepts because it is what an iPhone produces.
   "pillow-heif>=1.1,<2",
   "opencv-python-headless>=4.12,<6",
