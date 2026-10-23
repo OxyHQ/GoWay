@@ -109,14 +109,14 @@ export function serveSavedFixture(
   path: string,
   params: Map<string, string>,
   init: GoWayFetchInit,
+  authenticated = Boolean(init.headers?.Authorization ?? init.headers?.authorization),
 ): SavedFixtureAnswer | null {
   const fixed = path === '/lists' || path === '/lists/default' || path === '/saved-places';
   const match = fixed ? null : /^\/lists\/([^/]+)(?:\/(items))?(?:\/([^/]+))?$/.exec(path);
   // `/lists/<id>/<something other than items>` is no route of ours.
   if (!fixed && (!match || (match[3] !== undefined && match[2] === undefined))) return null;
 
-  const authorization = init.headers?.Authorization ?? init.headers?.authorization;
-  if (!authorization) return failure('unauthorized', 'Sign in to use saved lists.');
+  if (!authenticated) return failure('unauthorized', 'Sign in to use saved lists.');
 
   const body = init.body ? (JSON.parse(init.body) as Record<string, unknown>) : {};
   const method = init.method;

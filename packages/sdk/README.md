@@ -27,7 +27,17 @@ for (const place of nearby.items) {
 }
 ```
 
-Search, browsing and routing need no account. For identity-bound calls, pass `getAccessToken: () => <the user's Oxy access token>`.
+Search, browsing and routing need no account. Oxy applications use the session's
+shared transport, which refreshes and fences account changes automatically:
+
+```ts
+const linked = oxyServices.createLinkedClient({ baseURL: apiBaseUrl });
+const goway = createGoWayClient({ apiBaseUrl, fetch: linked.fetchOptional });
+// Dispose the linked client when its owning application context is released.
+```
+
+The generic `getAccessToken` option remains available for external integrations
+that own their token lifecycle. Own applications do not copy a session token.
 
 ## Entry points
 

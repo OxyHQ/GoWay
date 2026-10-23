@@ -744,6 +744,7 @@ const platformFetch: GoWayFetch = (url, init) => fetch(url, init);
 export function createFixtureFetch(
   initialFaults: FixtureFaults = {},
   network: GoWayFetch = platformFetch,
+  isSignedIn?: () => boolean,
 ): GoWayFetch {
   setFixtureFaults(initialFaults);
   resetContent();
@@ -759,6 +760,8 @@ export function createFixtureFetch(
 
     if (!computed) await fixtureLatency(init.signal);
 
+    const authenticated =
+      isSignedIn?.() ?? Boolean(init.headers?.Authorization ?? init.headers?.authorization);
     const fault = faults[family];
     // A network fault must look like a network fault: the SDK turns a THROWN
     // fetch into `GoWayNetworkError`, which is what "you are offline" reads.
@@ -808,8 +811,7 @@ export function createFixtureFetch(
       if (init.method !== 'POST')
         return fail('method_not_allowed', `${init.method} is not allowed on ${path}`);
       // Mirrors the API: a report is identity-bound, so no bearer is a 401.
-      const authorization = init.headers?.Authorization ?? init.headers?.authorization;
-      if (!authorization) return fail('unauthorized', 'Sign in to report a scene');
+      if (!authenticated) return fail('unauthorized', 'Sign in to report a scene');
       const body = init.body ? (JSON.parse(init.body) as { reason?: string }) : {};
       return respond(201, {
         id: `r_fixture_${Math.random().toString(36).slice(2, 10)}`,
@@ -823,7 +825,7 @@ export function createFixtureFetch(
     const served = content(path, params, init);
     if (served) return served;
 
-    const saved = serveSavedFixture(path, params, init);
+    const saved = serveSavedFixture(path, params, init, authenticated);
     if (saved) return respond(saved.status, saved.body);
 
     // Every other fixture route is a read.

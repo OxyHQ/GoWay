@@ -39,7 +39,8 @@
     "pino": "^10.3.1",
     "postgres": "3.4.9",
     "socket.io": "^4.8.1",
-    "zod": "^4.6.5"
+    "zod": "^4.6.7",
+    "@aws-sdk/credential-provider-node": "3.972.84"
   },
   "devDependencies": {
     "@types/bun": "^1.4.2",

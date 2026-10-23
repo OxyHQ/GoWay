@@ -21,8 +21,8 @@
  * error classification. Going live is the deletion of one option:
  *
  * ```ts
- * createGoWayClient({ apiBaseUrl: API_URL, getAccessToken })   // deployed
- * createGoWayClient({ apiBaseUrl: API_URL, getAccessToken, fetch: fixtures })  // local
+ * createGoWayClient({ apiBaseUrl: API_URL, fetch: linked.fetchOptional })   // deployed
+ * createGoWayClient({ apiBaseUrl: API_URL, fetch: fixtures })  // local
  * ```
  *
  * A development build defaults it ON, so `bun run dev:frontend` works with
@@ -58,11 +58,9 @@
  *
  * ## Token custody
  *
- * `getAccessToken` is called before every request and the SDK never caches it —
- * `OxyServices` remains the single session authority, as AGENTS.md requires. It
- * returns `null` when signed out, which is a NORMAL configuration here: the
- * map, search, place details and routing are all public, and only the
- * identity-bound writes (`places.create`, `places.update`) need a session.
+ * The linked client owns token acquisition, refresh, cancellation and session
+ * changes. Its optional-session fetch preserves signed-out browsing. Fixtures
+ * receive only a signed-in boolean; no real bearer enters the fixture layer.
  */
 import { createGoWayClient, type GoWayClient } from '@goway.to/sdk';
 
@@ -75,14 +73,16 @@ import { createFixtureFetch, fixturesOn, parseFixtureFaults } from './mockTransp
 /** Whether this build is served by the fixture layer (`fixturesOn`). */
 export const USING_FIXTURES = fixturesOn(process.env.EXPO_PUBLIC_GOWAY_FIXTURES, __DEV__);
 
+const linked = oxyServices.createLinkedClient({ baseURL: API_URL });
+
 export const gowayClient: GoWayClient = createGoWayClient({
   apiBaseUrl: API_URL,
   locale: deviceLocale(),
-  // Oxy owns the session; the SDK borrows the token per request and keeps none.
-  getAccessToken: () => oxyServices.session.accessToken,
-  ...(USING_FIXTURES
-    ? {
-        fetch: createFixtureFetch(parseFixtureFaults(process.env.EXPO_PUBLIC_GOWAY_FIXTURE_FAULTS)),
-      }
-    : {}),
+  fetch: USING_FIXTURES
+    ? createFixtureFetch(
+        parseFixtureFaults(process.env.EXPO_PUBLIC_GOWAY_FIXTURE_FAULTS),
+        linked.fetchOptional,
+        () => oxyServices.session.isAuthenticated,
+      )
+    : linked.fetchOptional,
 });

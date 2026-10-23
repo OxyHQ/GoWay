@@ -10,8 +10,8 @@ import { OXY_BASE_URL } from './config';
  * `OxyProvider` — can reach it without a hook. `OxyProvider` receives this same
  * instance, so there is still exactly one client and one session authority.
  *
- * Session restore stays entirely OxyProvider's: device-first credential mint,
- * then silent OAuth. Only `baseURL` is configured here, and it is OXY's API —
+ * Session restore and sign-in stay entirely with OxyProvider and its shared
+ * account dialog. Only `baseURL` is configured here, and it is OXY's API —
  * GoWay's own API is reached through `createLinkedClient`, never as this base.
  */
 export const oxyServices = new OxyServices({ baseURL: OXY_BASE_URL });

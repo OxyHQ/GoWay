@@ -25,8 +25,8 @@
  * shaped like a JWT, so a bare string would never reach this server. A
  * session's `sub` is a person: who Oxy resolves membership for, exactly as a
  * session that switched into an organization still resolves as the human
- * operating it. A service token (`POST /auth/service-token`, which the real
- * `OxyServer` mints from its key pair) names its application.
+ * operating it. A workload service token (which the real `OxyServer` mints through the
+ * challenge/attestation exchange) names its application.
  */
 
 import express from 'express';
@@ -58,8 +58,12 @@ export interface FakeOxyLink {
 
 /** The application the fake's service credential belongs to. */
 export const FAKE_SERVICE_APPLICATION_ID = 'app-goway';
-/** The key pair `OxyServer` mints the fake's service token with. */
-export const FAKE_SERVICE_AUTH = { apiKey: 'oxy_dk_goway', apiSecret: 'goway-secret' } as const;
+/** Temporary role credential seam; no customer API key authenticates this workload. */
+export const fakeWorkloadCredentials = async () => ({
+  AccessKeyId: 'ASIA_GOWAY_FIXTURE',
+  SecretAccessKey: 'fixture-secret',
+  Token: 'fixture-session',
+});
 
 export interface FakeOxy {
   readonly url: string;
@@ -73,10 +77,10 @@ export interface FakeOxy {
   /** `ok` answers; `down` answers 503 to everything; `unauthorized` answers 401. */
   mode: 'ok' | 'down' | 'unauthorized';
   /**
-   * Whether the service credential holds `files:references:write`. `false`
-   * answers the reference routes `403`, as Oxy does for a missing scope.
+   * Whether GoWay's registered workload is active. `false` answers reference
+   * routes `403`, including a request with an otherwise unexpired token.
    */
-  referencesGranted: boolean;
+  workloadActive: boolean;
   /** `down` answers the reference routes alone 503; everything else still answers. */
   referencesMode: 'ok' | 'down';
   /** Every reconciliation step received, in order. */
@@ -111,7 +115,7 @@ export function tokenFor(person: string): string {
 /** The service token the fake mints for `appId`: bounded, like Oxy's. */
 function serviceTokenFor(appId: string): string {
   const iat = Math.floor(Date.now() / 1000);
-  return `${base64url({ alg: 'none', typ: 'JWT' })}.${base64url({ type: 'service', appId, iat, exp: iat + 3600 })}.unsigned`;
+  return `${base64url({ alg: 'none', typ: 'JWT' })}.${base64url({ type: 'service', authority: 'first_party', appId, iat, exp: iat + 3600 })}.unsigned`;
 }
 
 function claimsOf(authorization: string | undefined): Record<string, unknown> | undefined {
@@ -151,7 +155,7 @@ export async function startFakeOxy(): Promise<FakeOxy> {
     >(),
     accounts: new Set<string>(),
     mode: 'ok' as FakeOxy['mode'],
-    referencesGranted: true,
+    workloadActive: true,
     reconcileRequests: [] as FakeOxy['reconcileRequests'],
     referencesMode: 'ok' as FakeOxy['referencesMode'],
     requests: [] as FakeOxy['requests'],
@@ -227,14 +231,23 @@ export async function startFakeOxy(): Promise<FakeOxy> {
     response.json({ data: { results } });
   });
 
-  app.post('/auth/service-token', (request, response) => {
-    const { apiKey, apiSecret } = request.body as { apiKey?: string; apiSecret?: string };
+  app.post('/auth/service-token/workload/challenge', (_request, response) => {
+    response.json({ data: { nonce: 'goway-fixture-challenge' } });
+  });
+  app.post('/auth/service-token/workload', (request, response) => {
     if (state.mode === 'down') {
       response.status(503).json({ error: 'SERVICE_UNAVAILABLE', message: 'down' });
       return;
     }
-    if (apiKey !== FAKE_SERVICE_AUTH.apiKey || apiSecret !== FAKE_SERVICE_AUTH.apiSecret) {
-      response.status(401).json({ error: 'UNAUTHORIZED', message: 'Invalid credentials' });
+    const body = request.body;
+    if (
+      body.provider !== 'aws-iam' ||
+      body.protocolVersion !== 2 ||
+      body.nonce !== 'goway-fixture-challenge' ||
+      body.attestation?.headers?.['x-oxy-attestation-nonce'] !== body.nonce ||
+      !body.attestation?.headers?.authorization?.includes('ASIA_GOWAY_FIXTURE')
+    ) {
+      response.status(401).json({ error: 'UNAUTHORIZED', message: 'Invalid workload proof' });
       return;
     }
     response.json({
@@ -267,8 +280,8 @@ export async function startFakeOxy(): Promise<FakeOxy> {
       response.status(401).json({ error: 'UNAUTHORIZED', message: 'Service token required' });
       return null;
     }
-    if (!state.referencesGranted) {
-      response.status(403).json({ error: 'FORBIDDEN', message: 'Missing scope' });
+    if (!state.workloadActive) {
+      response.status(403).json({ error: 'FORBIDDEN', message: 'Workload binding revoked' });
       return null;
     }
     return application;

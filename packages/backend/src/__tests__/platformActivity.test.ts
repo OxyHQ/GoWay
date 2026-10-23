@@ -1,5 +1,5 @@
 /**
- * Oxy ecosystem activity: GoWay publishes on ECS and nowhere else, with no flag.
+ * Oxy ecosystem activity: GoWay publishes through a temporary registered role, with no permission flag.
  *
  * The factory is injected rather than `mock.module`d: bun runs every test file
  * in one process, so replacing `@oxy.so/core/server` here would replace it for
@@ -32,26 +32,12 @@ function fakeTraffic(): { traffic: PlatformActivity; installs: () => number } {
 }
 
 describe('startPlatformActivity', () => {
-  it('starts nothing where the process cannot attest a workload identity', () => {
-    let created = 0;
-    const deps: PlatformActivityDeps = {
-      canAttest: () => false,
-      create: (() => {
-        created += 1;
-        return fakeTraffic().traffic;
-      }) as PlatformActivityDeps['create'],
-    };
-
-    expect(startPlatformActivity(() => true, deps)).toBeUndefined();
-    expect(created).toBe(0);
-  });
-
   it('publishes as `goway` with the readiness callback, and wraps fetch once, where it can attest', () => {
     const { traffic, installs } = fakeTraffic();
     const calls: Parameters<PlatformActivityDeps['create']>[0][] = [];
     const ready = () => true;
     const deps: PlatformActivityDeps = {
-      canAttest: () => true,
+      region: 'us-west-2',
       create: ((options) => {
         calls.push(options);
         return traffic;
@@ -64,26 +50,20 @@ describe('startPlatformActivity', () => {
     expect(calls[0]?.ready).toBe(ready);
     // No credential: GoWay holds no key pair, so the SDK attests the task role.
     expect(calls[0]?.credential).toBeUndefined();
+    expect(typeof calls[0]?.workloadCredentials).toBe('function');
     expect(installs()).toBe(1);
   });
 
-  describe('with the real attestation check', () => {
-    const variable = 'AWS_CONTAINER_CREDENTIALS_RELATIVE_URI';
-    const original = process.env[variable];
-    afterEach(() => {
-      if (original === undefined) delete process.env[variable];
-      else process.env[variable] = original;
+  it('uses the temporary provider even when no ECS endpoint is present', () => {
+    const calls: Parameters<PlatformActivityDeps['create']>[0][] = [];
+    startPlatformActivity(() => true, {
+      region: 'us-west-2',
+      create: ((options) => {
+        calls.push(options);
+        return fakeTraffic().traffic;
+      }) as PlatformActivityDeps['create'],
     });
-
-    it('is off without the ECS container credentials endpoint — no env flag turns it on', () => {
-      delete process.env[variable];
-      process.env.OXY_ECOSYSTEM_ACTIVITY_ENABLED = 'true';
-      try {
-        expect(startPlatformActivity(() => true)).toBeUndefined();
-      } finally {
-        delete process.env.OXY_ECOSYSTEM_ACTIVITY_ENABLED;
-      }
-    });
+    expect(typeof calls[0]?.workloadCredentials).toBe('function');
   });
 });
 
