@@ -17,9 +17,11 @@ fences. Development fixtures receive a signed-in boolean, never the real token;
 computed routes use the same linked transport. External integrations retain the
 SDK's generic token-provider option and existing user/domain authorization.
 
-Release gate: this source was validated with Oxy core 7, contracts 6, protocol
-1.5.1 and services 13 candidates. Adopt their published registry versions before
-merging/deploying this branch. Temporary local tarball overrides are not committed.
+The adoption release pins published registry core7.0.0, contracts6.0.0,
+protocol1.5.1 and services13.0.0. SDK0.7.1 raises its Zod4 minimum to4.6.7.
+All project type checks, 275 SDK tests, 24 backend identity/reference tests
+and the linked HTTP session/account-switch test passed. Temporary local tarball
+overrides are not committed.
 Telemetry requires an actual infrastructure region; missing region omits only
 telemetry, never user auth or the workload provider. Missing/revoked bindings are
 reported and retried by the shared publisher, not interpreted as missing scopes.
