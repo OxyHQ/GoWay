@@ -7,7 +7,10 @@ Every call needs an Oxy access token whose person is on the deployment's operato
 ```ts
 import { createGoWayClient, iterateGoWayPages } from '@goway.to/sdk';
 
-const goway = createGoWayClient({ getAccessToken: () => operatorSession.accessToken });
+const apiBaseUrl = 'https://api.goway.to';
+const linked = oxyServices.createLinkedClient({ baseURL: apiBaseUrl });
+const goway = createGoWayClient({ apiBaseUrl, fetch: linked.fetchOptional });
+// Dispose linked when this component or provider closes.
 ```
 
 ## Claims

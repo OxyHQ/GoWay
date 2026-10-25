@@ -5,7 +5,10 @@ An organization list is an ordered list of GoWay places that an Oxy organization
 ```ts
 import { createGoWayClient } from '@goway.to/sdk';
 
-const goway = createGoWayClient({ getAccessToken: () => session.accessToken });
+const apiBaseUrl = 'https://api.goway.to';
+const linked = oxyServices.createLinkedClient({ baseURL: apiBaseUrl });
+const goway = createGoWayClient({ apiBaseUrl, fetch: linked.fetchOptional });
+// Dispose linked when this component or provider closes.
 ```
 
 ## Read lists

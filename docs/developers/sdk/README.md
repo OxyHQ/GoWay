@@ -87,20 +87,24 @@ const goway = createGoWayClient({
 
 Most of the API needs no account: places, search, geocoding, routing, road rules, live sources, nearby transit, categories, reviews and Street 3D scenes all answer anonymous requests. Identity-bound calls (creating or editing a place, asserting a capability, claiming a place, writing a review, adding media, contributing captures, editing organization lists, saved lists, moderation) need an Oxy access token, and reject with `GoWayUnauthorizedError` without one.
 
-Supply the token through `getAccessToken`:
+Oxy apps pass their linked transport to the SDK so refresh, cancellation and account changes stay in the shared client:
 
 ```ts
-const goway = createGoWayClient({
-  getAccessToken: () => oxyServices.session.accessToken,
-});
+const apiBaseUrl = 'https://api.goway.to';
+const linked = oxyServices.createLinkedClient({ baseURL: apiBaseUrl });
+const goway = createGoWayClient({ apiBaseUrl, fetch: linked.fetchOptional });
+// Use goway for this component or provider's lifetime.
+// On cleanup: linked.dispose();
 ```
 
-- The SDK calls it before every request and sends a non-empty result as `Authorization: Bearer <token>`. It never caches, stores or logs the token, so your Oxy session stays the only owner of it and of its refresh.
+`fetchOptional` preserves anonymous reads while supplying the current session for authenticated calls. Dispose the linked client when its owning component or provider closes. Do not copy `session.accessToken` into an SDK callback: that bypasses shared refresh and account-change fencing. Some anonymous reads show more to an authenticated caller, such as details of a place they claimed.
+
+The generic `getAccessToken` option remains available for integrations that own their credential lifecycle:
+
+- The SDK calls it before every request and sends a non-empty result as `Authorization: Bearer <token>`. It never caches, stores or logs the token.
 - It may return a string, `null` or `undefined`, or a promise of one. `null`, `undefined` or `''` sends the request anonymously.
 - An error it throws is passed through unchanged. Its time counts against `timeoutMs`.
 - There is no API key option, and `headers` may not set `Authorization`.
-
-The snippet above is how GoWay's own app wires its `@oxy.so/services` session; any function that returns the signed-in user's Oxy access token works. Some calls that work anonymously show more to a signed-in caller, such as claim details on a place you claimed.
 
 ## Guides
 

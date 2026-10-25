@@ -46,7 +46,10 @@ await goway.street3d.report(scene.id, { reason: 'privacy', note: 'A face is visi
 Contributing needs an access token. The flow is: read the policy, open a session, register each file by its hash, upload the bytes to the URL GoWay hands back, then finalize.
 
 ```ts
-const contributor = createGoWayClient({ getAccessToken: () => session.accessToken });
+const apiBaseUrl = 'https://api.goway.to';
+const linked = oxyServices.createLinkedClient({ baseURL: apiBaseUrl });
+const contributor = createGoWayClient({ apiBaseUrl, fetch: linked.fetchOptional });
+// Dispose linked when this component or provider closes.
 
 // 1. What GoWay accepts, and the consent text version to record.
 const policy = await contributor.captures.policy();
