@@ -59,15 +59,23 @@ interface Group {
   place?: Place;
 }
 
+/** The result kind a place's most specific category gives it. */
+function placeResultKind(categories: readonly string[]): SearchResultKind {
+  const leading = categories[0];
+  if (leading === 'locality' || leading === 'region') return leading;
+  return leading === undefined ? 'place' : 'poi';
+}
+
 /**
  * A GoWay place as a search result.
  *
- * `kind` is `poi` for a categorised place and `place` otherwise. GoWay Places
- * holds businesses and venues, not the gazetteer — there is no GoWay-owned
+ * `kind` is `locality` or `region` for a gazetteer place (one whose most
+ * specific category is that kind, see `import/osm/gazetteerTags`), `poi` for
+ * any other categorised place and `place` otherwise. There is no GoWay-owned
  * `country` row for the same reason there is no GoWay-owned copy of the planet.
  */
 export function searchResultFromPlace(place: Place): SearchResult {
-  const kind: SearchResultKind = place.categories.length > 0 ? 'poi' : 'place';
+  const kind = placeResultKind(place.categories);
   const result: SearchResult = {
     id: resultId('goway', place.id),
     displayName: composeDisplayName([
