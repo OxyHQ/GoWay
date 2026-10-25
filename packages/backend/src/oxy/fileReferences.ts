@@ -3,7 +3,7 @@
  * (Oxy ADR 0043 D4, D6).
  *
  * Every reference GoWay holds is made and removed with GoWay's OWN service
- * token (`OxyServer#assets.references`, scope `files:references:write`), never
+ * token (`OxyServer#assets.references`, Oxy ADR 0049), never
  * a person's session — see `oxy/placeFiles` for why. Adding one to a gallery
  * is synchronous (`placeFiles.attach`: the answer decides whether the item is
  * recorded at all). Every other change — a withdrawal, the rollback of an add,
@@ -41,7 +41,8 @@ import {
   type ServiceReferenceInventoryItem,
   type ServiceReferenceReconcileResult,
 } from '@oxy.so/core';
-import { OxyServer } from '@oxy.so/core/server';
+import { OxyServer, type WorkloadCredentialProvider } from '@oxy.so/core/server';
+import { workloadCredentials } from './workload';
 import {
   OXY_FILE_REFERENCES_POLICY,
   type OxyFileReferencesPolicy,
@@ -85,24 +86,24 @@ const OXY_RECONCILE_TIMEOUT_MS = 120_000;
  * diffs the whole inventory in its commit.
  *
  * GoWay holds no Oxy key pair: in a deployment the token is the ECS task
- * role's attested workload identity (Oxy ADR 0026), whose binding must name
- * the GoWay application and carry `files:references:write`. `serviceAuth`
- * exists for the test suite's fake Oxy.
+ * role's attested workload identity (Oxy ADR 0049), whose live binding names
+ * the GoWay application and environment. The injected credential provider
+ * also supports development roles and the test suite's fake Oxy.
  */
 export function createOxyFileReferences(options: {
   baseURL: string;
-  serviceAuth?: { apiKey: string; apiSecret: string };
+  workloadCredentials?: WorkloadCredentialProvider;
 }): OxyFileReferences {
   const once = new OxyServer({
     baseURL: options.baseURL,
     enableRetry: false,
     requestTimeout: OXY_REFERENCE_TIMEOUT_MS,
-    ...(options.serviceAuth ? { serviceAuth: options.serviceAuth } : {}),
+    workloadCredentials: options.workloadCredentials ?? workloadCredentials,
   }).assets.references;
   const patient = new OxyServer({
     baseURL: options.baseURL,
     requestTimeout: OXY_RECONCILE_TIMEOUT_MS,
-    ...(options.serviceAuth ? { serviceAuth: options.serviceAuth } : {}),
+    workloadCredentials: options.workloadCredentials ?? workloadCredentials,
   }).assets.references;
   return { add: once.add, remove: once.remove, reconcile: patient.reconcile };
 }

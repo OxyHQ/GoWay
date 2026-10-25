@@ -39,7 +39,7 @@ import {
 import { defined } from '../../__tests__/defined';
 import {
   FAKE_SERVICE_APPLICATION_ID,
-  FAKE_SERVICE_AUTH,
+  fakeWorkloadCredentials,
   startFakeOxy,
   type FakeOxy,
 } from '../../__tests__/fakeOxy';
@@ -156,7 +156,7 @@ beforeAll(async () => {
     getDb: () => handle,
     references: createOxyFileReferences({
       baseURL: oxy.url,
-      serviceAuth: { ...FAKE_SERVICE_AUTH },
+      workloadCredentials: fakeWorkloadCredentials,
     }),
     policy: POLICY,
     now: () => new Date(Date.now() + skewMs),
@@ -178,7 +178,7 @@ afterAll(async () => {
 
 beforeEach(() => {
   oxy.mode = 'ok';
-  oxy.referencesGranted = true;
+  oxy.workloadActive = true;
   oxy.referencesMode = 'ok';
   oxy.fileRequests.length = 0;
   skewMs = 0;

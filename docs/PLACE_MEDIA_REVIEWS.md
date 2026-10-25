@@ -37,7 +37,7 @@ caller — and then records the place's use of the file **as GoWay**:
    record above does not carry visibility.
 3. `OxyServer#assets.references.add([{ fileId, entityType: 'place',
    entityId: placeId }])` — `POST /assets/service/references` with GoWay's
-   **own service token** (Oxy ADR 0043 D4, scope `files:references:write`).
+   **own workload token** (Oxy ADR 0043 D4 and ADR 0049).
    The application is the token's, never sent. A reference never changes the
    file's visibility; GoWay sets none.
 
@@ -45,17 +45,19 @@ A missing, foreign, trashed, non-image or non-public file is refused
 (`validation_failed` or `forbidden`, naming `fileId`, never quoting Oxy's
 record). A `401` on the caller's session is `unauthorized`. **Anything else
 fails closed with `503`** and records nothing — including Oxy refusing GoWay's
-own token (a missing grant is GoWay's problem, never the caller's). A
+own token (a missing or revoked workload binding is GoWay's problem, never the caller's). A
 `not_found` for the reference (the file went private or into the trash since
 the check) is the same refusal as (1). The row is written after the reference;
 if writing it fails the reference is dropped again. A file already live in the
 gallery is a `409` naming the item, and its reference is left alone.
 
-GoWay holds no Oxy key pair: in a deployment its service token is the ECS task
-role's attested workload identity (Oxy ADR 0026), the identity
-`platformActivity` already publishes with, and the binding must carry
-`files:references:write`. Where the process cannot mint one (a laptop against a
-remote Oxy), adding to a gallery answers `503`.
+GoWay holds no Oxy key pair. Its live workload binding determines its application
+and environment, with no application scopes or inter-app consent. The shared
+AWS provider supports ECS and temporary development/SSO roles. Missing or revoked
+identity refuses the operation. Adds/removes keep their five-second, no-retry
+transport; reconciliation keeps its 120-second page/commit timeout and retries.
+Personal file checks still use the initiating session and explicit owner/public
+visibility checks; workload identity does not turn arbitrary file IDs into access.
 
 The app re-encodes a picked photo before uploading it
 (`features/explore/placePhoto.ts`): a phone photo's EXIF block carries where it

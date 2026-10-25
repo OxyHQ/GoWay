@@ -47,7 +47,7 @@ import {
 import { createOxyPlaceFileStore } from '../../oxy/placeFiles';
 import {
   FAKE_SERVICE_APPLICATION_ID,
-  FAKE_SERVICE_AUTH,
+  fakeWorkloadCredentials,
   membershipKey,
   startFakeOxy,
   type FakeOxy,
@@ -180,7 +180,7 @@ beforeAll(async () => {
   // GoWay's own references client and worker, exactly as `middleware/auth` builds them.
   const references = createOxyFileReferences({
     baseURL: oxy.url,
-    serviceAuth: { ...FAKE_SERVICE_AUTH },
+    workloadCredentials: fakeWorkloadCredentials,
   });
   const placeFiles = createOxyPlaceFileStore({ oxyApiUrl: oxy.url, references });
   const db = suite.db;
@@ -230,7 +230,7 @@ afterAll(async () => {
 
 beforeEach(() => {
   oxy.mode = 'ok';
-  oxy.referencesGranted = true;
+  oxy.workloadActive = true;
   oxy.referencesMode = 'ok';
   oxy.fileRequests.length = 0;
   skewMs = 0;
@@ -325,12 +325,12 @@ describe('adding an Oxy file to a gallery', () => {
   });
 
   it("fails closed with 503 when Oxy refuses GoWay's own token, and records nothing", async () => {
-    // GoWay's grant of `files:references:write` missing or revoked: the
+    // GoWay's registered workload missing or revoked: the
     // caller's file is fine, GoWay cannot record its use, so nothing is kept.
     const fileId = upload('file-ana-ungranted', 'person-ana');
     const before = await mediaCount(open.id);
-    for (const refusal of ['ungranted', 'down'] as const) {
-      oxy.referencesGranted = refusal !== 'ungranted';
+    for (const refusal of ['revoked', 'down'] as const) {
+      oxy.workloadActive = refusal !== 'revoked';
       oxy.referencesMode = refusal === 'down' ? 'down' : 'ok';
       const { status, body } = await add(open.id, session('person-ana'), { fileId, kind: 'photo' });
       expect(`${refusal}: ${String(status)} ${body.error.code}`).toBe(
@@ -563,9 +563,9 @@ describe('withdrawing an item', () => {
   });
 
   it('still withdraws the item when Oxy cannot drop the reference, and delivers it once Oxy answers', async () => {
-    for (const refusal of ['down', 'ungranted'] as const) {
+    for (const refusal of ['down', 'revoked'] as const) {
       oxy.referencesMode = 'ok';
-      oxy.referencesGranted = true;
+      oxy.workloadActive = true;
       const fileId = upload(`file-stranger-lingering-${refusal}`, 'person-stranger');
       const { body: item } = await add(cafe.id, session('person-stranger'), {
         fileId,
@@ -573,7 +573,7 @@ describe('withdrawing an item', () => {
       });
 
       oxy.referencesMode = refusal === 'down' ? 'down' : 'ok';
-      oxy.referencesGranted = refusal !== 'ungranted';
+      oxy.workloadActive = refusal !== 'revoked';
       const { status } = await api.call(
         'DELETE',
         `/places/${cafe.id}/media/${item.id}`,
@@ -595,7 +595,7 @@ describe('withdrawing an item', () => {
 
       // Not retried before its backoff, even with Oxy back...
       oxy.referencesMode = 'ok';
-      oxy.referencesGranted = true;
+      oxy.workloadActive = true;
       await worker.drain();
       expect(linksOf(fileId)).toHaveLength(1);
       // ...and delivered once it is due.

@@ -26,7 +26,7 @@
  *
  * The place's use of the file is GoWay's, not the caller's: it is recorded and
  * removed with GoWay's OWN service identity (`OxyServer#assets.references`,
- * scope `files:references:write`), as `{ fileId, entityType: 'place',
+ * Oxy ADR 0049), as `{ fileId, entityType: 'place',
  * entityId: placeId }` — the application is the token's and is never sent.
  * That is what lets the business withdraw a customer's photo: Oxy lets a
  * session remove only a reference to a file it owns or a reference it made, so

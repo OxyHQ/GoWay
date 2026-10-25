@@ -34,6 +34,7 @@ import { isCameraSnapshotRequest } from './cameraSnapshotRequest';
 import { isLiveShapeRequest } from './liveShapeRequest';
 import type { OxyActorChain } from '../oxy/caller';
 import { config } from '../config';
+import { workloadCredentials } from '../oxy/workload';
 import {
   createAccountRoleResolver,
   createOrganizationAuthority,
@@ -72,7 +73,7 @@ declare global {
 }
 
 /** The Oxy client this process authenticates against. */
-export const oxyClient = new OxyServer({ baseURL: config.oxyApiUrl });
+export const oxyClient = new OxyServer({ baseURL: config.oxyApiUrl, workloadCredentials });
 
 /** Fail-closed: the request is refused unless it carries a valid Oxy session. */
 export const requireAuth: RequestHandler = createOxyAuthMiddleware(oxyClient);
@@ -98,8 +99,8 @@ export const organizationAuthority: OrganizationAuthority = createOrganizationAu
 /**
  * GoWay's own Oxy file references (`oxy/fileReferences`): made and removed with
  * GoWay's service token — in a deployment the ECS task role's attested
- * workload identity (Oxy ADR 0026), whose binding must name the GoWay
- * application and carry `files:references:write`. Where the process cannot
+ * workload identity (Oxy ADR 0049), whose live binding names the GoWay
+ * application and environment. Where the process cannot
  * mint a token, adding to a gallery answers `503` and queued changes wait.
  */
 const goWayFileReferences = createOxyFileReferences({ baseURL: config.oxyApiUrl });
