@@ -38,6 +38,12 @@
       "react-native": "./dist/index.js",
       "default": "./dist/index.js"
     },
+    "./view": {
+      "types": "./dist/view.d.ts",
+      "browser": "./dist/view.web.js",
+      "react-native": "./dist/view.js",
+      "default": "./dist/view.js"
+    },
     "./brand": {
       "types": "./dist/brand/artwork.d.ts",
       "default": "./dist/brand/artwork.js"
