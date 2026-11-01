@@ -28,6 +28,7 @@ Setup:
 | Import | What |
 | --- | --- |
 | `@goway.to/maps` | `MapView`, `Markers`, `GeoJSONSource`, `RasterDEMSource`, `Layer`, `UserLocation`, `MapPlugin`, `useMap`, `useUserLocation`, types |
+| `@goway.to/maps/view` | `MapView`, `Markers`, `DefaultMapMarker` and map types without the other component exports |
 | `@goway.to/maps/plugin` | the engine-plugin protocol and the engine guards (no React) |
 | `@goway.to/maps/testing` | a fake engine that drives the map's real camera reports |
 | `@goway.to/maps/brand` | the GoWay mark as geometry |
