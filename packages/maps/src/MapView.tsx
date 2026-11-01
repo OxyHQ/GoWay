@@ -121,6 +121,7 @@ export const MapView = forwardRef<MapViewRef, MapViewProps>(function MapView(pro
   // a style that failed to load is not re-fetched by setting the same URL.
   const [retry, setRetry] = useState(0);
   const [credit, dispatchCredit] = useReducer(creditReducer, INITIAL_CREDIT_STATE);
+  const [creditHeight, setCreditHeight] = useState(0);
   const [zoomLevel, setZoomLevel] = useState(() => Math.floor(openingZoom(initialViewState)));
 
   // The camera reports (`nativeCameraReports.ts`), one per ENGINE: a retry
@@ -317,12 +318,13 @@ export const MapView = forwardRef<MapViewRef, MapViewProps>(function MapView(pro
         {/* Both unconditional, with no prop to turn either off: the mark and the
           credit are on every map (`MapBrand.tsx`, `MapAttribution.tsx`). */}
         <MapBrand />
-        <MapScale />
+        <MapScale creditHeight={creditHeight} />
         <MapAttribution
           extra={credits}
           disclosure={creditDisclosure ?? null}
           expanded={credit.expanded}
           onToggle={toggleCredit}
+          onHeightChange={setCreditHeight}
         />
         {shownError ? <MapErrorState error={shownError} onRetry={handleRetry} /> : null}
       </View>

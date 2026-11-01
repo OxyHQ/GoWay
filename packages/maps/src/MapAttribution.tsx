@@ -89,6 +89,7 @@ function MapAttributionComponent({
   disclosure = null,
   expanded,
   onToggle,
+  onHeightChange,
 }: {
   extra?: readonly MapCreditLink[];
   /** A line the credit carries while something it names is drawn, `null` otherwise. */
@@ -96,6 +97,7 @@ function MapAttributionComponent({
   /** Spelled out, or folded into the ⓘ (`compactCredit.ts`). */
   expanded: boolean;
   onToggle: () => void;
+  onHeightChange: (height: number) => void;
 }) {
   const locale = useBloomLocale();
   const theme = useTheme();
@@ -113,9 +115,12 @@ function MapAttributionComponent({
   const heightOut = useMapCreditHeight();
   const measure = useCallback(
     (event: LayoutChangeEvent) => {
-      heightOut?.set(withTiming(event.nativeEvent.layout.height, { duration: 160 }));
+      const height = event.nativeEvent.layout.height;
+      if (!Number.isFinite(height) || height < 0) return;
+      onHeightChange(height);
+      heightOut?.set(withTiming(height, { duration: 160 }));
     },
-    [heightOut],
+    [heightOut, onHeightChange],
   );
 
   const open = useCallback((href: string) => {
@@ -136,7 +141,7 @@ function MapAttributionComponent({
         left: brandDrawn ? MAP_BRAND_CLEARANCE : CREDIT_SIDE_INSET,
       }}
     >
-      <View style={styles.plate} onLayout={heightOut ? measure : undefined} testID="map-credit">
+      <View style={styles.plate} onLayout={measure} testID="map-credit">
         {/* The plate's fill is its own layer at an opacity, so the text on it
             stays fully opaque over a map Bloom cannot see. */}
         <View

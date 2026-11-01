@@ -131,6 +131,7 @@ export const MapView = forwardRef<MapViewRef, MapViewProps>(function MapView(pro
   const [zoomLevel, setZoomLevel] = useState(() => Math.floor(openingZoom(props.initialViewState)));
   const [error, setError] = useState<MapError | null>(null);
   const [credit, dispatchCredit] = useReducer(creditReducer, INITIAL_CREDIT_STATE);
+  const [creditHeight, setCreditHeight] = useState(0);
   const mapRef = useRef<maplibregl.Map | null>(null);
   // Where the last engine's camera was when it went: a new style or a new
   // projection never moves the map; only a retry opens at the start again.
@@ -399,12 +400,13 @@ export const MapView = forwardRef<MapViewRef, MapViewProps>(function MapView(pro
         {/* Both unconditional, with no prop to turn either off: the mark and the
           credit are on every map (`MapBrand.tsx`, `MapAttribution.tsx`). */}
         <MapBrand />
-        <MapScale />
+        <MapScale creditHeight={creditHeight} />
         <MapAttribution
           extra={credits}
           disclosure={creditDisclosure ?? null}
           expanded={credit.expanded}
           onToggle={toggleCredit}
+          onHeightChange={setCreditHeight}
         />
         {shownError ? <MapErrorState error={shownError} onRetry={handleRetry} /> : null}
       </View>

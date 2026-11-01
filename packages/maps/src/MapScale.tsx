@@ -26,7 +26,7 @@ function sameReading(a: MapScaleReading | null, b: MapScaleReading | null): bool
   return a.unit === b.unit && a.value === b.value && Math.abs(a.width - b.width) < 0.5;
 }
 
-function MapScaleComponent() {
+function MapScaleComponent({ creditHeight }: { creditHeight: number }) {
   const locale = useBloomLocale() ?? 'en';
   const system = scaleSystemFor(locale);
   const reading = useMapCamera(
@@ -42,11 +42,12 @@ function MapScaleComponent() {
   if (!reading) return null;
 
   const base = bottomEdge > 0 ? bottomEdge + CREDIT_GAP : CREDIT_GAP;
+  const clearance = Math.max(brandDrawn ? MAP_BRAND_HEIGHT : 0, creditHeight);
   return (
     <LiftedBox
       side="left"
       lift={chromeLift}
-      style={{ bottom: brandDrawn ? base + MAP_BRAND_HEIGHT + CREDIT_GAP : base }}
+      style={{ bottom: clearance > 0 ? base + clearance + CREDIT_GAP : base }}
     >
       <MapScaleBar
         scales={[{ width: reading.width, label: formatScale(reading, locale) }]}
