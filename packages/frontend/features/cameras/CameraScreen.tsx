@@ -83,7 +83,7 @@ export function CameraScreen() {
   );
 
   return (
-    <Screen header={header}>
+    <Screen scroll="content" header={header}>
       <ScreenScrollView>
         {camera.data ? (
           <CameraDetail camera={camera.data} t={t} onFrame={() => void camera.refetch()} />
