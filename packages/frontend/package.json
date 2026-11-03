@@ -46,7 +46,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@alia.onl/sdk": "22.1.1",
+    "@alia.onl/sdk": "22.10.1",
     "@expo/app-integrity": "~58.0.2",
     "@expo/vector-icons": "^15.1.1",
     "@goway.to/maps": "workspace:*",
@@ -56,9 +56,9 @@
     "@mercaria.co/sdk": "0.2.0",
     "@noble/hashes": "1.8.0",
     "@oxy.so/app-preset": "^5.2.1",
-    "@oxy.so/bloom": "16.0.2",
-    "@oxy.so/core": "^7.11.0",
-    "@oxy.so/services": "14.0.0",
+    "@oxy.so/bloom": "16.5.0",
+    "@oxy.so/core": "^7.11.1",
+    "@oxy.so/services": "14.0.1",
     "@react-native-async-storage/async-storage": "2.2.0",
     "@react-native-community/netinfo": "12.0.1",
     "@sparkjsdev/spark": "2.3.1",
