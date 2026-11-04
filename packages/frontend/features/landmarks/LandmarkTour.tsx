@@ -21,7 +21,7 @@
  */
 import { useCallback, useEffect, useMemo, useRef, useState, type RefObject } from 'react';
 import { View } from 'react-native';
-import { useReducedMotion } from 'react-native-reanimated';
+import { usePrefersReducedMotion } from '@oxy.so/bloom/hooks';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Button } from '@oxy.so/bloom/button';
 import { useClaimBottomEdge, windowEdgeGap } from '@oxy.so/bloom/layout';
@@ -88,7 +88,7 @@ export function LandmarkTour({
   onClose,
   subscribeUserMove,
 }: LandmarkTourProps) {
-  const reducedMotion = useReducedMotion();
+  const reducedMotion = usePrefersReducedMotion();
   const insets = useSafeAreaInsets();
   const taxonomy = useCategoryTaxonomy();
   const stops = useMemo(() => tourOrder(landmarks.map(toStop), startId), [landmarks, startId]);

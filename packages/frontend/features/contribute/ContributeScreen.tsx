@@ -7,6 +7,7 @@ import { randomUUID } from 'expo-crypto';
 import { Image } from 'expo-image';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Button } from '@oxy.so/bloom/button';
+import { formatClock } from '@oxy.so/bloom/locale';
 import { Checkbox } from '@oxy.so/bloom/checkbox';
 import { Text } from '@oxy.so/bloom/typography';
 import { useOxy } from '@oxy.so/services/ui/client';
@@ -25,7 +26,6 @@ import { captureClient } from './client';
 import { CaptureGuide } from './CaptureGuide';
 import { ContributionStatusCard } from './ContributionStatusCard';
 import { GuidedCapture, type GuidedRecording } from './guided/GuidedCapture';
-import { formatClock } from './guided/plan';
 import { hashMedia, releaseMedia, selectMedia, uploadMedia } from './media';
 import {
   MediaError,

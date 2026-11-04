@@ -1,5 +1,6 @@
 import { ActivityIndicator, View } from 'react-native';
 import { Button } from '@oxy.so/bloom/button';
+import { formatClock } from '@oxy.so/bloom/locale';
 import { RiCheckboxBlankCircleLine } from '@oxy.so/bloom/icons/RiCheckboxBlankCircleLine';
 import { RiCheckboxCircleFill } from '@oxy.so/bloom/icons/RiCheckboxCircleFill';
 import { useTheme } from '@oxy.so/bloom/theme';
@@ -8,7 +9,6 @@ import { useTranslation } from '@/lib/i18n';
 import type { CoachWarning } from './coach';
 import {
   currentStep,
-  formatClock,
   GUIDED_STEPS,
   hasStretchTarget,
   isLastStep,
