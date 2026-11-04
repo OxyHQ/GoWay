@@ -9,10 +9,10 @@ import {
 } from '../../db/__tests__/testDatabase';
 import { createPlace } from '../../db/places/placesRepository';
 import { apiAuthor } from '../../__tests__/placesFixtures';
-import { fakeOxyServer, membershipKey, startFakeOxy, type FakeOxy } from '../../__tests__/fakeOxy';
+import { startFakeOxy, membershipKey, type FakeOxy } from '../../__tests__/fakeOxy';
 import { fakeRequireAuth, serve, session, type TestApi } from '../../__tests__/httpHarness';
 import { createOrganizationListsRouter } from '../organizationLists';
-import { createAccountAccessResolver, createOrganizationAuthority } from '../../oxy/accountAccess';
+import { createOrganizationAuthority } from '../../oxy/accountRoles';
 import { listEntries } from '../../db/organizationLists';
 let suite: SuiteDatabase;
 let oxy: FakeOxy;
@@ -54,7 +54,7 @@ beforeAll(async () => {
   api = await serve(
     createOrganizationListsRouter({
       requireAuth: fakeRequireAuth,
-      authorize: createOrganizationAuthority(createAccountAccessResolver(fakeOxyServer(oxy))),
+      authorize: createOrganizationAuthority({ oxyApiUrl: oxy.url }),
       writeRateLimit: (_req, _res, next) => next(),
     }),
   );

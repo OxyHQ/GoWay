@@ -36,9 +36,9 @@ import {
   destroySuiteDatabase,
   type SuiteDatabase,
 } from '../../db/__tests__/testDatabase';
-import { createRequireOperator, MODERATION_PERMISSION } from '../../oxy/appPermissions';
-import { createAccountAccessResolver } from '../../oxy/accountAccess';
-import { fakeOxyServer, membershipKey, startFakeOxy, type FakeOxy } from '../../__tests__/fakeOxy';
+import { createRequireOperator } from '../../middleware/operator';
+import { createAccountRoleResolver } from '../../oxy/accountRoles';
+import { membershipKey, startFakeOxy, type FakeOxy } from '../../__tests__/fakeOxy';
 import {
   fakeOptionalAuth,
   fakeRequireAuth,
@@ -162,26 +162,23 @@ beforeAll(async () => {
     status: 'invited',
   });
 
-  oxy.appPermissions.set('person-mod', [MODERATION_PERMISSION]);
-
-  const server = fakeOxyServer(oxy);
-  const accountAccess = createAccountAccessResolver(server);
+  const accountRoles = createAccountRoleResolver({ oxyApiUrl: oxy.url, ttlMs: 0 });
   api = await serve(
     createPlacesRouter({
       optionalAuth: fakeOptionalAuth,
       requireAuth: fakeRequireAuth,
-      accountAccess,
+      accountRoles,
       reportRateLimit: NO_RATE_LIMIT,
     }),
     createPlaceReviewsRouter({
       requireAuth: fakeRequireAuth,
-      accountAccess,
+      accountRoles,
       reportRateLimit: NO_RATE_LIMIT,
       contributionRateLimit: NO_RATE_LIMIT,
     }),
     createModerationRouter({
       requireAuth: fakeRequireAuth,
-      requireOperator: createRequireOperator(server),
+      requireOperator: createRequireOperator(['person-mod']),
     }),
   );
 

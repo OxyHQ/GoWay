@@ -16,6 +16,7 @@
 
 import { parseArgs } from 'node:util';
 import { assertMigrationTarget } from '@oxy.so/db/migrate';
+import { config } from '../config';
 import { assertMigrationsCurrent, closePostgres, connectPostgres, getDb } from '../db/postgres';
 import {
   fileReferenceOutboxStatus,
@@ -25,7 +26,6 @@ import {
 import { recentReconciliations } from '../db/oxyFiles/reconciliations';
 import { createLogger } from '../utils/logger';
 import { createFileReferenceWorker, createOxyFileReferences } from './fileReferences';
-import { oxy } from './server';
 
 const USAGE =
   'Usage: oxy-references:admin <status|dead|retry-dead|drain|reconcile> [changeId] ' +
@@ -41,7 +41,7 @@ async function run(
   const worker = () =>
     createFileReferenceWorker({
       getDb,
-      references: createOxyFileReferences(oxy),
+      references: createOxyFileReferences({ baseURL: config.oxyApiUrl }),
       logger: createLogger('oxy-references'),
     });
   switch (command) {

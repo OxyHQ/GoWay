@@ -7,7 +7,7 @@
  * then listen" stays visible in exactly one place.
  *
  * Middleware order below is load-bearing:
- *   activity → security headers → CORS → body parser → health → API router → unknownRoute → errorHandler
+ *   activity → helmet → CORS → body parser → health → API router → unknownRoute → errorHandler
  * The Oxy ecosystem activity observer comes FIRST so every response is counted,
  * including the ones CORS, the rate limiter or the 404 handler answer.
  * CORS before the body parser so a rejected cross-origin preflight never gets a
@@ -16,18 +16,18 @@
  * answer 404 for every route that router defines.
  */
 
-import { createOxySecurityHeaders, oxyTrustProxy } from '@oxy.so/core/server';
+import { oxyTrustProxy } from '@oxy.so/core/server';
 import express, { type Express, type RequestHandler, Router } from 'express';
+import helmet from 'helmet';
 import { config } from './config';
 import { errorHandler, unknownRouteHandler } from './http/errorHandler';
 import {
-  accountAccess,
+  accountRoles,
   apiRateLimit,
   cameraSnapshotRateLimit,
   liveShapeRateLimit,
   contributionRateLimit,
   fileReferences,
-  mayContribute,
   optionalAuth,
   organizationAuthority,
   organizationListWriteRateLimit,
@@ -89,7 +89,7 @@ export function createApp(options: CreateAppOptions = {}): Express {
 
   if (options.activity) app.use(options.activity);
 
-  app.use(createOxySecurityHeaders());
+  app.use(helmet());
 
   /**
    * CORS, in two lanes, decided by `middleware/cors.ts` and nowhere else.
@@ -157,7 +157,7 @@ export function createApp(options: CreateAppOptions = {}): Express {
     }),
   );
   v1.use(createCategoriesRouter());
-  v1.use(createPlacesRouter({ optionalAuth, requireAuth, accountAccess, reportRateLimit }));
+  v1.use(createPlacesRouter({ optionalAuth, requireAuth, accountRoles, reportRateLimit }));
   /**
    * A place's gallery and reviews. Images are Oxy files the client uploaded;
    * GoWay checks and references them with Oxy (`oxy/placeFiles`) and never touches
@@ -167,7 +167,7 @@ export function createApp(options: CreateAppOptions = {}): Express {
     createPlaceMediaRouter({
       optionalAuth,
       requireAuth,
-      accountAccess,
+      accountRoles,
       placeFiles,
       fileReferences,
       reportRateLimit,
@@ -175,19 +175,14 @@ export function createApp(options: CreateAppOptions = {}): Express {
     }),
   );
   v1.use(
-    createPlaceReviewsRouter({
-      requireAuth,
-      accountAccess,
-      reportRateLimit,
-      contributionRateLimit,
-    }),
+    createPlaceReviewsRouter({ requireAuth, accountRoles, reportRateLimit, contributionRateLimit }),
   );
   /** A person's private saved lists. Identity-bound, and the caller's own. */
   v1.use(createSavedListsRouter({ requireAuth }));
   /**
    * Moderation: claim decisions, Oxy verification, duplicate merges and the
-   * report queue — every route behind `requireAuth` and GoWay's
-   * `moderation.operate` application permission (`oxy/appPermissions`).
+   * report queue — every route behind `requireAuth` and the operator allow-list
+   * (`MODERATION_OPERATOR_OXY_USER_IDS`).
    */
   v1.use(createModerationRouter({ requireAuth, requireOperator }));
   v1.use(createRoutesRouter({ optionalAuth }));
@@ -203,12 +198,7 @@ export function createApp(options: CreateAppOptions = {}): Express {
    * real credentials, which in practice means it is not tested.
    */
   v1.use(
-    createCaptureRouter({
-      optionalAuth,
-      requireAuth,
-      objectStore: createConfiguredObjectStore(),
-      mayContribute,
-    }),
+    createCaptureRouter({ optionalAuth, requireAuth, objectStore: createConfiguredObjectStore() }),
   );
   /**
    * Street 3D viewing (#14/#15): coverage and published scene manifests,

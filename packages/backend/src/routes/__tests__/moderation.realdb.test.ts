@@ -34,8 +34,7 @@ import {
   destroySuiteDatabase,
   type SuiteDatabase,
 } from '../../db/__tests__/testDatabase';
-import { createRequireOperator, MODERATION_PERMISSION } from '../../oxy/appPermissions';
-import { fakeOxyServer, startFakeOxy, type FakeOxy } from '../../__tests__/fakeOxy';
+import { createRequireOperator } from '../../middleware/operator';
 import {
   fakeOptionalAuth,
   fakeRequireAuth,
@@ -60,8 +59,6 @@ const OPERATOR = session('person-mod');
 
 let suite: SuiteDatabase | null = null;
 let api: TestApi;
-/** Oxy, holding GoWay's moderation permission for `person-mod` alone. */
-let operators: FakeOxy;
 
 async function place(name: string): Promise<Place> {
   return createPlace(requireSuite(suite).db, { name, location: GRACIA }, CONTRIBUTOR);
@@ -84,25 +81,22 @@ async function publicActions(placeId: string): Promise<string[]> {
 
 beforeAll(async () => {
   suite = await createSuiteDatabase();
-  operators = await startFakeOxy();
-  operators.appPermissions.set('person-mod', [MODERATION_PERMISSION]);
   api = await serve(
     createPlacesRouter({
       optionalAuth: fakeOptionalAuth,
       requireAuth: fakeRequireAuth,
-      accountAccess: NO_MEMBERSHIPS,
+      accountRoles: NO_MEMBERSHIPS,
       reportRateLimit: NO_RATE_LIMIT,
     }),
     createModerationRouter({
       requireAuth: fakeRequireAuth,
-      requireOperator: createRequireOperator(fakeOxyServer(operators)),
+      requireOperator: createRequireOperator(['person-mod']),
     }),
   );
 }, SUITE_SETUP_TIMEOUT_MS);
 
 afterAll(async () => {
   await api.close();
-  await operators.close();
   await destroySuiteDatabase(suite);
   suite = null;
 });

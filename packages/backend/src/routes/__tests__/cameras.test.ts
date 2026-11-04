@@ -8,9 +8,8 @@
 import '../../__tests__/testEnv';
 import { afterAll, beforeAll, describe, expect, it } from 'bun:test';
 import express, { Router } from 'express';
-import type { IncomingMessage, Server } from 'node:http';
+import type { Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
-import { Readable } from 'node:stream';
 import type { CameraObservation } from '@goway/contracts';
 import type { CameraProviderDefinition } from '../../cameras/types';
 import { SnapshotRelay } from '../../cameras/relay';
@@ -131,16 +130,14 @@ const store: CamerasStore = {
 const JPEG = new Uint8Array([0xff, 0xd8, 0xff, 0xd9]);
 let upstreamCalls = 0;
 const relay = new SnapshotRelay({
-  safeFetch: async (url) => {
+  fetch: async () => {
     upstreamCalls++;
-    return {
-      response: Readable.from([Buffer.from(JPEG)]) as unknown as IncomingMessage,
-      status: 200,
+    return new Response(JPEG, {
       headers: { 'content-type': 'image/jpeg', 'last-modified': 'Thu, 22 Oct 2026 11:59:30 GMT' },
-      finalUrl: url,
-    };
+    });
   },
   now: () => NOW.getTime(),
+  resolve: async () => ['93.184.216.34'],
 });
 
 // biome-ignore lint/suspicious/noExplicitAny: a test reads arbitrary JSON

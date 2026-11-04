@@ -75,7 +75,7 @@ was built must not make that SDK reject the places that carry it.
 
 ### Moderation
 
-`/moderation/categories` (`moderation.operate`, `docs/BUSINESS_OWNERSHIP.md`):
+`/moderation/categories` (operator allow-list, `docs/BUSINESS_OWNERSHIP.md`):
 list with positions and mappings; create (the key spells the parent, which must
 exist and be active; `labels.en` required; position defaults to after the last
 sibling); `PATCH` glyph, position, mapping (replaced whole; a tag must be one

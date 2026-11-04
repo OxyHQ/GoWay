@@ -100,7 +100,7 @@ beforeAll(async () => {
     createPlacesRouter({
       optionalAuth,
       requireAuth,
-      accountAccess: NO_MEMBERSHIPS,
+      accountRoles: NO_MEMBERSHIPS,
       reportRateLimit: NO_RATE_LIMIT,
     }),
   );

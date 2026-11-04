@@ -174,14 +174,9 @@ const WRITE_ERRORS = [
 const SEARCH_ERRORS = [...READ_ERRORS, 'provider_unavailable', 'service_unavailable'] as const;
 /**
  * What every `/moderation` route may answer besides its own codes: no session,
- * a person without GoWay's `moderation.operate` permission, or Oxy unable to
- * say whether they hold it.
+ * or a session outside the operator allow-list.
  */
-const MODERATION_ERRORS = [
-  ...WRITE_ERRORS,
-  'forbidden',
-  'service_unavailable',
-] as const satisfies readonly ApiErrorCode[];
+const MODERATION_ERRORS = [...WRITE_ERRORS, 'forbidden'] as const satisfies readonly ApiErrorCode[];
 
 export const API_OPERATIONS: readonly ApiOperation[] = [
   {

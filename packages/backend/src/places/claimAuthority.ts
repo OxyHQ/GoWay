@@ -7,70 +7,79 @@
  *  (a) the session IS that account — a person's own account, or a session that
  *      switched into the organization (`oxy.accounts.actAs`), whose token's
  *      subject is then the organization; or
- *  (b) the person holds the account permission the action needs, as Oxy
- *      reports with the caller's own bearer (`oxy/accountAccess`):
- *
- *       - `account:act_as` to ACT for its claims — edit the claimed place,
- *         assert and withdraw at the business's tier, read the claims;
- *       - `account:update` to FILE a new claim in its name, which is a
- *         statement about who the business is.
- *
- *      Oxy's role baselines give the first to owners, administrators and
- *      editors and the second to owners and administrators; a per-member grant
- *      or revoke in Oxy moves either, and GoWay follows it.
+ *  (b) the person is a MEMBER of it, in a role {@link ACCOUNT_ROLE_AUTHORITY}
+ *      says can act, as Oxy reports with the caller's own bearer
+ *      (`oxy/accountRoles`).
  *
  * (a) needs no network. (b) asks Oxy, and a failure to ask is a
  * `503 service_unavailable` — never a guess in either direction.
  */
 
+import type { AccountRole } from '@oxy.so/core';
 import type { PlaceClaimRole } from '@goway/contracts';
-import {
-  ACCOUNT_PERMISSIONS,
-  type AccountAccessResolver,
-  type OxyCaller,
-} from '../oxy/accountAccess';
+import type { AccountRoleResolver, OxyCaller } from '../oxy/accountRoles';
 import type { ApprovedClaim } from '../db/places/placesRepository';
 import { CLAIM_ROLE_SPEAKS_FOR_BUSINESS } from './capabilityAuthority';
 
-/** Whether the caller is `oxyAccountId`, or holds `permission` in it. */
-async function holds(
+/**
+ * What each Oxy account role may do with that account's claims.
+ *
+ *  - `acts`  — edit the claimed place, assert and withdraw at the business's
+ *              tier, read the claims. Content work: `owner`, `admin` and
+ *              `editor`.
+ *  - `files` — file a NEW claim in the account's name, which is a statement
+ *              about who the business is: `owner` and `admin` only.
+ *
+ * `developer`, `billing` and `viewer` do neither: none of them is a role in
+ * which a person speaks for the business on a public map.
+ *
+ * TOTAL over Oxy's `AccountRole`, so a role Oxy adds fails this package to
+ * compile on the upgrade that brings it, until somebody decides what it may do
+ * here — rather than inheriting nothing, or everything, by omission.
+ */
+export const ACCOUNT_ROLE_AUTHORITY: Readonly<
+  Record<AccountRole, { acts: boolean; files: boolean }>
+> = {
+  owner: { acts: true, files: true },
+  admin: { acts: true, files: true },
+  editor: { acts: true, files: false },
+  developer: { acts: false, files: false },
+  billing: { acts: false, files: false },
+  viewer: { acts: false, files: false },
+};
+
+/** Whether the caller may act for `oxyAccountId`'s claims: is it, or holds an acting role in it. */
+export async function mayActFor(
   caller: OxyCaller,
   oxyAccountId: string,
-  permission: string,
-  accounts: AccountAccessResolver,
+  roles: AccountRoleResolver,
 ): Promise<boolean> {
   if (caller.oxyAccountId === oxyAccountId) return true;
-  return (await accounts.accessIn(caller, oxyAccountId))?.has(permission) ?? false;
+  const role = await roles.roleIn(caller, oxyAccountId);
+  return role !== null && ACCOUNT_ROLE_AUTHORITY[role].acts;
 }
 
-/** Whether the caller may act for `oxyAccountId`'s claims. */
-export function mayActFor(
+/** Whether the caller may file a claim in `oxyAccountId`'s name: is it, or owns or administers it. */
+export async function mayFileFor(
   caller: OxyCaller,
   oxyAccountId: string,
-  accounts: AccountAccessResolver,
+  roles: AccountRoleResolver,
 ): Promise<boolean> {
-  return holds(caller, oxyAccountId, ACCOUNT_PERMISSIONS.actAs, accounts);
-}
-
-/** Whether the caller may file a claim in `oxyAccountId`'s name. */
-export function mayFileFor(
-  caller: OxyCaller,
-  oxyAccountId: string,
-  accounts: AccountAccessResolver,
-): Promise<boolean> {
-  return holds(caller, oxyAccountId, ACCOUNT_PERMISSIONS.update, accounts);
+  if (caller.oxyAccountId === oxyAccountId) return true;
+  const role = await roles.roleIn(caller, oxyAccountId);
+  return role !== null && ACCOUNT_ROLE_AUTHORITY[role].files;
 }
 
 /** Whether the caller may act for ANY of these accounts. Asks Oxy only for accounts the session is not. */
 export async function mayActForAny(
   caller: OxyCaller,
   oxyAccountIds: readonly string[],
-  accounts: AccountAccessResolver,
+  roles: AccountRoleResolver,
 ): Promise<boolean> {
-  const unique = [...new Set(oxyAccountIds)];
-  if (unique.includes(caller.oxyAccountId)) return true;
-  for (const account of unique) {
-    if (await mayActFor(caller, account, accounts)) return true;
+  const accounts = [...new Set(oxyAccountIds)];
+  if (accounts.includes(caller.oxyAccountId)) return true;
+  for (const account of accounts) {
+    if (await mayActFor(caller, account, roles)) return true;
   }
   return false;
 }
@@ -95,7 +104,7 @@ export interface PlaceStanding {
 export async function standingOn(
   claims: readonly ApprovedClaim[],
   caller: OxyCaller,
-  accounts: AccountAccessResolver,
+  roles: AccountRoleResolver,
 ): Promise<PlaceStanding> {
   if (claims.length === 0) return { claimed: false, callerRoles: [] };
 
@@ -108,7 +117,7 @@ export async function standingOn(
   const callerRoles = [...direct];
   for (const account of [...new Set(claims.map((claim) => claim.oxyAccountId))]) {
     if (account === caller.oxyAccountId) continue;
-    if (await mayActFor(caller, account, accounts)) {
+    if (await mayActFor(caller, account, roles)) {
       callerRoles.push(
         ...claims.filter((claim) => claim.oxyAccountId === account).map((claim) => claim.role),
       );
@@ -119,8 +128,8 @@ export async function standingOn(
 
 /**
  * Whether the caller is AFFILIATED with any of these accounts: is one — the
- * session, or the person behind it — or has ANY access to one, as Oxy reports
- * it.
+ * session, or the person behind it — or holds ANY active role in one, as Oxy
+ * reports it.
  *
  * Deliberately wider than {@link mayActFor}. Acting for a business is a
  * question of authority, so a `viewer` does not; having an interest in it is a
@@ -131,7 +140,7 @@ export async function standingOn(
 export async function affiliatedWithAny(
   caller: OxyCaller,
   oxyAccountIds: readonly string[],
-  access: AccountAccessResolver,
+  roles: AccountRoleResolver,
 ): Promise<boolean> {
   const accounts = [...new Set(oxyAccountIds)];
   const self = new Set(
@@ -139,7 +148,7 @@ export async function affiliatedWithAny(
   );
   if (accounts.some((account) => self.has(account))) return true;
   for (const account of accounts) {
-    if ((await access.accessIn(caller, account)) !== null) return true;
+    if ((await roles.roleIn(caller, account)) !== null) return true;
   }
   return false;
 }

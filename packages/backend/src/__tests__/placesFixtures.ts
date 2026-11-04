@@ -5,8 +5,7 @@
 
 import type { RequestHandler } from 'express';
 import type { RevisionAuthor } from '../db/places/revisions';
-import type { AccountAccessResolver } from '../oxy/accountAccess';
-import type { ContributionGate } from '../oxy/appPermissions';
+import type { AccountRoleResolver } from '../oxy/accountRoles';
 import type { FileReferenceWorker } from '../oxy/fileReferences';
 import type { PlaceFileStore } from '../oxy/placeFiles';
 
@@ -20,14 +19,11 @@ export function apiAuthor(oxyAccountId: string): RevisionAuthor {
  * of anything. Exactly the answer GoWay gave before claims could name an
  * organization, so a suite written then keeps meaning what it meant.
  */
-export const NO_MEMBERSHIPS: AccountAccessResolver = {
-  async accessIn() {
+export const NO_MEMBERSHIPS: AccountRoleResolver = {
+  async roleIn() {
     return null;
   },
 };
-
-/** The capture pilot, as a suite that is not about contributing sees it: nobody is in it. */
-export const NO_CONTRIBUTORS: ContributionGate = async () => false;
 
 /** A rate limit that never limits, for suites that are not about one. */
 export const NO_RATE_LIMIT: RequestHandler = (_request, _response, next) => {

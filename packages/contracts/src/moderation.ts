@@ -4,7 +4,7 @@
  *
  * Reporting is open to every signed-in account. Everything else in this module
  * is the operator surface under `/moderation`, refused with `403` to anybody
- * without GoWay's `moderation.operate` application permission. Each operator decision writes a place
+ * outside GoWay's operator allow-list. Each operator decision writes a place
  * revision in the same transaction, so a decision is never untraceable.
  *
  * ## Duplicate review is published HERE, and only here

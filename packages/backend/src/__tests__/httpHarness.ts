@@ -2,16 +2,14 @@
  * An HTTP harness for the organization, history and moderation suites.
  *
  * The session is faked the way `@oxy.so/core/server`'s middleware leaves it on
- * a request — `userId`, `sessionId`, `accessToken` and the actor chain
- * `getOxyActor` reads —
+ * a request — `userId`, `accessToken` and the actor chain `getOxyActor` reads —
  * from two headers:
  *
  *  - `x-test-user`  the session's EFFECTIVE account (an organization after a switch);
  *  - `x-test-actor` the person operating it, defaulting to the user.
  *
- * The bearer is `fakeOxy`'s token for the PERSON, so the real `OxyServer`
- * asking the fake Oxy gets the person's access and application permissions, as
- * the real Oxy answers.
+ * The bearer is `fakeOxy`'s token for the PERSON, so the real role resolver
+ * asking the fake Oxy gets the person's memberships, as the real Oxy answers.
  */
 
 import express, { type RequestHandler, type Router } from 'express';
@@ -26,7 +24,6 @@ function resolveSession(request: express.Request): boolean {
   if (!user) return false;
   const actor = request.header('x-test-actor') ?? user;
   request.userId = user;
-  request.sessionId = `session-${actor}`;
   request.accessToken = tokenFor(actor);
   request.oxyActor = {
     schemaVersion: 1,

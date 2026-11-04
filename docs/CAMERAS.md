@@ -39,12 +39,10 @@ shape and for the IAM grant it needs). **No schedule is wired yet.**
 camera's refresh interval (5 s to 5 min), so a thousand viewers cost the
 operator one request. The URL is third-party data, so:
 
-- it is fetched with `@oxy.so/core`'s `safeFetch`: every hop of a redirect must
-  resolve only to public addresses on port 80 or 443 (loopback, private,
-  link-local and cloud-metadata addresses are refused, literal or by DNS), and
-  the connection is pinned to the address that was checked, so a DNS answer
-  that changes in between cannot reach GoWay's network;
-- the body is read with `readResponseBody`: capped at 5 MB, with one deadline;
+- every hop of a redirect must resolve only to public addresses
+  (`publicHost.ts`): loopback, private, link-local and cloud-metadata addresses
+  are refused, literal or by DNS;
+- the body is capped at 5 MB;
 - the type comes from the **bytes**, not the operator's label (Toronto serves
   PNG files labelled `image/jpeg`), and anything that is not JPEG, PNG, GIF or
   WebP — HTML and SVG included — is refused;
