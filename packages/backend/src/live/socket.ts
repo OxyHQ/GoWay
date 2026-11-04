@@ -9,7 +9,7 @@
  * from the client" — because nothing here is per-user: a room is a public
  * tile and a kind, computed BY THE SERVER from a box it validated
  * (`liveTilesFor`), and every room holds the same public data for everyone.
- * `io.use(oxyClient.middleware.socket())` guards the default namespace only,
+ * `io.use(oxy.middleware.socket())` guards the default namespace only,
  * which is exactly the per-user surface.
  *
  * ## What is never kept

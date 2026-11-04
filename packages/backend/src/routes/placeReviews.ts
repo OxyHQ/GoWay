@@ -64,7 +64,7 @@ import {
   timestampTextSchema,
 } from '../http/cursor';
 import { parseBody, parsePath, parseQuery } from '../http/validation';
-import type { AccountRoleResolver, OxyCaller } from '../oxy/accountRoles';
+import type { AccountAccessResolver, OxyCaller } from '../oxy/accountAccess';
 import { requiredOxyCaller } from '../oxy/caller';
 import { withdrawableVerification } from '../places/capabilityAuthority';
 import { affiliatedWithAny, standingOn } from '../places/claimAuthority';
@@ -96,7 +96,7 @@ function reviewerOf(caller: OxyCaller): string {
 
 export interface PlaceReviewsRouterDependencies {
   requireAuth: RequestHandler;
-  accountRoles: AccountRoleResolver;
+  accountAccess: AccountAccessResolver;
   /** Applied to reports, in addition to the API-wide limit. */
   reportRateLimit: RequestHandler;
   /** Applied to review and reply writes, in addition to the API-wide limit. */
@@ -104,7 +104,7 @@ export interface PlaceReviewsRouterDependencies {
 }
 
 export function createPlaceReviewsRouter(dependencies: PlaceReviewsRouterDependencies): Router {
-  const { requireAuth, accountRoles, reportRateLimit, contributionRateLimit } = dependencies;
+  const { requireAuth, accountAccess, reportRateLimit, contributionRateLimit } = dependencies;
   const router: Router = Router();
 
   /**
@@ -178,7 +178,7 @@ export function createPlaceReviewsRouter(dependencies: PlaceReviewsRouterDepende
       const { lifecycle, approvedClaims } = await getPlaceAuthorization(db, placeId);
       assertPublished(lifecycle);
       const claimants = approvedClaims.map((claim) => claim.oxyAccountId);
-      if (await affiliatedWithAny(caller, claimants, accountRoles)) {
+      if (await affiliatedWithAny(caller, claimants, accountAccess)) {
         throw new ApiError(
           'forbidden',
           'A business may not review its own place. Reply to its reviews instead.',
@@ -213,7 +213,9 @@ export function createPlaceReviewsRouter(dependencies: PlaceReviewsRouterDepende
   async function assertBusiness(caller: OxyCaller, placeId: string): Promise<void> {
     const { lifecycle, approvedClaims } = await getPlaceAuthorization(getDb(), placeId);
     assertPublished(lifecycle);
-    if (withdrawableVerification(await standingOn(approvedClaims, caller, accountRoles)) === null) {
+    if (
+      withdrawableVerification(await standingOn(approvedClaims, caller, accountAccess)) === null
+    ) {
       throw new ApiError('forbidden', 'Only an approved claimant may answer for the business.');
     }
   }

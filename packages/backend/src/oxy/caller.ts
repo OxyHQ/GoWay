@@ -10,14 +10,15 @@
 import { getOxyActor } from '@oxy.so/core/server';
 import type { Request } from 'express';
 import { ApiError } from '../http/apiError';
-import type { OxyCaller } from './accountRoles';
+import type { OxyCaller } from './accountAccess';
 
 /** Oxy's "who acted, and as whom" for a session (`getOxyActor`). */
 export type OxyActorChain = NonNullable<ReturnType<typeof getOxyActor>>;
 
 /**
- * Who is calling: the session's account, the person behind it, and the bearer
- * that can ask Oxy about them — or `null` for a signed-out request.
+ * Who is calling: the session's account, the person behind it, and the request
+ * whose verified session can ask Oxy about them — or `null` for a signed-out
+ * request.
  *
  * `oxyAccountId` is the EFFECTIVE account, an organization when somebody
  * switched into one. `operatedByOxyUserId` is the person, from Oxy's actor
@@ -32,10 +33,7 @@ export function oxyCallerOf(request: Request): OxyCaller | null {
   return {
     oxyAccountId,
     operatedByOxyUserId: actor ? actor.actorAccountId : null,
-    accessToken:
-      typeof request.accessToken === 'string' && request.accessToken.length > 0
-        ? request.accessToken
-        : null,
+    request,
   };
 }
 
