@@ -39,7 +39,7 @@ import {
 import { defined } from '../../__tests__/defined';
 import {
   FAKE_SERVICE_APPLICATION_ID,
-  fakeWorkloadCredentials,
+  fakeOxyServer,
   startFakeOxy,
   type FakeOxy,
 } from '../../__tests__/fakeOxy';
@@ -154,10 +154,7 @@ beforeAll(async () => {
   const handle = suite.db;
   worker = createFileReferenceWorker({
     getDb: () => handle,
-    references: createOxyFileReferences({
-      baseURL: oxy.url,
-      workloadCredentials: fakeWorkloadCredentials,
-    }),
+    references: createOxyFileReferences(fakeOxyServer(oxy)),
     policy: POLICY,
     now: () => new Date(Date.now() + skewMs),
     logger: {

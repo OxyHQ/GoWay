@@ -704,8 +704,10 @@ export interface GoWayListsApi {
 /**
  * GoWay's moderation surface, for GoWay operators only.
  *
- * Every call needs an Oxy session whose person is on the deployment's operator
- * allow-list; anybody else gets `GoWayForbiddenError`. It is in this SDK so
+ * Every call needs an Oxy session whose person holds GoWay's
+ * `moderation.operate` application permission, which Oxy decides (the owners
+ * and admins of the organization that owns GoWay); anybody else gets
+ * `GoWayForbiddenError`. It is in this SDK so
  * GoWay's own tools are built on the same contract as everything else — no
  * integration needs it, and none should call it.
  */

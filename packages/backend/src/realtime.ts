@@ -18,7 +18,7 @@ import type { Server as HttpServer } from 'node:http';
 import { Server as SocketIOServer, type Socket } from 'socket.io';
 import { config } from './config';
 import type { LiveService } from './live';
-import { oxyClient } from './middleware/auth';
+import { oxy } from './oxy/server';
 
 type AuthedSocket = Socket & { user?: { id: string } };
 
@@ -49,7 +49,7 @@ export function attachRealtime(
   });
 
   // The default namespace only: `io.use` is `io.of('/').use`.
-  io.use(oxyClient.middleware.socket());
+  io.use(oxy.middleware.socket());
   io.on('connection', (socket: AuthedSocket) => {
     const userId = socket.user?.id;
     if (!userId) {

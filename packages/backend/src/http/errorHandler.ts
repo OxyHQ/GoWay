@@ -7,6 +7,12 @@
  * silently changes what a caller does with a failure.
  */
 
+import {
+  accessErrorStatus,
+  appPermissionErrorStatus,
+  OxyAccessError,
+  OxyAppPermissionError,
+} from '@oxy.so/core/server';
 import type { ErrorRequestHandler, RequestHandler } from 'express';
 import { ApiError, isApiError } from './apiError';
 import { logger } from '../utils/logger';
@@ -35,6 +41,34 @@ function bodyParserFailure(error: unknown): ApiError | null {
 }
 
 /**
+ * Translates `@oxy.so/core`'s typed authority refusals — an account or
+ * application-permission read as the caller (`oxy/accountAccess`,
+ * `oxy/appPermissions`) — by the status the SDK maps each to: no session is
+ * `unauthorized`, a definitive no is `forbidden`, Oxy unable to say is
+ * `service_unavailable` (never a "no"), and a GoWay misconfiguration is
+ * `internal_error`. The SDK's message stays in the log, never in the response.
+ */
+function oxyAuthorityFailure(error: unknown): ApiError | null {
+  let status: number;
+  if (error instanceof OxyAccessError) status = accessErrorStatus(error);
+  else if (error instanceof OxyAppPermissionError) status = appPermissionErrorStatus(error, 403);
+  else return null;
+  switch (status) {
+    case 401:
+      return new ApiError('unauthorized', 'Your Oxy session is no longer valid. Sign in again.');
+    case 403:
+      return new ApiError('forbidden', 'Your Oxy account may not do this.');
+    case 503:
+      return new ApiError(
+        'service_unavailable',
+        'Access cannot be checked right now because Oxy is unavailable. Try again shortly.',
+      );
+    default:
+      return null;
+  }
+}
+
+/**
  * Answers any request that matched no route — `unknown_route`, not
  * `not_found`. A client that sees it is talking to an API older or newer than
  * it was built for; telling it "not found" would have it conclude a resource
@@ -54,7 +88,9 @@ export const errorHandler: ErrorRequestHandler = (error: unknown, request, respo
     return;
   }
 
-  const apiError = isApiError(error) ? error : bodyParserFailure(error);
+  const apiError = isApiError(error)
+    ? error
+    : (bodyParserFailure(error) ?? oxyAuthorityFailure(error));
 
   if (apiError) {
     if (apiError.status === 401) {

@@ -6,7 +6,7 @@
  * `{ account: AccountNode }` with the caller's `callerMembership`, `404` for an
  * account that does not exist, `403` for one the caller cannot see. It is the
  * BOUNDARY being mocked, not GoWay's resolver: the real
- * `createAccountRoleResolver` and the real `@oxy.so/core` client run against
+ * `createAccountAccessResolver` and the real `@oxy.so/core` client run against
  * it, so a change in how either reads the answer is a failing test here.
  *
  * Files are answered the way `oxy/packages/api/src/routes/assets.ts` answers
@@ -29,11 +29,25 @@
  * challenge/attestation exchange) names its application.
  */
 
+import { OxyServer, type OxyServerConfig } from '@oxy.so/core/server';
 import express from 'express';
 import type { Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
 
 export type FakeOxyRole = 'owner' | 'admin' | 'editor' | 'developer' | 'billing' | 'viewer';
+
+/**
+ * The account permissions each role's BASELINE carries that GoWay reads — the
+ * same split as Oxy's `ROLE_PERMISSIONS` (`oxy/packages/api/src/utils/accountRoles.ts`).
+ */
+const ROLE_BASELINE: Readonly<Record<FakeOxyRole, readonly string[]>> = {
+  owner: ['account:read', 'account:update', 'account:act_as'],
+  admin: ['account:read', 'account:update', 'account:act_as'],
+  editor: ['account:read', 'account:act_as'],
+  developer: ['account:read'],
+  billing: ['account:read'],
+  viewer: ['account:read'],
+};
 
 /** One Oxy file, as the fake holds it. */
 export interface FakeOxyFile {
@@ -74,6 +88,14 @@ export interface FakeOxy {
   >;
   /** Accounts that exist. An account not here is `404`. */
   readonly accounts: Set<string>;
+  /**
+   * GoWay's application permissions each person holds (`roles/me`). Real Oxy
+   * derives them from the person's role in the organization that owns GoWay
+   * (oxy ADR 0056); GoWay only reads the answer, so a test sets it directly.
+   */
+  readonly appPermissions: Map<string, string[]>;
+  /** Every `GET /applications/:appId/roles/me` received: the person asking. */
+  readonly roleReads: (string | undefined)[];
   /** `ok` answers; `down` answers 503 to everything; `unauthorized` answers 401. */
   mode: 'ok' | 'down' | 'unauthorized';
   /**
@@ -154,6 +176,8 @@ export async function startFakeOxy(): Promise<FakeOxy> {
       FakeOxyRole | { role: FakeOxyRole; status: 'active' | 'invited' }
     >(),
     accounts: new Set<string>(),
+    appPermissions: new Map<string, string[]>(),
+    roleReads: [] as (string | undefined)[],
     mode: 'ok' as FakeOxy['mode'],
     workloadActive: true,
     reconcileRequests: [] as FakeOxy['reconcileRequests'],
@@ -479,7 +503,6 @@ export async function startFakeOxy(): Promise<FakeOxy> {
       response.status(404).json({ error: 'NOT_FOUND', message: 'Account not found' });
       return;
     }
-    const now = new Date().toISOString();
     if (person === accountId) {
       response.json({
         account: {
@@ -489,19 +512,30 @@ export async function startFakeOxy(): Promise<FakeOxy> {
           account: { id: accountId },
           relationship: 'self',
           callerMembership: null,
+          callerAccess: {
+            role: 'owner',
+            permissions: [...ROLE_BASELINE.owner],
+            status: 'active',
+            source: 'self',
+          },
         },
       });
       return;
     }
     const held = state.memberships.get(membershipKey(person, accountId));
-    if (held === undefined) {
+    const { role, status } =
+      held === undefined
+        ? { role: undefined, status: undefined }
+        : typeof held === 'string'
+          ? { role: held, status: 'active' as const }
+          : held;
+    // Oxy's `requireAccountPermission('account:read')`: only an ACTIVE grant reads.
+    if (role === undefined || status !== 'active') {
       response
         .status(403)
         .json({ error: 'FORBIDDEN', message: 'You do not have access to this account' });
       return;
     }
-    const { role, status } =
-      typeof held === 'string' ? { role: held, status: 'active' as const } : held;
     response.json({
       account: {
         accountId,
@@ -509,19 +543,35 @@ export async function startFakeOxy(): Promise<FakeOxy> {
         parentAccountId: null,
         account: { id: accountId },
         relationship: role === 'owner' ? 'owner' : 'member',
-        callerMembership: {
-          _id: `m-${person}-${accountId}`,
-          accountId,
-          memberUserId: person,
+        callerAccess: {
           role,
-          permissions: [],
-          inherit: true,
-          status,
+          permissions: [...ROLE_BASELINE[role]],
+          status: 'active',
           source: 'direct',
-          createdAt: now,
-          updatedAt: now,
         },
       },
+    });
+  });
+
+  app.get('/applications/:appId/roles/me', (request, response) => {
+    const person = personOf(request.header('authorization'));
+    state.roleReads.push(person);
+    if (state.mode === 'down') {
+      response.status(503).json({ error: 'SERVICE_UNAVAILABLE', message: 'down' });
+      return;
+    }
+    if (state.mode === 'unauthorized' || person === undefined) {
+      response.status(401).json({ error: 'UNAUTHORIZED', message: 'Invalid session' });
+      return;
+    }
+    if (request.params.appId !== FAKE_SERVICE_APPLICATION_ID) {
+      response.status(404).json({ error: 'NOT_FOUND', message: 'Application not found' });
+      return;
+    }
+    response.json({
+      applicationId: FAKE_SERVICE_APPLICATION_ID,
+      userId: person,
+      permissions: state.appPermissions.get(person) ?? [],
     });
   });
 
@@ -532,5 +582,27 @@ export async function startFakeOxy(): Promise<FakeOxy> {
   return Object.assign(state, {
     url: `http://127.0.0.1:${String(port)}`,
     close: () => new Promise<void>((resolve) => server.close(() => resolve())),
+  });
+}
+
+/**
+ * GoWay's `OxyServer` (`oxy/server`), pointed at `fake`: the fake's workload
+ * credential, its application, and — unless `overrides` says otherwise — no
+ * answer cache, so a test that changes a membership or a grant sees the change
+ * on the next request, and no retries, so an outage is answered at once rather
+ * than after the SDK's backoff.
+ */
+export function fakeOxyServer(
+  fake: Pick<FakeOxy, 'url'>,
+  overrides: Partial<OxyServerConfig> = {},
+): OxyServer {
+  return new OxyServer({
+    baseURL: fake.url,
+    applicationId: FAKE_SERVICE_APPLICATION_ID,
+    serviceIdentity: 'when-anonymous',
+    workloadCredentials: fakeWorkloadCredentials,
+    appPermissionsCacheTtlMs: 0,
+    enableRetry: false,
+    ...overrides,
   });
 }

@@ -7099,6 +7099,16 @@
                 }
               }
             }
+          },
+          "503": {
+            "description": "Degraded or unavailable; retry later: `service_unavailable`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorBody"
+                }
+              }
+            }
           }
         }
       }
@@ -7213,6 +7223,16 @@
           },
           "500": {
             "description": "Server defect: `internal_error`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorBody"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Degraded or unavailable; retry later: `service_unavailable`",
             "content": {
               "application/json": {
                 "schema": {
@@ -7381,6 +7401,16 @@
           },
           "500": {
             "description": "Server defect: `internal_error`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorBody"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Degraded or unavailable; retry later: `service_unavailable`",
             "content": {
               "application/json": {
                 "schema": {
@@ -7938,6 +7968,16 @@
                 }
               }
             }
+          },
+          "503": {
+            "description": "Degraded or unavailable; retry later: `service_unavailable`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorBody"
+                }
+              }
+            }
           }
         }
       }
@@ -8212,6 +8252,16 @@
           },
           "500": {
             "description": "Server defect: `internal_error`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorBody"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Degraded or unavailable; retry later: `service_unavailable`",
             "content": {
               "application/json": {
                 "schema": {
@@ -8572,6 +8622,16 @@
                 }
               }
             }
+          },
+          "503": {
+            "description": "Degraded or unavailable; retry later: `service_unavailable`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorBody"
+                }
+              }
+            }
           }
         }
       }
@@ -8823,6 +8883,16 @@
                 }
               }
             }
+          },
+          "503": {
+            "description": "Degraded or unavailable; retry later: `service_unavailable`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorBody"
+                }
+              }
+            }
           }
         }
       }
@@ -9024,6 +9094,16 @@
                 }
               }
             }
+          },
+          "503": {
+            "description": "Degraded or unavailable; retry later: `service_unavailable`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorBody"
+                }
+              }
+            }
           }
         }
       }
@@ -9152,6 +9232,16 @@
                 }
               }
             }
+          },
+          "503": {
+            "description": "Degraded or unavailable; retry later: `service_unavailable`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorBody"
+                }
+              }
+            }
           }
         }
       }
@@ -9272,6 +9362,16 @@
           },
           "500": {
             "description": "Server defect: `internal_error`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorBody"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Degraded or unavailable; retry later: `service_unavailable`",
             "content": {
               "application/json": {
                 "schema": {

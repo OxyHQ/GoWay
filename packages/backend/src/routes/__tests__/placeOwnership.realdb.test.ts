@@ -23,8 +23,8 @@ import {
   destroySuiteDatabase,
   type SuiteDatabase,
 } from '../../db/__tests__/testDatabase';
-import { createAccountRoleResolver } from '../../oxy/accountRoles';
-import { membershipKey, startFakeOxy, type FakeOxy } from '../../__tests__/fakeOxy';
+import { createAccountAccessResolver } from '../../oxy/accountAccess';
+import { fakeOxyServer, membershipKey, startFakeOxy, type FakeOxy } from '../../__tests__/fakeOxy';
 import {
   fakeOptionalAuth,
   fakeRequireAuth,
@@ -96,12 +96,12 @@ beforeAll(async () => {
 
   // TTL 0: every request asks Oxy, so the outage cases below measure the
   // outage rather than an answer cached by an earlier case.
-  const accountRoles = createAccountRoleResolver({ oxyApiUrl: oxy.url, ttlMs: 0 });
+  const accountAccess = createAccountAccessResolver(fakeOxyServer(oxy));
   api = await serve(
     createPlacesRouter({
       optionalAuth: fakeOptionalAuth,
       requireAuth: fakeRequireAuth,
-      accountRoles,
+      accountAccess,
       reportRateLimit: NO_RATE_LIMIT,
     }),
   );

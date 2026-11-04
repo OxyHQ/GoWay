@@ -24,6 +24,7 @@ Rules sit beside the code and load when you work there; read the one for your ar
 - Theming is NativeWind via `BloomThemeProvider`; never hardcode brand colors and never restate a token `@oxy.so/bloom/design-tokens/theme.css` already defines.
 - Gate private API calls on `useAuth().canUsePrivateApi`; the root `Stack` alone swaps route groups.
 - Backend auth is `@oxy.so/core/server` only (`createOxyAuthMiddleware`, `createOxyCors`, `createOxyRateLimit`, `OxyServer#middleware.socket()`); no app-local auth, bearer parsing or CORS. Call your own API via `oxyServices.createLinkedClient({ baseURL })`.
+- Operator powers (`moderation.operate`, `capture.pilot`) are Oxy application keys checked in `oxy/appPermissions.ts`, declared in oxy's first-party registry and held by owning-org role (oxy ADR 0056). Keep both names equal; never a user-id list or per-person grant.
 
 ## Packages
 
