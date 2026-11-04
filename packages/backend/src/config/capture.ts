@@ -9,8 +9,9 @@
  * `service_unavailable` on the upload-intent route rather than a boot failure.
  *
  * What a deployment configures is WHERE contributions go (the bucket, its
- * region, an endpoint for a local store) and, during a closed pilot, WHO may
- * contribute. Everything else is {@link CAPTURE_POLICY}.
+ * region, an endpoint for a local store). Everything else is
+ * {@link CAPTURE_POLICY}; who may contribute during the closed pilot is an Oxy
+ * application permission (`oxy/appPermissions`), not configuration.
  *
  * ## The retention numbers live here because they are POLICY, not contract
  *
@@ -31,7 +32,6 @@
 import { z } from 'zod';
 import type { CaptureRetentionClass } from '@goway/contracts';
 import type { EnvironmentSource } from './index';
-import { oxyUserIdList } from './oxyUserIds';
 
 /** What GoWay accepts and keeps. Constants: a change is a reviewed commit, not a task definition. */
 export interface CapturePolicy {
@@ -152,17 +152,6 @@ const schema = z.object({
    * nothing in product code may name one.
    */
   endpoint: z.preprocess(emptyAsUndefined, z.string().trim().url().optional()),
-  /**
-   * A closed pilot: when set, ONLY these Oxy user ids may contribute.
-   *
-   * Contribution reaches a pipeline whose privacy and operational controls are
-   * verified end to end in production before anybody else's imagery enters
-   * it. A comma-separated list; unset (or empty) means contribution is open to
-   * every signed-in account, which is the normal state once verified. Oxy
-   * owns identity, so these are foreign ids with nothing in this database to
-   * point at.
-   */
-  pilotOxyUserIds: oxyUserIdList,
 });
 
 export type CaptureConfig = Readonly<z.infer<typeof schema>> &
@@ -181,7 +170,6 @@ export function parseCaptureConfig(source: EnvironmentSource = process.env): Cap
     bucket: source.CAPTURE_S3_BUCKET,
     region: source.CAPTURE_S3_REGION ?? source.AWS_REGION,
     endpoint: source.CAPTURE_S3_ENDPOINT,
-    pilotOxyUserIds: source.CAPTURE_PILOT_OXY_USER_IDS,
   });
 
   if (!result.success) {
@@ -205,20 +193,6 @@ export function parseCaptureConfig(source: EnvironmentSource = process.env): Cap
     // a configuration would turn a deployment mistake into a 500 per upload.
     enabled: parsed.bucket !== undefined && parsed.region !== undefined,
   };
-}
-
-/**
- * Whether `oxyUserId` may contribute under `config`.
- *
- * Contribution needs a configured store, and — while a pilot list is set —
- * membership of it. Without a list an anonymous caller is told contribution is
- * available (they sign in to do it; the routes still require an account); with
- * a list nobody outside it is, signed in or not.
- */
-export function mayContribute(config: CaptureConfig, oxyUserId: string | undefined): boolean {
-  if (!config.enabled) return false;
-  if (config.pilotOxyUserIds.length === 0) return true;
-  return oxyUserId !== undefined && config.pilotOxyUserIds.includes(oxyUserId);
 }
 
 /** The one capture parse for this process. */

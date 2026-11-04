@@ -122,7 +122,7 @@ import { ApiError } from '../http/apiError';
 import { cursorBinding, decodeCursor, pageOf, timePageOf, timeWindowOf } from '../http/cursor';
 import { parseBody, parsePath, parseQuery, parseValue } from '../http/validation';
 import { requiredOxyCaller } from '../oxy/caller';
-import type { AccountRoleResolver } from '../oxy/accountRoles';
+import type { AccountAccessResolver } from '../oxy/accountAccess';
 import { assertableVerification, withdrawableVerification } from '../places/capabilityAuthority';
 import { mayActFor, mayActForAny, mayFileFor, standingOn } from '../places/claimAuthority';
 import { assertPublished, mergedIntoOf, unpublishedPlace } from '../places/placeLifecycle';
@@ -164,7 +164,7 @@ export interface PlacesRouterDependencies {
   /** Fail-closed: refuses the request unless it carries a valid Oxy session. */
   requireAuth: RequestHandler;
   /** The caller's role in an Oxy account — what organization-scoped authorization asks. */
-  accountRoles: AccountRoleResolver;
+  accountAccess: AccountAccessResolver;
   /** Applied to reports only, in addition to the API-wide limit. */
   reportRateLimit: RequestHandler;
 }
@@ -180,7 +180,7 @@ export interface PlacesRouterDependencies {
  * where the real middlewares are the only thing ever passed.
  */
 export function createPlacesRouter(dependencies: PlacesRouterDependencies): Router {
-  const { optionalAuth, requireAuth, accountRoles, reportRateLimit } = dependencies;
+  const { optionalAuth, requireAuth, accountAccess, reportRateLimit } = dependencies;
   const router: Router = Router();
 
   /**
@@ -370,7 +370,7 @@ export function createPlacesRouter(dependencies: PlacesRouterDependencies): Rout
 
       const { lifecycle, approvedClaims } = await getPlaceAuthorization(db, placeId);
       assertPublished(lifecycle);
-      const standing = await standingOn(approvedClaims, caller, accountRoles);
+      const standing = await standingOn(approvedClaims, caller, accountAccess);
       if (standing.claimed && standing.callerRoles.length === 0) {
         throw new ApiError(
           'forbidden',
@@ -441,7 +441,7 @@ export function createPlacesRouter(dependencies: PlacesRouterDependencies): Rout
 
       const { lifecycle, approvedClaims } = await getPlaceAuthorization(db, placeId);
       assertPublished(lifecycle);
-      const standing = await standingOn(approvedClaims, caller, accountRoles);
+      const standing = await standingOn(approvedClaims, caller, accountAccess);
 
       const actor: PlaceActor = {
         author: revisionAuthor(caller, 'api'),
@@ -492,7 +492,7 @@ export function createPlacesRouter(dependencies: PlacesRouterDependencies): Rout
       assertPublished(lifecycle);
 
       const verification = withdrawableVerification(
-        await standingOn(approvedClaims, caller, accountRoles),
+        await standingOn(approvedClaims, caller, accountAccess),
       );
       if (verification === null) {
         throw new ApiError(
@@ -634,7 +634,7 @@ export function createPlacesRouter(dependencies: PlacesRouterDependencies): Rout
 
       const { lifecycle, approvedClaims } = await getPlaceAuthorization(db, placeId);
       assertPublished(lifecycle);
-      const standing = await standingOn(approvedClaims, caller, accountRoles);
+      const standing = await standingOn(approvedClaims, caller, accountAccess);
 
       const actor: PlaceActor = {
         author: revisionAuthor(caller, 'api'),
@@ -673,7 +673,7 @@ export function createPlacesRouter(dependencies: PlacesRouterDependencies): Rout
       if (!existing) throw new ApiError('not_found', 'This place has no exception with that id.');
 
       const verification = assertableVerification(
-        await standingOn(approvedClaims, caller, accountRoles),
+        await standingOn(approvedClaims, caller, accountAccess),
       );
       if (existing.verification !== verification) {
         throw new ApiError(
@@ -713,7 +713,7 @@ export function createPlacesRouter(dependencies: PlacesRouterDependencies): Rout
       assertPublished(lifecycle);
 
       const verification = withdrawableVerification(
-        await standingOn(approvedClaims, caller, accountRoles),
+        await standingOn(approvedClaims, caller, accountAccess),
       );
       if (verification === null) {
         throw new ApiError(
@@ -769,7 +769,7 @@ export function createPlacesRouter(dependencies: PlacesRouterDependencies): Rout
       // 404/410 before 403, and checked before the insert so an unknown place
       // is a 404 rather than the 500 a foreign-key violation would produce.
       assertPublished(await findPlaceLifecycle(db, placeId));
-      if (!(await mayFileFor(caller, oxyAccountId, accountRoles))) {
+      if (!(await mayFileFor(caller, oxyAccountId, accountAccess))) {
         throw new ApiError(
           'forbidden',
           'Only an owner or admin of that Oxy account may claim a place in its name.',
@@ -813,7 +813,7 @@ export function createPlacesRouter(dependencies: PlacesRouterDependencies): Rout
       // 404 first: answering 403 for an id that does not exist would confirm to
       // a stranger that an id they guessed is real.
       assertPublished(lifecycle);
-      if (!(await mayActForAny(caller, claimantAccountIds, accountRoles))) {
+      if (!(await mayActForAny(caller, claimantAccountIds, accountAccess))) {
         throw new ApiError(
           'forbidden',
           'Claim details are visible only to an account that holds a claim on this place.',
@@ -846,7 +846,7 @@ export function createPlacesRouter(dependencies: PlacesRouterDependencies): Rout
       } = parseQuery(accountClaimListQuerySchema, request.query);
       const caller = requiredOxyCaller(request);
       const oxyAccountId = requested ?? caller.oxyAccountId;
-      if (!(await mayActFor(caller, oxyAccountId, accountRoles))) {
+      if (!(await mayActFor(caller, oxyAccountId, accountAccess))) {
         throw new ApiError(
           'forbidden',
           'You may list the claims of your own account or of one you act for.',

@@ -66,7 +66,11 @@ import {
 import { ApiError } from '../../http/apiError';
 import { errorHandler, unknownRouteHandler } from '../../http/errorHandler';
 import type { CaptureObjectStore, UploadTargetRequest } from '../../storage/objectStore';
+import type { ContributionGate } from '../../oxy/appPermissions';
 import { createCaptureRouter, currentUploadPolicy } from '../capture';
+
+/** The closed pilot is not what this suite is about: everybody signed in may contribute. */
+const ANYBODY: ContributionGate = async () => true;
 import { defined } from '../../__tests__/defined';
 
 /** Barcelona, Plaça de Catalunya. */
@@ -200,12 +204,19 @@ async function openSession(user: string): Promise<CaptureSession> {
 beforeAll(async () => {
   suite = await createSuiteDatabase();
   store = new FakeObjectStore();
-  policy = currentUploadPolicy();
+  policy = currentUploadPolicy(false);
 
   const app = express();
   app.use(express.json());
   const api = express.Router();
-  api.use(createCaptureRouter({ optionalAuth, requireAuth, objectStore: store }));
+  api.use(
+    createCaptureRouter({
+      optionalAuth,
+      requireAuth,
+      objectStore: store,
+      mayContribute: ANYBODY,
+    }),
+  );
   app.use('/api/v1', api);
   app.use(unknownRouteHandler);
   app.use(errorHandler);
@@ -687,7 +698,14 @@ describe('a deployment with no object store', () => {
     const app = express();
     app.use(express.json());
     const api = express.Router();
-    api.use(createCaptureRouter({ optionalAuth, requireAuth, objectStore: null }));
+    api.use(
+      createCaptureRouter({
+        optionalAuth,
+        requireAuth,
+        objectStore: null,
+        mayContribute: ANYBODY,
+      }),
+    );
     app.use('/api/v1', api);
     app.use(unknownRouteHandler);
     app.use(errorHandler);

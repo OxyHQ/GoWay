@@ -4,7 +4,7 @@ A business is an **Oxy organization**. GoWay stores the organization's account
 id on a claim and asks Oxy who may act for it; it keeps no member list, no
 business table and no brand id. This note records the rules and why each one is
 the shape it is. The code is the authority: `places/claimAuthority.ts`,
-`oxy/accountRoles.ts`, `db/places/revisions.ts`,
+`oxy/accountAccess.ts`, `db/places/revisions.ts`,
 `db/places/moderationRepository.ts`, and `packages/contracts/src/revision.ts`
 and `moderation.ts`.
 
@@ -16,17 +16,20 @@ caller acts for it when either:
 1. **the session is that account** — a person's own account, or a session that
    switched into the organization (`oxy.accounts.actAs`), whose token subject is
    then the organization; or
-2. **the person is a member** Oxy reports as `owner`, `admin` or `editor`.
+2. **the person holds `account:act_as` in it**, as Oxy reports their
+   EFFECTIVE permissions with their own bearer (`oxy.accountAccessFor`).
 
-`developer`, `billing` and `viewer` are not enough: none of them is a role in
-which a person speaks for the business on a public map. The table is total over
-Oxy's `AccountRole` (`ACCOUNT_ROLE_AUTHORITY`), so a role Oxy adds stops the
-build until somebody classifies it.
+Oxy's role baselines give `account:act_as` to owners, administrators and
+editors, and not to `developer`, `billing` or `viewer`: none of those is a role
+in which a person speaks for the business on a public map. GoWay gates on the
+permission, never on the role name, so a per-member grant or revoke in Oxy
+moves it.
 
 Acting for an approved claim lets a caller edit the claimed place, assert
 capabilities and hours exceptions at `business_asserted`, withdraw that tier,
-and read the place's claims. **Filing** a new claim in an organization's name is narrower — `owner`
-or `admin` — because it is a statement about who the business is.
+and read the place's claims. **Filing** a new claim in an organization's name is narrower —
+`account:update`, which the baselines give to owners and administrators —
+because it is a statement about who the business is.
 
 A chain is an organization claiming each of its locations in the `brand` role.
 `places_claims.brand_id` was dropped (post-phase migration `0012`).
@@ -155,11 +158,13 @@ The OpenStreetMap import writes no revisions yet; its provenance is
 
 ## Moderation
 
-Every `/moderation/*` route needs an Oxy session whose **person** is on
-`MODERATION_OPERATOR_OXY_USER_IDS` — the same Oxy-id allow-list mechanism as
-the Street 3D contribution pilot (`CAPTURE_PILOT_OXY_USER_IDS`), parsed by the
-same combinator. Matching the person means switching into an organization
-neither grants nor removes operator rights. Empty means nobody.
+Every `/moderation/*` route needs an Oxy session whose **person** holds
+GoWay's `moderation.operate` application permission, granted in Oxy by the
+GoWay application's owners (`~/Oxy/docs/application-roles.md`) — the same
+mechanism as the Street 3D contribution pilot's `capture.pilot`. Oxy resolves
+the person, so switching into an organization neither grants nor removes
+operator rights; a decision is attributed to that person. Without the key the
+answer is `403`, and Oxy unable to say is `503`, never a "no".
 
 - **Claims**: a queue by state; `approved`/`rejected` decide a `pending` claim,
   `revoked` withdraws an `approved` one, anything else is `409`. `decidedAt` is

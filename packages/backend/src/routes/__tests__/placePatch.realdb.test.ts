@@ -46,7 +46,7 @@ beforeAll(async () => {
     createPlacesRouter({
       optionalAuth: fakeOptionalAuth,
       requireAuth: fakeRequireAuth,
-      accountRoles: NO_MEMBERSHIPS,
+      accountAccess: NO_MEMBERSHIPS,
       reportRateLimit: NO_RATE_LIMIT,
     }),
   );

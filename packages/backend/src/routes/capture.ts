@@ -62,7 +62,8 @@ import {
   type CaptureUploadTicket,
 } from '@goway/contracts';
 import { evidenceFromClaim, normalizedCamera } from '../capture/exif';
-import { captureConfig, mayContribute } from '../config/capture';
+import { captureConfig } from '../config/capture';
+import type { ContributionGate } from '../oxy/appPermissions';
 import {
   createCaptureSession,
   finalizeAsset,
@@ -141,13 +142,14 @@ function evidenceOf(
 /**
  * The current upload policy, as the contract publishes it.
  *
- * `enabled` is answered FOR THE CALLER: during a closed pilot an account outside
- * the list sees contribution as unavailable, which is the truth for them, rather
- * than a form that then refuses to submit.
+ * `enabled` is answered FOR THE CALLER (`mayContribute`): during the closed
+ * pilot an account without the pilot permission — or a signed-out visitor —
+ * sees contribution as unavailable, which is the truth for them, rather than a
+ * form that then refuses to submit.
  */
-export function currentUploadPolicy(oxyUserId?: string): CaptureUploadPolicy {
+export function currentUploadPolicy(mayContribute: boolean): CaptureUploadPolicy {
   return {
-    enabled: mayContribute(captureConfig, oxyUserId),
+    enabled: captureConfig.enabled && mayContribute,
     consentVersion: captureConfig.consentVersion,
     contentHashAlgorithm: 'sha256',
     photo: {
@@ -179,9 +181,9 @@ function isTwoToOne(width: number, height: number): boolean {
   return Math.abs(width - 2 * height) <= Math.max(2, 0.01 * width);
 }
 
-/** Refuse a contribution from an account outside a closed pilot. */
-function assertMayContribute(oxyUserId: string): void {
-  if (captureConfig.enabled && !mayContribute(captureConfig, oxyUserId)) {
+/** Refuse a contribution from a person outside the closed pilot. */
+async function assertMayContribute(request: Request, gate: ContributionGate): Promise<void> {
+  if (captureConfig.enabled && !(await gate(request))) {
     throw new ApiError('forbidden', 'Contributions are open to a closed pilot group for now.');
   }
 }
@@ -314,10 +316,12 @@ export interface CaptureRouterDependencies {
    * would make one optional feature a hard dependency of the whole product.
    */
   objectStore: CaptureObjectStore | null;
+  /** Whether the person may contribute during the closed pilot (`oxy/appPermissions`). */
+  mayContribute: ContributionGate;
 }
 
 export function createCaptureRouter(dependencies: CaptureRouterDependencies): Router {
-  const { requireAuth, optionalAuth, objectStore } = dependencies;
+  const { requireAuth, optionalAuth, objectStore, mayContribute } = dependencies;
   const router: Router = Router();
 
   /** The store, or a refusal a client can act on. */
@@ -343,7 +347,7 @@ export function createCaptureRouter(dependencies: CaptureRouterDependencies): Ro
     '/captures/policy',
     optionalAuth,
     route(async (request, response) => {
-      response.json(currentUploadPolicy(request.userId ?? undefined));
+      response.json(currentUploadPolicy(await mayContribute(request)));
     }),
   );
 
@@ -360,7 +364,7 @@ export function createCaptureRouter(dependencies: CaptureRouterDependencies): Ro
     requireAuth,
     route(async (request, response) => {
       const { startedAt, ...input } = parseBody(captureSessionInputSchema, request.body);
-      assertMayContribute(requiredCallerId(request));
+      await assertMayContribute(request, mayContribute);
       if (input.consentVersion !== captureConfig.consentVersion) {
         throw new ApiError(
           'conflict',
@@ -443,7 +447,7 @@ export function createCaptureRouter(dependencies: CaptureRouterDependencies): Ro
     route(async (request, response) => {
       const sessionId = sessionIdParam(request);
       const oxyUserId = requiredCallerId(request);
-      assertMayContribute(oxyUserId);
+      await assertMayContribute(request, mayContribute);
       const input = parseBody(captureAssetInputSchema, request.body);
       const evidence = evidenceOf(input.location);
       const camera = normalizedCamera(input.camera);

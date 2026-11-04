@@ -7,12 +7,13 @@
  * publish, and to tell Oxy the place uses it. GoWay never downloads, proxies or
  * stores an image: Oxy's CDN serves the bytes to whoever renders the gallery.
  *
- * ## Checked with the CALLER's bearer, on a short-lived client
+ * ## Checked as the CALLER, on a user client
  *
- * The same shape as `oxy/accountRoles`, for the same reason: what is being
- * established is something about THIS caller ("the file is mine"), and the
- * process-wide client must never carry a caller's token. Two questions, one
- * client, disposed after:
+ * What is being established is something about THIS caller ("the file is
+ * mine"), so it is asked with the request's own verified bearer through
+ * `OxyServer#withUser`, which builds an isolated client for the callback and
+ * disposes it after — the process-wide client never carries a caller's token.
+ * Two questions:
  *
  *  1. `GET /assets/:id` — the file exists, is `active`, is an image, and its
  *     `ownerUserId` is the session's account or the person operating it. Oxy
@@ -60,21 +61,18 @@
 
 import {
   OxyApiError,
-  OxyServices,
   type ServiceFileReference,
   type ServiceFileReferenceResult,
 } from '@oxy.so/core';
+import type { OxyServer } from '@oxy.so/core/server';
 import type { OxyFileReferences } from './fileReferences';
 import { PLACE_MEDIA_MIME_TYPES } from '@goway/contracts';
 import { ApiError } from '../http/apiError';
 import { logger } from '../utils/logger';
-import type { OxyCaller } from './accountRoles';
+import type { OxyCaller } from './accountAccess';
 
 /** The entity type a place's gallery references name. */
 export const PLACE_ENTITY_TYPE = 'place';
-
-/** One question to Oxy may take this long, in milliseconds — as for account roles. */
-const OXY_REQUEST_TIMEOUT_MS = 5_000;
 
 /** What GoWay keeps of a file it may publish. */
 export interface PlaceFile {
@@ -95,8 +93,8 @@ export interface PlaceFileStore {
 }
 
 export interface PlaceFileStoreOptions {
-  /** The Oxy API origin, for the caller's short-lived client. */
-  readonly oxyApiUrl: string;
+  /** The process's Oxy client, whose user clients ask as the caller. */
+  readonly oxy: Pick<OxyServer, 'withUser'>;
   /** Adds GoWay's references with GoWay's own token (`createOxyFileReferences`). */
   readonly references: Pick<OxyFileReferences, 'add'>;
 }
@@ -142,26 +140,9 @@ function placeReference(fileId: string, placeId: string): ServiceFileReference {
 export function createOxyPlaceFileStore(options: PlaceFileStoreOptions): PlaceFileStore {
   const { references } = options;
 
-  function clientFor(caller: OxyCaller): OxyServices {
-    if (caller.accessToken === null) {
-      // Behind `requireAuth` a session always carries its token; without one
-      // there is nobody to check the file against.
-      throw new ApiError('unauthorized', 'This request requires an Oxy session.');
-    }
-    const client = new OxyServices({
-      baseURL: options.oxyApiUrl,
-      enableCache: false,
-      enableRetry: false,
-      requestTimeout: OXY_REQUEST_TIMEOUT_MS,
-    });
-    client.session.setAccessToken(caller.accessToken);
-    return client;
-  }
-
   /** The caller's checks: resolves with what GoWay keeps, or throws the refusal. */
-  async function check(caller: OxyCaller, fileId: string): Promise<PlaceFile> {
-    const client = clientFor(caller);
-    try {
+  function check(caller: OxyCaller, fileId: string): Promise<PlaceFile> {
+    return options.oxy.withUser(caller.request, async (client) => {
       const record = await client.assets.get(fileId).catch(translate);
       if (record === null) throw refused('No Oxy file has that id.', 'not_found');
       const { file } = record;
@@ -196,9 +177,7 @@ export function createOxyPlaceFileStore(options: PlaceFileStoreOptions): PlaceFi
         ...(width !== undefined ? { width } : {}),
         ...(height !== undefined ? { height } : {}),
       };
-    } finally {
-      client.dispose();
-    }
+    });
   }
 
   return {
