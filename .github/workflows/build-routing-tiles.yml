@@ -27,12 +27,15 @@
 # `ecr:InitiateLayerUpload`, which reads like a broken workflow rather than a
 # missing grant.
 #
-# ## This publishes; it does not deploy
+# ## This publishes, and `:latest` is what the next task starts
 #
-# The new image lands in ECR as `:latest` and as a dated tag. Rolling the
-# service onto it is a separate, deliberate act — `aws ecs update-service
-# --cluster oxy-cluster --service goway-routing --force-new-deployment` — so a
-# tile rebuild can never be the unexplained reason last night's routes changed.
+# The new image lands in ECR as a dated tag and as `:latest`. Rolling the
+# service onto it on purpose is `aws ecs update-service --cluster oxy-cluster
+# --service goway-routing --force-new-deployment`, but oxy-infra's task
+# definition names `:latest`, so ANY task replacement (a crash, a Fargate
+# retirement) also starts it. That is why `:latest` is only pushed after the
+# image has been started here and has routed Barcelona to Madrid: a run that
+# fails at any step leaves the image production runs untouched.
 name: Build routing tiles
 
 on:
@@ -115,6 +118,26 @@ jobs:
           img="$ECR_REGISTRY/$REPOSITORY"
           # Native arm64 runner, so no emulation and no --platform needed.
           docker build -t "$img:$tag" -t "$img:latest" "$OUT"
+
+          # Start the image exactly as ECS does and make it route. `/status`
+          # answers without tiles, so it only says the process is up; the
+          # Barcelona→Madrid drive says the tiles load and cover the country.
+          docker run -d --name routing-smoke -p 127.0.0.1:8002:8002 "$img:$tag"
+          up=""
+          for _ in $(seq 1 60); do
+            if curl -fsS http://127.0.0.1:8002/status >/dev/null 2>&1; then up=1; break; fi
+            sleep 3
+          done
+          [ -n "$up" ] || { docker logs routing-smoke; echo "::error::the engine image never answered /status"; exit 1; }
+          km="$(curl -fsS http://127.0.0.1:8002/route -H 'content-type: application/json' \
+            -d '{"locations":[{"lat":41.3851,"lon":2.1734},{"lat":40.4168,"lon":-3.7038}],"costing":"auto"}' \
+            | jq -r '.trip.summary.length')" || { docker logs routing-smoke; echo "::error::the engine image did not route Barcelona to Madrid"; exit 1; }
+          docker rm -f routing-smoke >/dev/null
+          # About 620 km by road; the crow flies 505.
+          awk -v km="$km" 'BEGIN { exit !(km > 520 && km < 800) }' \
+            || { echo "::error::Barcelona to Madrid came back as $km km"; exit 1; }
+          echo "Smoke route Barcelona to Madrid: $km km."
+
           docker push "$img:$tag"
           docker push "$img:latest"
           echo "Published $REPOSITORY:$tag ($(du -h "$OUT/tiles.tar" | cut -f1) of tiles)."
