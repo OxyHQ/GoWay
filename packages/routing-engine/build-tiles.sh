@@ -17,8 +17,26 @@ set -euo pipefail
 
 REGION="${REGION:-europe/spain}"
 OUT="${OUT:-$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/build}"
-VALHALLA_IMAGE="${VALHALLA_IMAGE:-ghcr.io/valhalla/valhalla:latest}"
 DOCKER="${DOCKER:-docker}"
+# The tiles are built by the SAME Valhalla the image serves them with: the
+# Dockerfile's digest-pinned FROM, read here so there is one pin and not two.
+# Valhalla's tile format is versioned. Building with `:latest` while serving
+# with the pin produced tiles from a binary the engine has never run (on
+# 2026-11-04 `:latest` was sha256:6b6a95f6…, the pin is sha256:c9c1f9e6…).
+pinned="$(sed -n 's/^FROM //p' "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/Dockerfile" | head -n 1)"
+VALHALLA_IMAGE="${VALHALLA_IMAGE:-$pinned}"
+[[ -n "$VALHALLA_IMAGE" ]] || { echo "!! no FROM in the routing-engine Dockerfile" >&2; exit 1; }
+
+# The container runs as root, so everything it writes under $OUT is root's.
+# The caller has to own the result: CI hard-links these files into the image
+# context, and Ubuntu's fs.protected_hardlinks refuses to link a file you do not
+# own, exactly as the host's `rm` of root-owned tiles failed every scheduled run
+# until 2026-11 with "Permission denied". Under rootless docker the container's
+# root already IS the caller, and a chown to the host uid would map it away.
+owner="$(id -u):$(id -g)"
+if "$DOCKER" info --format '{{.SecurityOptions}}' 2>/dev/null | grep -q rootless; then
+  owner=""
+fi
 
 extract="$(basename "$REGION")-latest.osm.pbf"
 url="https://download.geofabrik.de/${REGION}-latest.osm.pbf"
@@ -76,10 +94,13 @@ PY
   # One mmap-able archive instead of ~1800 loose files: a tar is one page cache
   # and one COPY layer, where a directory tree is thousands of tiny image files.
   find /data/tiles | sort -n | valhalla_build_extract -c /data/valhalla.json -v
+  # The loose tiles are now inside tiles.tar and are pure weight in the image.
+  # Removed HERE, by the user that wrote them; the host cannot.
+  rm -rf /data/tiles
+  if [[ -n '$owner' ]]; then chown -R '$owner' /data; fi
 "
 
-# The loose tiles are now inside tiles.tar and are pure weight in the image.
-rm -rf "$OUT/tiles" "$OUT/$extract"
+rm -f "$OUT/$extract"
 
 echo
 echo "==> built:"
