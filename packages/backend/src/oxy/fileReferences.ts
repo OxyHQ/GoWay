@@ -41,7 +41,8 @@ import {
   type ServiceReferenceInventoryItem,
   type ServiceReferenceReconcileResult,
 } from '@oxy.so/core';
-import type { OxyServer } from '@oxy.so/core/server';
+import { OxyServer, type WorkloadCredentialProvider } from '@oxy.so/core/server';
+import { workloadCredentials } from './workload';
 import {
   OXY_FILE_REFERENCES_POLICY,
   type OxyFileReferencesPolicy,
@@ -74,27 +75,37 @@ export interface OxyFileReferences {
 
 /** One question to Oxy may take this long, in milliseconds — as the caller's checks. */
 const OXY_REFERENCE_TIMEOUT_MS = 5_000;
+/** A reconciliation's pages and commit may take this long each, in milliseconds. */
+const OXY_RECONCILE_TIMEOUT_MS = 120_000;
 
 /**
- * GoWay's references, on the process's one `OxyServer`. Adds and removes go
- * out once, bounded at five seconds (per-call `ServiceCallOptions`): the SDK
- * would retry a DELETE with backoff by default, holding a withdrawal's `204`,
- * and the outbox retries anyway. A reconciliation keeps the SDK's own pacing,
- * retries and per-page and commit deadlines (its pages are idempotent; Oxy
- * diffs the whole inventory in its commit).
+ * GoWay's references client. Adds and removes go out once, bounded at five
+ * seconds: the SDK would retry a DELETE with backoff by default, holding a
+ * withdrawal's `204`, and the outbox retries anyway. A reconciliation keeps
+ * the SDK's retries (its pages are idempotent) and gets a long bound: Oxy
+ * diffs the whole inventory in its commit.
  *
  * GoWay holds no Oxy key pair: in a deployment the token is the ECS task
  * role's attested workload identity (Oxy ADR 0049), whose live binding names
- * the GoWay application and environment.
+ * the GoWay application and environment. The injected credential provider
+ * also supports development roles and the test suite's fake Oxy.
  */
-export function createOxyFileReferences(oxy: Pick<OxyServer, 'assets'>): OxyFileReferences {
-  const { references } = oxy.assets;
-  const once = { retry: false, timeout: OXY_REFERENCE_TIMEOUT_MS } as const;
-  return {
-    add: (refs) => references.add(refs, once),
-    remove: (refs) => references.remove(refs, once),
-    reconcile: (entityType, items, options) => references.reconcile(entityType, items, options),
-  };
+export function createOxyFileReferences(options: {
+  baseURL: string;
+  workloadCredentials?: WorkloadCredentialProvider;
+}): OxyFileReferences {
+  const once = new OxyServer({
+    baseURL: options.baseURL,
+    enableRetry: false,
+    requestTimeout: OXY_REFERENCE_TIMEOUT_MS,
+    workloadCredentials: options.workloadCredentials ?? workloadCredentials,
+  }).assets.references;
+  const patient = new OxyServer({
+    baseURL: options.baseURL,
+    requestTimeout: OXY_RECONCILE_TIMEOUT_MS,
+    workloadCredentials: options.workloadCredentials ?? workloadCredentials,
+  }).assets.references;
+  return { add: once.add, remove: once.remove, reconcile: patient.reconcile };
 }
 
 /** Logs ids, counts and failure classes — never a file's metadata or an error message. */

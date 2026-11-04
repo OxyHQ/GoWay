@@ -23,11 +23,10 @@
  * ## Who may call it
  *
  * Every route is behind `requireAuth` and then the operator gate: an Oxy
- * session whose PERSON holds GoWay's `moderation.operate` application
- * permission (`oxy/appPermissions`), granted in Oxy by the GoWay application's
- * owners. Anybody else is `403`, which says nothing about whether the claim,
- * place or report they named exists; Oxy unable to say is `503`. Nothing here
- * is in the public CORS lane.
+ * session whose PERSON is on `MODERATION_OPERATOR_OXY_USER_IDS` — the same
+ * Oxy-id allow-list mechanism the Street 3D contribution pilot uses. Anybody
+ * else is `403`, which says nothing about whether the claim, place or report
+ * they named exists. Nothing here is in the public CORS lane.
  *
  * ## What it guarantees
  *
@@ -135,24 +134,15 @@ function route(handler: (request: Request, response: Response) => Promise<void>)
   };
 }
 
-/**
- * The author of an operator's decision: the session's account, operated by
- * the PERSON Oxy resolved when it answered the operator gate.
- */
+/** The author of an operator's decision. */
 function operator(request: Request) {
-  const { oxyAccountId } = requiredOxyCaller(request);
-  const operatorId = request.oxyAppPermissions?.operatorId;
-  if (!operatorId) {
-    // Only reachable if the router is mounted without its gate.
-    throw new ApiError('forbidden', 'Only a GoWay moderation operator may do this.');
-  }
-  return revisionAuthor({ oxyAccountId, operatedByOxyUserId: operatorId }, 'moderation');
+  return revisionAuthor(requiredOxyCaller(request), 'moderation');
 }
 
 export interface ModerationRouterDependencies {
   /** Fail-closed: refuses the request unless it carries a valid Oxy session. */
   requireAuth: RequestHandler;
-  /** Refuses everybody whose person does not hold `moderation.operate`. */
+  /** Refuses everybody whose person is not on the operator allow-list. */
   requireOperator: RequestHandler;
 }
 

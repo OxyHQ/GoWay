@@ -148,10 +148,9 @@ GoWay asks `GET /accounts/:id` with the caller's own bearer, caches the answer
 `oxy_verified` capabilities and the place's verification state, removing and
 restoring a place, the duplicate queue and merges, the report queue, and a
 place's full history with who made each change. Every route is behind
-`requireAuth` and GoWay's `moderation.operate` application permission, which
-the GoWay application's owners grant to people in Oxy (`oxy/appPermissions`;
-matched against the person behind the session). Every decision records a
-revision in the same transaction, attributed to that person.
+`requireAuth` and the operator allow-list `MODERATION_OPERATOR_OXY_USER_IDS`
+(Oxy user ids, matched against the person behind the session; empty means
+nobody). Every decision records a revision in the same transaction.
 
 ## Importing OpenStreetMap POIs
 

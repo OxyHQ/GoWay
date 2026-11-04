@@ -83,8 +83,7 @@ async function run(): Promise<void> {
     process.env.OXY_API_URL = await listen(issuer);
     // Configuration syntax only: this test never opens a product database.
     process.env.DATABASE_URL = 'postgres://unused:unused@127.0.0.1:1/receiver_fixture_unused';
-    const { requireAuth: middleware } = await import('../../middleware/auth.js');
-    const { oxy: oxyClient } = await import('../../oxy/server.js');
+    const { requireAuth: middleware, oxyClient } = await import('../../middleware/auth.js');
     disposeClient = () => oxyClient.dispose();
     const app = express();
     app.get('/owned-fixture', middleware, (req, res) => {

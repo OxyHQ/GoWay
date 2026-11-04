@@ -68,7 +68,7 @@ import { getDb } from '../db/postgres';
 import { ApiError } from '../http/apiError';
 import { cursorBinding, decodeCursor, pageOf, timePageOf, timeWindowOf } from '../http/cursor';
 import { parseBody, parsePath, parseQuery } from '../http/validation';
-import type { OxyCaller } from '../oxy/accountAccess';
+import type { OxyCaller } from '../oxy/accountRoles';
 import { requiredOxyCaller } from '../oxy/caller';
 import { assertPublished } from '../places/placeLifecycle';
 

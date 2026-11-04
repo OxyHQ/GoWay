@@ -23,10 +23,10 @@ nothing else: no bytes, no proxy, no thumbnail, no fetch.
 
 ### What GoWay checks, and how
 
-`POST /places/{placeId}/media` asks Oxy two questions as the **caller**, on a
-user client bound to their own bearer (`oxy.withUser`), because what is being
-established is about this caller — and then records the place's use of the
-file **as GoWay**:
+`POST /places/{placeId}/media` asks Oxy two questions on a client built for
+the request with the **caller's own bearer** and disposed after it — the
+`oxy/accountRoles` shape, because what is being established is about this
+caller — and then records the place's use of the file **as GoWay**:
 
 1. `GET /assets/:id` — the file exists, is `active`, is one of
    `PLACE_MEDIA_MIME_TYPES`, and its `ownerUserId` is the session's account or

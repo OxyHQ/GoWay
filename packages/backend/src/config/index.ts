@@ -15,6 +15,7 @@
  */
 
 import { z } from 'zod';
+import { oxyUserIdList } from './oxyUserIds';
 
 // Bun loads a `.env` file from the working directory into `process.env` before
 // any module runs, so the parse below already sees it. That file is a developer
@@ -127,6 +128,16 @@ const schema = z.object({
    * running deployment during an incident must not need a release.
    */
   logLevel: z.preprocess(emptyAsUndefined, z.enum(LOG_LEVELS).optional()),
+  /**
+   * The Oxy user ids that may use `/moderation`: approve claims, verify
+   * capabilities, merge duplicates and resolve reports.
+   *
+   * The same allow-list mechanism as the capture pilot, keyed on the PERSON
+   * (Oxy's actor chain), so an operator who switched into an organization is
+   * still an operator and the organization never becomes one. Empty — the
+   * default — means nobody moderates through the API; a deployment opts in.
+   */
+  moderationOperatorOxyUserIds: oxyUserIdList,
 });
 
 /** The parsed configuration. */
@@ -150,6 +161,7 @@ export function parseConfig(source: EnvironmentSource = process.env): Config {
     corsAppOrigins: source.CORS_APP_ORIGINS,
     oxyApiUrl: source.OXY_API_URL,
     logLevel: source.LOG_LEVEL,
+    moderationOperatorOxyUserIds: source.MODERATION_OPERATOR_OXY_USER_IDS,
   });
 
   if (!result.success) {

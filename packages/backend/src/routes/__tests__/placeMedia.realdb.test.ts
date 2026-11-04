@@ -37,8 +37,8 @@ import {
   destroySuiteDatabase,
   type SuiteDatabase,
 } from '../../db/__tests__/testDatabase';
-import { createRequireOperator, MODERATION_PERMISSION } from '../../oxy/appPermissions';
-import { createAccountAccessResolver } from '../../oxy/accountAccess';
+import { createRequireOperator } from '../../middleware/operator';
+import { createAccountRoleResolver } from '../../oxy/accountRoles';
 import {
   createFileReferenceWorker,
   createOxyFileReferences,
@@ -47,7 +47,7 @@ import {
 import { createOxyPlaceFileStore } from '../../oxy/placeFiles';
 import {
   FAKE_SERVICE_APPLICATION_ID,
-  fakeOxyServer,
+  fakeWorkloadCredentials,
   membershipKey,
   startFakeOxy,
   type FakeOxy,
@@ -176,13 +176,13 @@ beforeAll(async () => {
   oxy.memberships.set(membershipKey('person-editor', 'org-cafe'), 'editor');
   oxy.memberships.set(membershipKey('person-viewer', 'org-cafe'), 'viewer');
 
-  oxy.appPermissions.set('person-mod', [MODERATION_PERMISSION]);
-
-  // GoWay's one Oxy client, and everything on it, exactly as `middleware/auth` builds them.
-  const server = fakeOxyServer(oxy);
-  const accountAccess = createAccountAccessResolver(server);
-  const references = createOxyFileReferences(server);
-  const placeFiles = createOxyPlaceFileStore({ oxy: server, references });
+  const accountRoles = createAccountRoleResolver({ oxyApiUrl: oxy.url, ttlMs: 0 });
+  // GoWay's own references client and worker, exactly as `middleware/auth` builds them.
+  const references = createOxyFileReferences({
+    baseURL: oxy.url,
+    workloadCredentials: fakeWorkloadCredentials,
+  });
+  const placeFiles = createOxyPlaceFileStore({ oxyApiUrl: oxy.url, references });
   const db = suite.db;
   worker = createFileReferenceWorker({
     getDb: () => db,
@@ -193,13 +193,13 @@ beforeAll(async () => {
     createPlacesRouter({
       optionalAuth: fakeOptionalAuth,
       requireAuth: fakeRequireAuth,
-      accountAccess,
+      accountRoles,
       reportRateLimit: NO_RATE_LIMIT,
     }),
     createPlaceMediaRouter({
       optionalAuth: fakeOptionalAuth,
       requireAuth: fakeRequireAuth,
-      accountAccess,
+      accountRoles,
       placeFiles,
       fileReferences: worker,
       reportRateLimit: NO_RATE_LIMIT,
@@ -207,7 +207,7 @@ beforeAll(async () => {
     }),
     createModerationRouter({
       requireAuth: fakeRequireAuth,
-      requireOperator: createRequireOperator(server),
+      requireOperator: createRequireOperator(['person-mod']),
     }),
   );
 

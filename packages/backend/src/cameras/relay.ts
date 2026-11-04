@@ -9,12 +9,8 @@
  *
  * ## Safe by construction
  *
- * The URL is third-party data, so it is fetched with `@oxy.so/core`'s
- * `safeFetch`: every hop of a redirect is resolved and checked to be a public
- * host, and the connection is pinned to the address that was checked, so a
- * DNS answer that changes between the check and the connect cannot reach
- * GoWay's own network. The body is read with `readResponseBody` (capped, with
- * one deadline), and only an image is
+ * The URL is third-party data (`publicHost.ts`): every hop of a redirect is
+ * checked to be a public host, the body is capped, and only an image is
  * accepted — never HTML, which would let a hostile upstream put markup on a
  * GoWay origin. What an image IS is read from its bytes, not from the
  * upstream's `Content-Type`: Toronto serves PNG files labelled `image/jpeg`,
@@ -27,11 +23,11 @@
  * every viewer.
  */
 
-import { readResponseBody, SsrfRejection, safeFetch, UpstreamError } from '@oxy.so/core/server';
 import { SNAPSHOT_CACHE_MIN_SECONDS } from './config';
+import { assertPublicUrl, type Resolver } from './publicHost';
+import type { CameraFetch } from './types';
 
 export const MAX_SNAPSHOT_BYTES = 5 * 1024 * 1024;
-/** How long an upstream may take to send its headers, and then its whole body, each. */
 export const FETCH_TIMEOUT_MS = 10_000;
 const MAX_REDIRECTS = 3;
 /** The most pictures held at once, and the most bytes across them. */
@@ -70,9 +66,9 @@ export class SnapshotUnavailableError extends Error {
 }
 
 export interface SnapshotRelayOptions {
-  /** The SSRF-safe fetch; injected only by tests, which cannot reach a public host. */
-  safeFetch?: typeof safeFetch;
+  fetch?: CameraFetch;
   now?: () => number;
+  resolve?: Resolver;
   userAgent?: string;
 }
 
@@ -88,8 +84,9 @@ export function holdSeconds(refreshSeconds: number): number {
 }
 
 export class SnapshotRelay {
-  private readonly fetchFn: typeof safeFetch;
+  private readonly fetchFn: CameraFetch;
   private readonly now: () => number;
+  private readonly resolve: Resolver | undefined;
   private readonly userAgent: string;
   private readonly cache = new Map<string, Snapshot>();
   private readonly inFlight = new Map<string, Promise<Snapshot>>();
@@ -97,8 +94,9 @@ export class SnapshotRelay {
   private totalBytes = 0;
 
   constructor(options: SnapshotRelayOptions = {}) {
-    this.fetchFn = options.safeFetch ?? safeFetch;
+    this.fetchFn = options.fetch ?? fetch;
     this.now = options.now ?? Date.now;
+    this.resolve = options.resolve;
     this.userAgent = options.userAgent ?? 'GoWay-cameras/1.0 (+https://goway.to)';
   }
 
@@ -153,45 +151,71 @@ export class SnapshotRelay {
   }
 
   private async fetchUpstream(target: RelayTarget): Promise<Snapshot> {
-    let upstream: Awaited<ReturnType<typeof safeFetch>>;
-    try {
-      upstream = await this.fetchFn(target.upstreamUrl, {
-        maxRedirects: MAX_REDIRECTS,
-        headersTimeoutMs: FETCH_TIMEOUT_MS,
+    let url = new URL(target.upstreamUrl);
+    for (let hop = 0; hop <= MAX_REDIRECTS; hop++) {
+      try {
+        await assertPublicUrl(url, this.resolve);
+      } catch (error) {
+        throw new SnapshotUnavailableError(`Refused ${url.hostname}: ${(error as Error).message}`);
+      }
+      const response = await this.fetchFn(url, {
+        redirect: 'manual',
+        signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
         headers: { 'user-agent': this.userAgent, accept: 'image/*' },
       });
-    } catch (error) {
-      if (error instanceof SsrfRejection || error instanceof UpstreamError) {
-        throw new SnapshotUnavailableError(`Refused the camera's address: ${error.message}`);
+      if (response.status >= 300 && response.status < 400) {
+        const location = response.headers.get('location');
+        if (!location) throw new SnapshotUnavailableError('Redirect without a location.');
+        url = new URL(location, url);
+        continue;
       }
-      throw new SnapshotUnavailableError('The camera did not answer.');
+      if (response.status !== 200) {
+        throw new SnapshotUnavailableError(`The camera answered ${response.status}.`);
+      }
+      const bytes = await readCapped(response, MAX_SNAPSHOT_BYTES);
+      const contentType = sniffImageType(bytes);
+      if (!contentType) {
+        throw new SnapshotUnavailableError('The camera sent something that is not an image.');
+      }
+      const modified = response.headers.get('last-modified');
+      const frameAt = modified ? new Date(modified) : null;
+      return {
+        bytes,
+        contentType,
+        fetchedAt: this.now(),
+        frameAt: frameAt && Number.isFinite(frameAt.getTime()) ? frameAt : null,
+        etag: `"${await digest(bytes)}"`,
+      };
     }
-    if (upstream.status !== 200) {
-      upstream.response.destroy();
-      throw new SnapshotUnavailableError(`The camera answered ${upstream.status}.`);
-    }
-    const body = await readResponseBody(upstream.response, {
-      maxBytes: MAX_SNAPSHOT_BYTES,
-      timeoutMs: FETCH_TIMEOUT_MS,
-    });
-    if (body.kind === 'too_large') throw new SnapshotUnavailableError('The picture is too large.');
-    if (body.kind !== 'ok')
-      throw new SnapshotUnavailableError('The camera did not send a picture.');
-    const bytes = new Uint8Array(body.body);
-    const contentType = sniffImageType(bytes);
-    if (!contentType) {
-      throw new SnapshotUnavailableError('The camera sent something that is not an image.');
-    }
-    const modified = upstream.headers['last-modified'];
-    const frameAt = modified ? new Date(modified) : null;
-    return {
-      bytes,
-      contentType,
-      fetchedAt: this.now(),
-      frameAt: frameAt && Number.isFinite(frameAt.getTime()) ? frameAt : null,
-      etag: `"${await digest(bytes)}"`,
-    };
+    throw new SnapshotUnavailableError('Too many redirects.');
   }
+}
+
+/** The body, refused (not truncated) past `max` bytes. */
+async function readCapped(response: Response, max: number): Promise<Uint8Array> {
+  const declared = Number(response.headers.get('content-length') ?? 0);
+  if (declared > max) throw new SnapshotUnavailableError('The picture is too large.');
+  const reader = response.body?.getReader();
+  if (!reader) throw new SnapshotUnavailableError('The camera sent no body.');
+  const chunks: Uint8Array[] = [];
+  let length = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    length += value.byteLength;
+    if (length > max) {
+      await reader.cancel();
+      throw new SnapshotUnavailableError('The picture is too large.');
+    }
+    chunks.push(value);
+  }
+  const bytes = new Uint8Array(length);
+  let offset = 0;
+  for (const chunk of chunks) {
+    bytes.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  return bytes;
 }
 
 async function digest(bytes: Uint8Array): Promise<string> {

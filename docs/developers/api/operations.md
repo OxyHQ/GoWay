@@ -2115,7 +2115,6 @@ Approve or reject a pending claim, or revoke an approved one.
 | `422` | `validation_failed` |
 | `429` | `rate_limited` |
 | `500` | `internal_error` |
-| `503` | `service_unavailable` |
 
 ### moderatePlace
 
@@ -2154,7 +2153,6 @@ Set a place's verification state, or withdraw or restore it.
 | `422` | `validation_failed` |
 | `429` | `rate_limited` |
 | `500` | `internal_error` |
-| `503` | `service_unavailable` |
 
 ### verifyPlaceCapability
 
@@ -2193,7 +2191,6 @@ Assert one capability at the oxy_verified tier.
 | `422` | `validation_failed` |
 | `429` | `rate_limited` |
 | `500` | `internal_error` |
-| `503` | `service_unavailable` |
 
 ### withdrawVerifiedCapability
 
@@ -2328,7 +2325,6 @@ Hide a gallery item, or restore a hidden one.
 | `422` | `validation_failed` |
 | `429` | `rate_limited` |
 | `500` | `internal_error` |
-| `503` | `service_unavailable` |
 
 ### listModerationPlaceReviews
 
@@ -2400,7 +2396,6 @@ Hide a review, or restore a hidden one.
 | `422` | `validation_failed` |
 | `429` | `rate_limited` |
 | `500` | `internal_error` |
-| `503` | `service_unavailable` |
 
 ### removePlaceReviewReply
 
@@ -2510,7 +2505,6 @@ One of:
 | `422` | `validation_failed` |
 | `429` | `rate_limited` |
 | `500` | `internal_error` |
-| `503` | `service_unavailable` |
 
 ### listPlaceReports
 
@@ -2579,7 +2573,6 @@ Close a report as actioned or dismissed.
 | `422` | `validation_failed` |
 | `429` | `rate_limited` |
 | `500` | `internal_error` |
-| `503` | `service_unavailable` |
 
 ### listModerationCategories
 
@@ -2644,7 +2637,6 @@ Add a category under an active parent, with an English label and any others.
 | `422` | `validation_failed` |
 | `429` | `rate_limited` |
 | `500` | `internal_error` |
-| `503` | `service_unavailable` |
 
 ### updateCategory
 
@@ -2685,7 +2677,6 @@ Change a category's glyph, position, OpenStreetMap mapping or status. Deprecatin
 | `422` | `validation_failed` |
 | `429` | `rate_limited` |
 | `500` | `internal_error` |
-| `503` | `service_unavailable` |
 
 ### putCategoryLabel
 
@@ -2723,7 +2714,6 @@ Set a category's label in one language.
 | `422` | `validation_failed` |
 | `429` | `rate_limited` |
 | `500` | `internal_error` |
-| `503` | `service_unavailable` |
 
 ### deleteCategoryLabel
 
