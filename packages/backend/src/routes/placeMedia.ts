@@ -63,7 +63,7 @@ import { getDb } from '../db/postgres';
 import { ApiError } from '../http/apiError';
 import { cursorBinding, decodeCursor, pageOf } from '../http/cursor';
 import { parseBody, parsePath, parseQuery } from '../http/validation';
-import type { AccountRoleResolver } from '../oxy/accountRoles';
+import type { AccountAccessResolver } from '../oxy/accountAccess';
 import { requiredOxyCaller } from '../oxy/caller';
 import { enqueueFileReferenceChanges } from '../db/oxyFiles/referenceChanges';
 import { failureOf, type FileReferenceWorker } from '../oxy/fileReferences';
@@ -87,7 +87,7 @@ const BUSINESS_KINDS: ReadonlySet<PlaceMediaKind> = new Set(BUSINESS_MEDIA_KINDS
 export interface PlaceMediaRouterDependencies {
   optionalAuth: RequestHandler;
   requireAuth: RequestHandler;
-  accountRoles: AccountRoleResolver;
+  accountAccess: AccountAccessResolver;
   /** Checks the Oxy files a gallery shows, and references them as GoWay. */
   placeFiles: PlaceFileStore;
   /** Delivers the reference changes a gallery write queued (`oxy/fileReferences`). */
@@ -102,7 +102,7 @@ export function createPlaceMediaRouter(dependencies: PlaceMediaRouterDependencie
   const {
     optionalAuth,
     requireAuth,
-    accountRoles,
+    accountAccess,
     placeFiles,
     fileReferences,
     reportRateLimit,
@@ -170,7 +170,7 @@ export function createPlaceMediaRouter(dependencies: PlaceMediaRouterDependencie
 
       const { lifecycle, approvedClaims } = await getPlaceAuthorization(db, placeId);
       assertPublished(lifecycle);
-      const standing = await standingOn(approvedClaims, caller, accountRoles);
+      const standing = await standingOn(approvedClaims, caller, accountAccess);
       if (
         BUSINESS_KINDS.has(input.kind) &&
         standing.claimed &&
@@ -238,7 +238,7 @@ export function createPlaceMediaRouter(dependencies: PlaceMediaRouterDependencie
       const { lifecycle, approvedClaims } = await getPlaceAuthorization(db, placeId);
       assertPublished(lifecycle);
       if (
-        withdrawableVerification(await standingOn(approvedClaims, caller, accountRoles)) === null
+        withdrawableVerification(await standingOn(approvedClaims, caller, accountAccess)) === null
       ) {
         throw new ApiError('forbidden', "Only an approved claimant may order a place's gallery.");
       }
@@ -279,7 +279,7 @@ export function createPlaceMediaRouter(dependencies: PlaceMediaRouterDependencie
           item.operatedByOxyUserId === caller.operatedByOxyUserId);
       if (
         !contributed &&
-        withdrawableVerification(await standingOn(approvedClaims, caller, accountRoles)) === null
+        withdrawableVerification(await standingOn(approvedClaims, caller, accountAccess)) === null
       ) {
         throw new ApiError(
           'forbidden',

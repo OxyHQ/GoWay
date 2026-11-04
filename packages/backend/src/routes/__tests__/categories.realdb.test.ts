@@ -46,7 +46,8 @@ import {
 import { osmCategories } from '../../import/osm/poiTags';
 import { toImportedPlace } from '../../import/osm/placeRecord';
 import { emptyWriteStats, writePlaceBatch } from '../../import/osm/writePlaces';
-import { createRequireOperator } from '../../middleware/operator';
+import { createRequireOperator, MODERATION_PERMISSION } from '../../oxy/appPermissions';
+import { fakeOxyServer, startFakeOxy, type FakeOxy } from '../../__tests__/fakeOxy';
 import {
   fakeOptionalAuth,
   fakeRequireAuth,
@@ -68,26 +69,31 @@ const NEAR_LAVAPIES = `latitude=${LAVAPIES.latitude}&longitude=${LAVAPIES.longit
 
 let suite: SuiteDatabase | null = null;
 let api: TestApi;
+/** Oxy, holding GoWay's moderation permission for `person-mod` alone. */
+let operators: FakeOxy;
 
 beforeAll(async () => {
   suite = await createSuiteDatabase();
+  operators = await startFakeOxy();
+  operators.appPermissions.set('person-mod', [MODERATION_PERMISSION]);
   api = await serve(
     createCategoriesRouter(),
     createPlacesRouter({
       optionalAuth: fakeOptionalAuth,
       requireAuth: fakeRequireAuth,
-      accountRoles: NO_MEMBERSHIPS,
+      accountAccess: NO_MEMBERSHIPS,
       reportRateLimit: NO_RATE_LIMIT,
     }),
     createModerationRouter({
       requireAuth: fakeRequireAuth,
-      requireOperator: createRequireOperator(['person-mod']),
+      requireOperator: createRequireOperator(fakeOxyServer(operators)),
     }),
   );
 }, SUITE_SETUP_TIMEOUT_MS);
 
 afterAll(async () => {
   await api.close();
+  await operators.close();
   await destroySuiteDatabase(suite);
   suite = null;
 });

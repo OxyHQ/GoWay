@@ -25,7 +25,7 @@ import {
   createOptionalOxyAuth,
   createOxyAuthMiddleware,
   createOxyRateLimit,
-  OxyServer,
+  type OxyAppPermissions,
   type OxyRateLimitOptions,
   type OxyRequestUser,
 } from '@oxy.so/core/server';
@@ -33,14 +33,13 @@ import type { RequestHandler } from 'express';
 import { isCameraSnapshotRequest } from './cameraSnapshotRequest';
 import { isLiveShapeRequest } from './liveShapeRequest';
 import type { OxyActorChain } from '../oxy/caller';
-import { config } from '../config';
-import { workloadCredentials } from '../oxy/workload';
+import { oxy } from '../oxy/server';
 import {
-  createAccountRoleResolver,
+  createAccountAccessResolver,
   createOrganizationAuthority,
-  type AccountRoleResolver,
+  type AccountAccessResolver,
   type OrganizationAuthority,
-} from '../oxy/accountRoles';
+} from '../oxy/accountAccess';
 import { getDb } from '../db/postgres';
 import {
   createFileReferenceWorker,
@@ -48,8 +47,12 @@ import {
   type FileReferenceWorker,
 } from '../oxy/fileReferences';
 import { createOxyPlaceFileStore, type PlaceFileStore } from '../oxy/placeFiles';
+import {
+  createContributionGate,
+  createRequireOperator,
+  type ContributionGate,
+} from '../oxy/appPermissions';
 import { createLogger } from '../utils/logger';
-import { createRequireOperator } from './operator';
 
 /**
  * Express's `Request` gains the fields `@oxy.so/core/server` populates.
@@ -64,19 +67,19 @@ declare global {
   namespace Express {
     interface Request {
       userId?: string;
+      sessionId?: string | null;
       accessToken?: string;
       user?: OxyRequestUser | null;
+      /** What the person holds of GoWay's application permissions, after `requireOperator`. */
+      oxyAppPermissions?: OxyAppPermissions;
       /** Who acted, and as whom. Read it with `oxyCallerOf`, never directly. */
       oxyActor?: OxyActorChain | null;
     }
   }
 }
 
-/** The Oxy client this process authenticates against. */
-export const oxyClient = new OxyServer({ baseURL: config.oxyApiUrl, workloadCredentials });
-
 /** Fail-closed: the request is refused unless it carries a valid Oxy session. */
-export const requireAuth: RequestHandler = createOxyAuthMiddleware(oxyClient);
+export const requireAuth: RequestHandler = createOxyAuthMiddleware(oxy);
 
 /**
  * Resolves a session when one is present and continues regardless.
@@ -84,30 +87,25 @@ export const requireAuth: RequestHandler = createOxyAuthMiddleware(oxyClient);
  * A handler behind this must treat "no user" as a normal case, not an error —
  * that is the whole point of a map that opens without an account.
  */
-export const optionalAuth: RequestHandler = createOptionalOxyAuth(oxyClient);
+export const optionalAuth: RequestHandler = createOptionalOxyAuth(oxy);
 
-/** Answers "what is this caller's role in that Oxy account?" — see `oxy/accountRoles`. */
-export const accountRoles: AccountRoleResolver = createAccountRoleResolver({
-  oxyApiUrl: config.oxyApiUrl,
-});
+/** Answers "what may this caller do in that Oxy account?" — see `oxy/accountAccess`. */
+export const accountAccess: AccountAccessResolver = createAccountAccessResolver(oxy);
 
-/** Answers "may this caller edit that organization's content?", live — see `oxy/accountRoles`. */
-export const organizationAuthority: OrganizationAuthority = createOrganizationAuthority({
-  oxyApiUrl: config.oxyApiUrl,
-});
+/** Answers "may this caller act for that organization?", live — see `oxy/accountAccess`. */
+export const organizationAuthority: OrganizationAuthority =
+  createOrganizationAuthority(accountAccess);
 
 /**
  * GoWay's own Oxy file references (`oxy/fileReferences`): made and removed with
- * GoWay's service token — in a deployment the ECS task role's attested
- * workload identity (Oxy ADR 0049), whose live binding names the GoWay
- * application and environment. Where the process cannot
- * mint a token, adding to a gallery answers `503` and queued changes wait.
+ * GoWay's service token. Where the process cannot mint one, adding to a
+ * gallery answers `503` and queued changes wait.
  */
-const goWayFileReferences = createOxyFileReferences({ baseURL: config.oxyApiUrl });
+const goWayFileReferences = createOxyFileReferences(oxy);
 
 /** Checks the Oxy files place galleries show, and references them — see `oxy/placeFiles`. */
 export const placeFiles: PlaceFileStore = createOxyPlaceFileStore({
-  oxyApiUrl: config.oxyApiUrl,
+  oxy,
   references: goWayFileReferences,
 });
 
@@ -118,10 +116,11 @@ export const fileReferences: FileReferenceWorker = createFileReferenceWorker({
   logger: createLogger('oxy-references'),
 });
 
-/** The moderation gate for this process's operator allow-list. Mounted after `requireAuth`. */
-export const requireOperator: RequestHandler = createRequireOperator(
-  config.moderationOperatorOxyUserIds,
-);
+/** The moderation gate: GoWay's `moderation.operate` permission. Mounted after `requireAuth`. */
+export const requireOperator: RequestHandler = createRequireOperator(oxy);
+
+/** Whether the person may contribute Street 3D captures during the closed pilot. */
+export const mayContribute: ContributionGate = createContributionGate(oxy);
 
 /**
  * `createOxyRateLimit` with GoWay's wording.
@@ -136,7 +135,7 @@ export const requireOperator: RequestHandler = createRequireOperator(
 export function createGoWayRateLimit(
   options: Omit<OxyRateLimitOptions, 'message'> = {},
 ): RequestHandler {
-  return createOxyRateLimit(oxyClient, {
+  return createOxyRateLimit(oxy, {
     ...options,
     message: 'Too many requests. Retry after the indicated delay.',
   });

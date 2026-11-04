@@ -11,8 +11,8 @@ import {
   SUITE_SETUP_TIMEOUT_MS,
   type SuiteDatabase,
 } from '../../db/__tests__/testDatabase';
-import { createAccountRoleResolver } from '../../oxy/accountRoles';
-import { membershipKey, startFakeOxy, type FakeOxy } from '../../__tests__/fakeOxy';
+import { createAccountAccessResolver } from '../../oxy/accountAccess';
+import { fakeOxyServer, membershipKey, startFakeOxy, type FakeOxy } from '../../__tests__/fakeOxy';
 import {
   fakeOptionalAuth,
   fakeRequireAuth,
@@ -49,7 +49,7 @@ beforeAll(async () => {
     createPlacesRouter({
       optionalAuth: fakeOptionalAuth,
       requireAuth: fakeRequireAuth,
-      accountRoles: createAccountRoleResolver({ oxyApiUrl: oxy.url, ttlMs: 0 }),
+      accountAccess: createAccountAccessResolver(fakeOxyServer(oxy)),
       reportRateLimit: NO_RATE_LIMIT,
     }),
   );

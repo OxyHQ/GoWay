@@ -356,7 +356,7 @@ The places inside one of your lists. Every call is yours alone: a list that is n
 
 ### `client.moderation` (`GoWayModerationApi`)
 
-For GoWay operators only. Every call needs an Oxy session on the deployment's operator allow-list; anybody else gets `GoWayForbiddenError`. No integration needs it.
+For GoWay operators only. Every call needs an Oxy session whose person holds GoWay's `moderation.operate` application permission; anybody else gets `GoWayForbiddenError`. No integration needs it.
 
 | Method | Returns | Route |
 | --- | --- | --- |

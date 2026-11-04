@@ -14,7 +14,6 @@
 
 import '../../__tests__/testEnv';
 import { afterAll, beforeAll, describe, expect, it } from 'bun:test';
-import type { AccountRole } from '@oxy.so/core';
 import {
   strongestCapability,
   type ModerationPlaceRevisionPage,
@@ -31,8 +30,9 @@ import {
   destroySuiteDatabase,
   type SuiteDatabase,
 } from '../../db/__tests__/testDatabase';
-import { createRequireOperator } from '../../middleware/operator';
-import type { AccountRoleResolver } from '../../oxy/accountRoles';
+import { createRequireOperator, MODERATION_PERMISSION } from '../../oxy/appPermissions';
+import { fakeOxyServer, membershipKey, startFakeOxy, type FakeOxy } from '../../__tests__/fakeOxy';
+import { createAccountAccessResolver } from '../../oxy/accountAccess';
 import {
   fakeOptionalAuth,
   fakeRequireAuth,
@@ -54,39 +54,36 @@ const OPERATOR = session('person-mod');
 
 const STORE = 'commerce.mercaria.store';
 
-/** Oxy's answer, fixed: who holds which role in which organization. */
-const ROLES: Readonly<Record<string, Readonly<Record<string, AccountRole>>>> = {
-  'org-botiga': { 'person-owner': 'owner', 'person-editor': 'editor' },
-};
-
-const ACCOUNT_ROLES: AccountRoleResolver = {
-  async roleIn(caller, oxyAccountId) {
-    const person = caller.operatedByOxyUserId ?? caller.oxyAccountId;
-    return ROLES[oxyAccountId]?.[person] ?? null;
-  },
-};
-
 let suite: SuiteDatabase | null = null;
 let api: TestApi;
+/** Oxy: `org-botiga`'s owner and editor, and GoWay's moderation permission for `person-mod`. */
+let oxy: FakeOxy;
 
 beforeAll(async () => {
   suite = await createSuiteDatabase();
+  oxy = await startFakeOxy();
+  oxy.accounts.add('org-botiga');
+  oxy.memberships.set(membershipKey('person-owner', 'org-botiga'), 'owner');
+  oxy.memberships.set(membershipKey('person-editor', 'org-botiga'), 'editor');
+  oxy.appPermissions.set('person-mod', [MODERATION_PERMISSION]);
+  const server = fakeOxyServer(oxy);
   api = await serve(
     createPlacesRouter({
       optionalAuth: fakeOptionalAuth,
       requireAuth: fakeRequireAuth,
-      accountRoles: ACCOUNT_ROLES,
+      accountAccess: createAccountAccessResolver(server),
       reportRateLimit: NO_RATE_LIMIT,
     }),
     createModerationRouter({
       requireAuth: fakeRequireAuth,
-      requireOperator: createRequireOperator(['person-mod']),
+      requireOperator: createRequireOperator(server),
     }),
   );
 }, SUITE_SETUP_TIMEOUT_MS);
 
 afterAll(async () => {
   await api.close();
+  await oxy.close();
   await destroySuiteDatabase(suite);
   suite = null;
 });

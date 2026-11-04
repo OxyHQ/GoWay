@@ -15,7 +15,7 @@ import * as repo from '../db/organizationLists';
 import { parsePath, parseBody, parseQuery } from '../http/validation';
 import { cursorBinding, decodeCursor, pageOf } from '../http/cursor';
 import { requiredOxyCaller } from '../oxy/caller';
-import type { OrganizationAuthority } from '../oxy/accountRoles';
+import type { OrganizationAuthority } from '../oxy/accountAccess';
 
 const route =
   (fn: (req: Request, res: Response) => Promise<void>): RequestHandler =>

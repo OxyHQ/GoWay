@@ -17,7 +17,7 @@
  *     middleware that runs long before any handler, which is exactly why it can
  *     be measured without one.
  *
- *   - `publicSurface`, which mirrors `app.ts`'s middleware order — helmet, then
+ *   - `publicSurface`, which mirrors `app.ts`'s middleware order — security headers, then
  *     `createGoWayCors`, then the body parser — in front of trivial handlers
  *     registered FROM `PUBLIC_READ_ROUTES` itself. That is what a real 200
  *     looks like on every public route, and registering from the table means
@@ -34,8 +34,8 @@
 
 import '../../__tests__/testEnv';
 import { afterAll, beforeAll, describe, expect, it } from 'bun:test';
+import { createOxySecurityHeaders } from '@oxy.so/core/server';
 import express, { Router, type Express, type RequestHandler } from 'express';
-import helmet from 'helmet';
 import type { Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { createApp } from '../../app';
@@ -48,6 +48,7 @@ import { createPlaceMediaRouter } from '../../routes/placeMedia';
 import { createPlaceReviewsRouter } from '../../routes/placeReviews';
 import { createPlacesRouter } from '../../routes/places';
 import {
+  NO_CONTRIBUTORS,
   NO_FILES,
   NO_MEMBERSHIPS,
   NO_RATE_LIMIT,
@@ -99,7 +100,7 @@ async function listen(application: Express): Promise<string> {
 function buildPublicSurface(): Express {
   const application = express();
   application.disable('x-powered-by');
-  application.use(helmet());
+  application.use(createOxySecurityHeaders());
   application.use(createGoWayCors({ appOrigins: [ALLOWLISTED] }));
   application.use(express.json({ limit: '1mb' }));
 
@@ -468,7 +469,7 @@ describe('the public table, checked against the routers it claims to describe', 
       createPlacesRouter({
         optionalAuth,
         requireAuth,
-        accountRoles: NO_MEMBERSHIPS,
+        accountAccess: NO_MEMBERSHIPS,
         reportRateLimit: NO_RATE_LIMIT,
       }),
     ),
@@ -476,7 +477,7 @@ describe('the public table, checked against the routers it claims to describe', 
       createPlaceMediaRouter({
         optionalAuth,
         requireAuth,
-        accountRoles: NO_MEMBERSHIPS,
+        accountAccess: NO_MEMBERSHIPS,
         placeFiles: NO_FILES,
         fileReferences: NO_REFERENCE_DELIVERY,
         reportRateLimit: NO_RATE_LIMIT,
@@ -486,7 +487,7 @@ describe('the public table, checked against the routers it claims to describe', 
     ...registeredRoutes(
       createPlaceReviewsRouter({
         requireAuth,
-        accountRoles: NO_MEMBERSHIPS,
+        accountAccess: NO_MEMBERSHIPS,
         reportRateLimit: NO_RATE_LIMIT,
         contributionRateLimit: NO_RATE_LIMIT,
       }),
@@ -494,7 +495,14 @@ describe('the public table, checked against the routers it claims to describe', 
     ...registeredRoutes(createModerationRouter({ requireAuth, requireOperator: requireAuth })),
     ...registeredRoutes(createRoutesRouter({ optionalAuth, provider: null })),
     ...registeredRoutes(createSearchRouter({ optionalAuth })),
-    ...registeredRoutes(createCaptureRouter({ optionalAuth, requireAuth, objectStore: null })),
+    ...registeredRoutes(
+      createCaptureRouter({
+        optionalAuth,
+        requireAuth,
+        objectStore: null,
+        mayContribute: NO_CONTRIBUTORS,
+      }),
+    ),
     ...registeredRoutes(createOpenApiRouter()),
     ...registeredRoutes(createCategoriesRouter()),
   ];
