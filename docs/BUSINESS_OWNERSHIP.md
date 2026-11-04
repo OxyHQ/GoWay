@@ -159,11 +159,13 @@ The OpenStreetMap import writes no revisions yet; its provenance is
 ## Moderation
 
 Every `/moderation/*` route needs an Oxy session whose **person** holds
-GoWay's `moderation.operate` application permission, granted in Oxy by the
-GoWay application's owners (`~/Oxy/docs/application-roles.md`) — the same
-mechanism as the Street 3D contribution pilot's `capture.pilot`. Oxy resolves
-the person, so switching into an organization neither grants nor removes
-operator rights; a decision is attributed to that person. Without the key the
+GoWay's `moderation.operate` application permission — the same mechanism as
+the Street 3D contribution pilot's `capture.pilot`. Both keys are declared in
+code, in GoWay's entry of oxy's first-party registry, and held by the owners
+and admins of the organization that owns GoWay (oxy ADR 0056,
+`~/Oxy/docs/application-roles.md`): an operator is somebody with that role
+there, and nothing is granted per person. Oxy resolves the person, so
+switching into an organization neither grants nor removes operator rights; a decision is attributed to that person. Without the key the
 answer is `403`, and Oxy unable to say is `503`, never a "no".
 
 - **Claims**: a queue by state; `approved`/`rejected` decide a `pending` claim,

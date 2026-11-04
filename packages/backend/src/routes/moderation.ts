@@ -24,8 +24,9 @@
  *
  * Every route is behind `requireAuth` and then the operator gate: an Oxy
  * session whose PERSON holds GoWay's `moderation.operate` application
- * permission (`oxy/appPermissions`), granted in Oxy by the GoWay application's
- * owners. Anybody else is `403`, which says nothing about whether the claim,
+ * permission (`oxy/appPermissions`), held by the owners and admins of the
+ * organization that owns GoWay (declared in oxy's first-party registry, oxy
+ * ADR 0056). Anybody else is `403`, which says nothing about whether the claim,
  * place or report they named exists; Oxy unable to say is `503`. Nothing here
  * is in the public CORS lane.
  *

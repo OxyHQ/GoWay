@@ -88,7 +88,11 @@ export interface FakeOxy {
   >;
   /** Accounts that exist. An account not here is `404`. */
   readonly accounts: Set<string>;
-  /** GoWay's application permissions each person holds (`roles/me`). */
+  /**
+   * GoWay's application permissions each person holds (`roles/me`). Real Oxy
+   * derives them from the person's role in the organization that owns GoWay
+   * (oxy ADR 0056); GoWay only reads the answer, so a test sets it directly.
+   */
   readonly appPermissions: Map<string, string[]>;
   /** Every `GET /applications/:appId/roles/me` received: the person asking. */
   readonly roleReads: (string | undefined)[];

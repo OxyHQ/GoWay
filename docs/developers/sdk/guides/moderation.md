@@ -2,7 +2,7 @@
 
 `client.moderation` is GoWay's moderation surface: deciding business claims, verifying capabilities, resolving duplicate places and reports, hiding gallery items and reviews, and editing the category taxonomy. It is in the SDK so GoWay's own tools are built on the same contract as everything else. No integration needs it.
 
-Every call needs an Oxy access token whose person holds GoWay's `moderation.operate` application permission, granted in Oxy. Anybody else gets `GoWayForbiddenError`; without a token, `GoWayUnauthorizedError`; while Oxy cannot say, `GoWayUnavailableError` (retry).
+Every call needs an Oxy access token whose person holds GoWay's `moderation.operate` application permission. Oxy decides who holds it: the owners and admins of the organization that owns GoWay. Anybody else gets `GoWayForbiddenError`; without a token, `GoWayUnauthorizedError`; while Oxy cannot say, `GoWayUnavailableError` (retry).
 
 ```ts
 import { createGoWayClient, iterateGoWayPages } from '@goway.to/sdk';
