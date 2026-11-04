@@ -14,7 +14,7 @@
  */
 import { useCallback, useEffect, useMemo, useRef, useState, type RefObject } from 'react';
 import { View, useWindowDimensions } from 'react-native';
-import { useReducedMotion } from 'react-native-reanimated';
+import { usePrefersReducedMotion } from '@oxy.so/bloom/hooks';
 import type { Route } from '@goway.to/sdk';
 import { Button } from '@oxy.so/bloom/button';
 import { useTheme } from '@oxy.so/bloom/theme';
@@ -52,7 +52,7 @@ export function RouteFlyover({
   onModelsChange,
 }: RouteFlyoverProps) {
   const theme = useTheme();
-  const reducedMotion = useReducedMotion();
+  const reducedMotion = usePrefersReducedMotion();
   const { width, height } = useWindowDimensions();
   const [active, setActive] = useState(false);
 

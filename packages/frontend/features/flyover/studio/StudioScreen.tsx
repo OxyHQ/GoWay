@@ -27,7 +27,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Platform, ScrollView, Share, View, useWindowDimensions } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { useReducedMotion } from 'react-native-reanimated';
+import { usePrefersReducedMotion, writeClipboardText } from '@oxy.so/bloom/hooks';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Button, GlyphButton } from '@oxy.so/bloom/button';
 import { useClaimBottomEdge, useClaimTopEdge, windowEdgeGap } from '@oxy.so/bloom/layout';
@@ -86,7 +86,7 @@ export function StudioScreen() {
   const router = useRouter();
   const theme = useTheme();
   const insets = useSafeAreaInsets();
-  const reducedMotion = useReducedMotion();
+  const reducedMotion = usePrefersReducedMotion();
   const { width } = useWindowDimensions();
   const wide = width >= WIDE;
 
@@ -301,7 +301,7 @@ export function StudioScreen() {
     const url = tourLink(tour);
     if (Platform.OS === 'web') {
       try {
-        await navigator.clipboard.writeText(url);
+        await writeClipboardText(url);
         setNotice('Link copied.');
       } catch {
         setNotice(url);

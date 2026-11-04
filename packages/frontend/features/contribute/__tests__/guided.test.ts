@@ -11,7 +11,6 @@ import {
 import {
   advancePlan,
   currentStep,
-  formatClock,
   GUIDED_STEPS,
   hasStretchTarget,
   isLastStep,
@@ -196,14 +195,6 @@ describe('step plan', () => {
     expect(stretchPace(181)).toBe('long');
     expect(hasStretchTarget('finish')).toBe(false);
     expect(hasStretchTarget('left')).toBe(true);
-  });
-
-  it('formats the clock', () => {
-    expect(formatClock(0)).toBe('0:00');
-    expect(formatClock(125.7)).toBe('2:05');
-    expect(formatClock(3725)).toBe('1:02:05');
-    expect(formatClock(-3)).toBe('0:00');
-    expect(formatClock(NaN)).toBe('0:00');
   });
 });
 

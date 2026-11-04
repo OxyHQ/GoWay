@@ -26,7 +26,7 @@
  */
 import { useCallback, useEffect, useMemo, useRef, useState, type RefObject } from 'react';
 import { Keyboard } from 'react-native';
-import { useReducedMotion } from 'react-native-reanimated';
+import { usePrefersReducedMotion } from '@oxy.so/bloom/hooks';
 import type { GeoCoordinate, Place, PlaceCapability, SearchResult } from '@goway.to/sdk';
 
 import type {
@@ -223,7 +223,7 @@ export function useExplore(
   const location = useUserLocation();
   // A camera flight is motion like any other: somebody who has asked their
   // system for less of it gets the same destination, immediately.
-  const reducedMotion = useReducedMotion();
+  const reducedMotion = usePrefersReducedMotion();
   const cameraDuration = reducedMotion ? 0 : undefined;
 
   const [query, setQueryState] = useState('');

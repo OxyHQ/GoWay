@@ -49,13 +49,13 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { Pressable, View, useWindowDimensions, type AccessibilityActionEvent } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
+import { usePrefersReducedMotion } from '@oxy.so/bloom/hooks';
 import Animated, {
   clamp,
   runOnJS,
   useAnimatedReaction,
   useAnimatedScrollHandler,
   useAnimatedStyle,
-  useReducedMotion,
   useSharedValue,
   withSpring,
   withTiming,
@@ -157,7 +157,7 @@ export function MapSheet({
   const insets = useSafeAreaInsets();
   const theme = useTheme();
   const { height: windowHeight } = useWindowDimensions();
-  const reducedMotion = useReducedMotion();
+  const reducedMotion = usePrefersReducedMotion();
 
   // The header is MEASURED rather than assumed: a constant disagrees with
   // reality the moment a translation wraps or the user enlarges their font, and
