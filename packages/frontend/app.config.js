@@ -5,6 +5,13 @@ const IS_DEV = process.env.APP_VARIANT === 'development';
 const APP_ID = IS_DEV ? 'to.goway.app.dev' : 'to.goway.app';
 const APP_NAME = IS_DEV ? 'GoWay (Dev)' : 'GoWay';
 
+// GoWay's registered Oxy client id: the ApplicationCredential publicKey
+// (`oxy_dk_…`), public by construction. The binary's Oxy Updates manifest URL is
+// baked from it, so it is the id the production build signs in with
+// (`EXPO_PUBLIC_OXY_CLIENT_ID` in eas.json's `production` env) and the one
+// `.github/workflows/publish-update.yml` publishes under.
+const OXY_CLIENT_ID = 'oxy_dk_c874d1d7f2b5294583df72d729b0a8cd145bbf1624f85682';
+
 // GoWay's icons, rendered from the ONE piece of artwork in
 // `packages/maps/src/brand/artwork.ts` — the same geometry the map badge draws, so an
 // icon can never be a different logo from the one in the product.
@@ -50,6 +57,12 @@ module.exports = {
     name: APP_NAME,
     slug: 'goway',
     scheme: 'goway',
+    // MAJOR.MINOR.PATCH. The store build number is derived from it
+    // (@oxy.so/app-preset: 1.2.3 → 1002003) and it is the OTA compatibility
+    // boundary (withOxyUpdates, runtime policy `appVersion`): bump it for any
+    // native change, and the next push to main releases a new Android binary
+    // (`.github/workflows/android-release.yml`). A JS-only change keeps it and
+    // ships as an OTA update.
     version: '0.1.0',
     orientation: 'portrait',
     userInterfaceStyle: 'automatic',
@@ -172,6 +185,9 @@ module.exports = {
       // decoders out of the Android build: nothing here draws a GIF or animated WebP
       // through react-native's own Image (Bloom and @oxy.so/services use expo-image).
       ['@oxy.so/app-preset', { android: { gifEnabled: false, webpEnabled: false } }],
+      // OTA updates from Oxy Updates (oxy-api), verified against the ecosystem
+      // code-signing certificate. Published by `.github/workflows/publish-update.yml`.
+      ['@oxy.so/app-preset/plugin/withOxyUpdates', { clientId: OXY_CLIENT_ID }],
     ],
     extra: {
       router: {},
