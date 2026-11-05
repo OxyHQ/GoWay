@@ -138,8 +138,18 @@ jobs:
             containerOverrides: [{ name: $container, command: $command }]
           }')
 
+          # Where the goway service runs: its capacity provider strategy when
+          # it has one (oxy-cluster's EC2 capacity, EC2-only revisions),
+          # otherwise its launch type.
+          service_json=$(aws ecs describe-services --cluster "$CLUSTER" --services "$SERVICE" --query 'services[0]' --output json)
+          strategy=$(jq -c '.capacityProviderStrategy // []' <<<"$service_json")
+          if [ "$strategy" != "[]" ]; then
+            placement=(--capacity-provider-strategy "$strategy")
+          else
+            placement=(--launch-type "$(jq -r '.launchType // "FARGATE"' <<<"$service_json")")
+          fi
           task=$(aws ecs run-task --cluster "$CLUSTER" --task-definition "$TASK_FAMILY" \
-            --launch-type FARGATE --count 1 \
+            "${placement[@]}" --count 1 \
             --network-configuration '${{ steps.network.outputs.value }}' \
             --overrides "$overrides" --query 'tasks[0].taskArn' --output text)
           test -n "$task" && test "$task" != None
