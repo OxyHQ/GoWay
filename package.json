@@ -71,7 +71,7 @@
   },
   "devDependencies": {
     "@biomejs/biome": "2.5.15",
-    "@oxy.so/doctor": "1.5.0",
+    "@oxy.so/doctor": "1.7.0",
     "typescript": "^5.9.3"
   },
   "overrides": {
