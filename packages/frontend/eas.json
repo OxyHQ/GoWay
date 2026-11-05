@@ -1,7 +1,7 @@
 {
   "cli": {
     "version": ">= 12.0.0",
-    "appVersionSource": "remote"
+    "appVersionSource": "local"
   },
   "build": {
     "development": {
@@ -12,7 +12,11 @@
       "distribution": "internal"
     },
     "production": {
-      "autoIncrement": true
+      "env": {
+        "EXPO_PUBLIC_OXY_CLIENT_ID": "oxy_dk_c874d1d7f2b5294583df72d729b0a8cd145bbf1624f85682",
+        "EXPO_PUBLIC_API_URL": "https://api.goway.to",
+        "EXPO_PUBLIC_MERCARIA_API_URL": "https://api.mercaria.co"
+      }
     }
   },
   "submit": {
