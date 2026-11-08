@@ -1,0 +1,2606 @@
+[
+  {
+    "mode": "light",
+    "scene": "land",
+    "text": "Food & drink",
+    "declared": [
+      0,
+      29,
+      51
+    ],
+    "paintedForeground": [
+      0,
+      29,
+      51
+    ],
+    "foregroundPoint": {
+      "x": 45,
+      "y": 359
+    },
+    "matchDelta": 0,
+    "minimum": 15.505518719121266,
+    "worstBacking": [
+      236,
+      246,
+      237
+    ],
+    "worstPoint": {
+      "x": 44,
+      "y": 369
+    },
+    "glyphPixels": 443
+  },
+  {
+    "mode": "light",
+    "scene": "land",
+    "text": "Shops",
+    "declared": [
+      0,
+      29,
+      51
+    ],
+    "paintedForeground": [
+      0,
+      29,
+      51
+    ],
+    "foregroundPoint": {
+      "x": 171,
+      "y": 360
+    },
+    "matchDelta": 0,
+    "minimum": 15.429625162858855,
+    "worstBacking": [
+      241,
+      243,
+      245
+    ],
+    "worstPoint": {
+      "x": 188,
+      "y": 362
+    },
+    "glyphPixels": 251
+  },
+  {
+    "mode": "light",
+    "scene": "land",
+    "text": "Stay",
+    "declared": [
+      0,
+      29,
+      51
+    ],
+    "paintedForeground": [
+      0,
+      29,
+      51
+    ],
+    "foregroundPoint": {
+      "x": 255,
+      "y": 360
+    },
+    "matchDelta": 0,
+    "minimum": 15.576653903489737,
+    "worstBacking": [
+      242,
+      244,
+      247
+    ],
+    "worstPoint": {
+      "x": 254,
+      "y": 360
+    },
+    "glyphPixels": 178
+  },
+  {
+    "mode": "light",
+    "scene": "land",
+    "text": "Leisure",
+    "declared": [
+      0,
+      29,
+      51
+    ],
+    "paintedForeground": [
+      0,
+      29,
+      51
+    ],
+    "foregroundPoint": {
+      "x": 326,
+      "y": 359
+    },
+    "matchDelta": 0,
+    "minimum": 15.705815131955392,
+    "worstBacking": [
+      242,
+      245,
+      250
+    ],
+    "worstPoint": {
+      "x": 364,
+      "y": 363
+    },
+    "glyphPixels": 273
+  },
+  {
+    "mode": "light",
+    "scene": "land",
+    "text": "Font de Canaletes",
+    "declared": [
+      0,
+      29,
+      51
+    ],
+    "paintedForeground": [
+      0,
+      29,
+      51
+    ],
+    "foregroundPoint": {
+      "x": 126,
+      "y": 391
+    },
+    "matchDelta": 0,
+    "minimum": 15.527730418136207,
+    "worstBacking": [
+      241,
+      244,
+      245
+    ],
+    "worstPoint": {
+      "x": 138,
+      "y": 394
+    },
+    "glyphPixels": 698
+  },
+  {
+    "mode": "light",
+    "scene": "land",
+    "text": "Place",
+    "declared": [
+      64,
+      86,
+      105
+    ],
+    "paintedForeground": [
+      64,
+      86,
+      105
+    ],
+    "foregroundPoint": {
+      "x": 126,
+      "y": 414
+    },
+    "matchDelta": 0,
+    "minimum": 6.944771535710721,
+    "worstBacking": [
+      241,
+      245,
+      245
+    ],
+    "worstPoint": {
+      "x": 129,
+      "y": 414
+    },
+    "glyphPixels": 154
+  },
+  {
+    "mode": "light",
+    "scene": "land",
+    "text": "170 m",
+    "declared": [
+      64,
+      86,
+      105
+    ],
+    "paintedForeground": [
+      64,
+      86,
+      105
+    ],
+    "foregroundPoint": {
+      "x": 145,
+      "y": 436
+    },
+    "matchDelta": 0,
+    "minimum": 7.006116322832892,
+    "worstBacking": [
+      242,
+      246,
+      246
+    ],
+    "worstPoint": {
+      "x": 143,
+      "y": 436
+    },
+    "glyphPixels": 151
+  },
+  {
+    "mode": "light",
+    "scene": "land",
+    "text": "Nømad Coffee Lab",
+    "declared": [
+      0,
+      29,
+      51
+    ],
+    "paintedForeground": [
+      0,
+      29,
+      51
+    ],
+    "foregroundPoint": {
+      "x": 126,
+      "y": 503
+    },
+    "matchDelta": 0,
+    "minimum": 15.332898630860091,
+    "worstBacking": [
+      239,
+      243,
+      241
+    ],
+    "worstPoint": {
+      "x": 130,
+      "y": 510
+    },
+    "glyphPixels": 757
+  },
+  {
+    "mode": "light",
+    "scene": "land",
+    "text": "Café · Sant Pere",
+    "declared": [
+      64,
+      86,
+      105
+    ],
+    "paintedForeground": [
+      64,
+      86,
+      105
+    ],
+    "foregroundPoint": {
+      "x": 144,
+      "y": 527
+    },
+    "matchDelta": 0,
+    "minimum": 6.737195974118045,
+    "worstBacking": [
+      237,
+      242,
+      239
+    ],
+    "worstPoint": {
+      "x": 124,
+      "y": 530
+    },
+    "glyphPixels": 415
+  },
+  {
+    "mode": "light",
+    "scene": "land",
+    "text": "Closed",
+    "declared": [
+      167,
+      55,
+      53
+    ],
+    "paintedForeground": [
+      167,
+      55,
+      53
+    ],
+    "foregroundPoint": {
+      "x": 247,
+      "y": 526
+    },
+    "matchDelta": 0,
+    "minimum": 5.341609190086102,
+    "worstBacking": [
+      240,
+      231,
+      233
+    ],
+    "worstPoint": {
+      "x": 238,
+      "y": 528
+    },
+    "glyphPixels": 233
+  },
+  {
+    "mode": "light",
+    "scene": "land",
+    "text": "Closed · opens tomorrow 09:00",
+    "declared": [
+      64,
+      86,
+      105
+    ],
+    "paintedForeground": [
+      64,
+      86,
+      105
+    ],
+    "foregroundPoint": {
+      "x": 220,
+      "y": 550
+    },
+    "matchDelta": 0,
+    "minimum": 6.7865136829486605,
+    "worstBacking": [
+      235,
+      244,
+      236
+    ],
+    "worstPoint": {
+      "x": 139,
+      "y": 550
+    },
+    "glyphPixels": 837
+  },
+  {
+    "mode": "light",
+    "scene": "land",
+    "text": "Passatge Sert 12, Sant Pere, Barcelona",
+    "declared": [
+      64,
+      86,
+      105
+    ],
+    "paintedForeground": [
+      64,
+      86,
+      105
+    ],
+    "foregroundPoint": {
+      "x": 144,
+      "y": 568
+    },
+    "matchDelta": 0,
+    "minimum": 6.823076691387269,
+    "worstBacking": [
+      239,
+      243,
+      243
+    ],
+    "worstPoint": {
+      "x": 370,
+      "y": 575
+    },
+    "glyphPixels": 1067
+  },
+  {
+    "mode": "light",
+    "scene": "land",
+    "text": "310 m",
+    "declared": [
+      64,
+      86,
+      105
+    ],
+    "paintedForeground": [
+      64,
+      86,
+      105
+    ],
+    "foregroundPoint": {
+      "x": 153,
+      "y": 590
+    },
+    "matchDelta": 0,
+    "minimum": 6.874426823800178,
+    "worstBacking": [
+      235,
+      246,
+      236
+    ],
+    "worstPoint": {
+      "x": 143,
+      "y": 590
+    },
+    "glyphPixels": 167
+  },
+  {
+    "mode": "light",
+    "scene": "land",
+    "text": "Accepts FairCoin",
+    "declared": [
+      64,
+      86,
+      105
+    ],
+    "paintedForeground": [
+      64,
+      86,
+      105
+    ],
+    "foregroundPoint": {
+      "x": 246,
+      "y": 590
+    },
+    "matchDelta": 0,
+    "minimum": 6.834586393083368,
+    "worstBacking": [
+      235,
+      245,
+      237
+    ],
+    "worstPoint": {
+      "x": 231,
+      "y": 590
+    },
+    "glyphPixels": 461
+  },
+  {
+    "mode": "light",
+    "scene": "land",
+    "text": "Verified by Oxy",
+    "declared": [
+      41,
+      73,
+      103
+    ],
+    "paintedForeground": [
+      41,
+      73,
+      103
+    ],
+    "foregroundPoint": {
+      "x": 133,
+      "y": 616
+    },
+    "matchDelta": 0,
+    "minimum": 6.5336811813540985,
+    "worstBacking": [
+      192,
+      219,
+      242
+    ],
+    "worstPoint": {
+      "x": 133,
+      "y": 619
+    },
+    "glyphPixels": 492
+  },
+  {
+    "mode": "light",
+    "scene": "land",
+    "text": "Betahaus Barcelona",
+    "declared": [
+      0,
+      29,
+      51
+    ],
+    "paintedForeground": [
+      0,
+      29,
+      51
+    ],
+    "foregroundPoint": {
+      "x": 126,
+      "y": 641
+    },
+    "matchDelta": 0,
+    "minimum": 15.289386067432961,
+    "worstBacking": [
+      235,
+      244,
+      238
+    ],
+    "worstPoint": {
+      "x": 230,
+      "y": 641
+    },
+    "glyphPixels": 814
+  },
+  {
+    "mode": "light",
+    "scene": "land",
+    "text": "Coworking · Gràcia",
+    "declared": [
+      64,
+      86,
+      105
+    ],
+    "paintedForeground": [
+      64,
+      86,
+      105
+    ],
+    "foregroundPoint": {
+      "x": 146,
+      "y": 667
+    },
+    "matchDelta": 0,
+    "minimum": 6.811690099450394,
+    "worstBacking": [
+      236,
+      244,
+      239
+    ],
+    "worstPoint": {
+      "x": 219,
+      "y": 667
+    },
+    "glyphPixels": 520
+  },
+  {
+    "mode": "light",
+    "scene": "land",
+    "text": "Closed",
+    "declared": [
+      167,
+      55,
+      53
+    ],
+    "paintedForeground": [
+      167,
+      55,
+      53
+    ],
+    "foregroundPoint": {
+      "x": 265,
+      "y": 664
+    },
+    "matchDelta": 0,
+    "minimum": 5.339555368798806,
+    "worstBacking": [
+      242,
+      230,
+      236
+    ],
+    "worstPoint": {
+      "x": 256,
+      "y": 666
+    },
+    "glyphPixels": 235
+  },
+  {
+    "mode": "light",
+    "scene": "land",
+    "text": "Closed · opens tomorrow 08:30",
+    "declared": [
+      64,
+      86,
+      105
+    ],
+    "paintedForeground": [
+      64,
+      86,
+      105
+    ],
+    "foregroundPoint": {
+      "x": 220,
+      "y": 688
+    },
+    "matchDelta": 0,
+    "minimum": 6.811690099450394,
+    "worstBacking": [
+      236,
+      244,
+      239
+    ],
+    "worstPoint": {
+      "x": 207,
+      "y": 688
+    },
+    "glyphPixels": 837
+  },
+  {
+    "mode": "light",
+    "scene": "land",
+    "text": "Carrer de Vilafranca 7, Gràcia, Barcelona",
+    "declared": [
+      64,
+      86,
+      105
+    ],
+    "paintedForeground": [
+      64,
+      86,
+      105
+    ],
+    "foregroundPoint": {
+      "x": 217,
+      "y": 706
+    },
+    "matchDelta": 0,
+    "minimum": 6.7992895637139625,
+    "worstBacking": [
+      235,
+      244,
+      239
+    ],
+    "worstPoint": {
+      "x": 190,
+      "y": 706
+    },
+    "glyphPixels": 1004
+  },
+  {
+    "mode": "light",
+    "scene": "land",
+    "text": "[search placeholder]",
+    "declared": [
+      60,
+      81,
+      99
+    ],
+    "paintedForeground": [
+      60,
+      81,
+      99
+    ],
+    "foregroundPoint": {
+      "x": 71,
+      "y": 323
+    },
+    "matchDelta": 0,
+    "minimum": 6.931036063371396,
+    "worstBacking": [
+      230,
+      236,
+      244
+    ],
+    "worstPoint": {
+      "x": 134,
+      "y": 323
+    },
+    "glyphPixels": 1011
+  },
+  {
+    "mode": "light",
+    "scene": "sea",
+    "text": "Food & drink",
+    "declared": [
+      0,
+      29,
+      51
+    ],
+    "paintedForeground": [
+      0,
+      29,
+      51
+    ],
+    "foregroundPoint": {
+      "x": 45,
+      "y": 359
+    },
+    "matchDelta": 0,
+    "minimum": 15.358135408150835,
+    "worstBacking": [
+      220,
+      247,
+      255
+    ],
+    "worstPoint": {
+      "x": 44,
+      "y": 359
+    },
+    "glyphPixels": 442
+  },
+  {
+    "mode": "light",
+    "scene": "sea",
+    "text": "Shops",
+    "declared": [
+      0,
+      29,
+      51
+    ],
+    "paintedForeground": [
+      0,
+      29,
+      51
+    ],
+    "foregroundPoint": {
+      "x": 171,
+      "y": 360
+    },
+    "matchDelta": 0,
+    "minimum": 15.358135408150835,
+    "worstBacking": [
+      220,
+      247,
+      255
+    ],
+    "worstPoint": {
+      "x": 171,
+      "y": 359
+    },
+    "glyphPixels": 251
+  },
+  {
+    "mode": "light",
+    "scene": "sea",
+    "text": "Stay",
+    "declared": [
+      0,
+      29,
+      51
+    ],
+    "paintedForeground": [
+      0,
+      29,
+      51
+    ],
+    "foregroundPoint": {
+      "x": 255,
+      "y": 360
+    },
+    "matchDelta": 0,
+    "minimum": 15.358135408150835,
+    "worstBacking": [
+      220,
+      247,
+      255
+    ],
+    "worstPoint": {
+      "x": 255,
+      "y": 359
+    },
+    "glyphPixels": 177
+  },
+  {
+    "mode": "light",
+    "scene": "sea",
+    "text": "Leisure",
+    "declared": [
+      0,
+      29,
+      51
+    ],
+    "paintedForeground": [
+      0,
+      29,
+      51
+    ],
+    "foregroundPoint": {
+      "x": 326,
+      "y": 359
+    },
+    "matchDelta": 0,
+    "minimum": 15.174334439283,
+    "worstBacking": [
+      221,
+      245,
+      254
+    ],
+    "worstPoint": {
+      "x": 356,
+      "y": 369
+    },
+    "glyphPixels": 242
+  },
+  {
+    "mode": "light",
+    "scene": "sea",
+    "text": "Font de Canaletes",
+    "declared": [
+      0,
+      29,
+      51
+    ],
+    "paintedForeground": [
+      0,
+      29,
+      51
+    ],
+    "foregroundPoint": {
+      "x": 126,
+      "y": 391
+    },
+    "matchDelta": 0,
+    "minimum": 15.358135408150835,
+    "worstBacking": [
+      220,
+      247,
+      255
+    ],
+    "worstPoint": {
+      "x": 125,
+      "y": 391
+    },
+    "glyphPixels": 684
+  },
+  {
+    "mode": "light",
+    "scene": "sea",
+    "text": "Place",
+    "declared": [
+      64,
+      86,
+      105
+    ],
+    "paintedForeground": [
+      64,
+      86,
+      105
+    ],
+    "foregroundPoint": {
+      "x": 126,
+      "y": 414
+    },
+    "matchDelta": 0,
+    "minimum": 6.825561250769323,
+    "worstBacking": [
+      220,
+      247,
+      255
+    ],
+    "worstPoint": {
+      "x": 125,
+      "y": 414
+    },
+    "glyphPixels": 153
+  },
+  {
+    "mode": "light",
+    "scene": "sea",
+    "text": "170 m",
+    "declared": [
+      64,
+      86,
+      105
+    ],
+    "paintedForeground": [
+      64,
+      86,
+      105
+    ],
+    "foregroundPoint": {
+      "x": 145,
+      "y": 436
+    },
+    "matchDelta": 0,
+    "minimum": 6.825561250769323,
+    "worstBacking": [
+      220,
+      247,
+      255
+    ],
+    "worstPoint": {
+      "x": 143,
+      "y": 436
+    },
+    "glyphPixels": 151
+  },
+  {
+    "mode": "light",
+    "scene": "sea",
+    "text": "Nømad Coffee Lab",
+    "declared": [
+      0,
+      29,
+      51
+    ],
+    "paintedForeground": [
+      0,
+      29,
+      51
+    ],
+    "foregroundPoint": {
+      "x": 126,
+      "y": 503
+    },
+    "matchDelta": 0,
+    "minimum": 15.358135408150835,
+    "worstBacking": [
+      220,
+      247,
+      255
+    ],
+    "worstPoint": {
+      "x": 197,
+      "y": 502
+    },
+    "glyphPixels": 756
+  },
+  {
+    "mode": "light",
+    "scene": "sea",
+    "text": "Café · Sant Pere",
+    "declared": [
+      64,
+      86,
+      105
+    ],
+    "paintedForeground": [
+      64,
+      86,
+      105
+    ],
+    "foregroundPoint": {
+      "x": 144,
+      "y": 527
+    },
+    "matchDelta": 0,
+    "minimum": 6.825561250769323,
+    "worstBacking": [
+      220,
+      247,
+      255
+    ],
+    "worstPoint": {
+      "x": 149,
+      "y": 526
+    },
+    "glyphPixels": 414
+  },
+  {
+    "mode": "light",
+    "scene": "sea",
+    "text": "Closed",
+    "declared": [
+      167,
+      55,
+      53
+    ],
+    "paintedForeground": [
+      167,
+      55,
+      53
+    ],
+    "foregroundPoint": {
+      "x": 247,
+      "y": 526
+    },
+    "matchDelta": 0,
+    "minimum": 5.3167683463440465,
+    "worstBacking": [
+      236,
+      231,
+      238
+    ],
+    "worstPoint": {
+      "x": 238,
+      "y": 528
+    },
+    "glyphPixels": 233
+  },
+  {
+    "mode": "light",
+    "scene": "sea",
+    "text": "Closed · opens tomorrow 09:00",
+    "declared": [
+      64,
+      86,
+      105
+    ],
+    "paintedForeground": [
+      64,
+      86,
+      105
+    ],
+    "foregroundPoint": {
+      "x": 220,
+      "y": 550
+    },
+    "matchDelta": 0,
+    "minimum": 6.825561250769323,
+    "worstBacking": [
+      220,
+      247,
+      255
+    ],
+    "worstPoint": {
+      "x": 126,
+      "y": 548
+    },
+    "glyphPixels": 833
+  },
+  {
+    "mode": "light",
+    "scene": "sea",
+    "text": "Passatge Sert 12, Sant Pere, Barcelona",
+    "declared": [
+      64,
+      86,
+      105
+    ],
+    "paintedForeground": [
+      64,
+      86,
+      105
+    ],
+    "foregroundPoint": {
+      "x": 144,
+      "y": 568
+    },
+    "matchDelta": 0,
+    "minimum": 6.825561250769323,
+    "worstBacking": [
+      220,
+      247,
+      255
+    ],
+    "worstPoint": {
+      "x": 143,
+      "y": 568
+    },
+    "glyphPixels": 1060
+  },
+  {
+    "mode": "light",
+    "scene": "sea",
+    "text": "310 m",
+    "declared": [
+      64,
+      86,
+      105
+    ],
+    "paintedForeground": [
+      64,
+      86,
+      105
+    ],
+    "foregroundPoint": {
+      "x": 153,
+      "y": 590
+    },
+    "matchDelta": 0,
+    "minimum": 6.825561250769323,
+    "worstBacking": [
+      220,
+      247,
+      255
+    ],
+    "worstPoint": {
+      "x": 143,
+      "y": 590
+    },
+    "glyphPixels": 166
+  },
+  {
+    "mode": "light",
+    "scene": "sea",
+    "text": "Accepts FairCoin",
+    "declared": [
+      64,
+      86,
+      105
+    ],
+    "paintedForeground": [
+      64,
+      86,
+      105
+    ],
+    "foregroundPoint": {
+      "x": 246,
+      "y": 590
+    },
+    "matchDelta": 0,
+    "minimum": 6.825561250769323,
+    "worstBacking": [
+      220,
+      247,
+      255
+    ],
+    "worstPoint": {
+      "x": 194,
+      "y": 590
+    },
+    "glyphPixels": 459
+  },
+  {
+    "mode": "light",
+    "scene": "sea",
+    "text": "Verified by Oxy",
+    "declared": [
+      41,
+      73,
+      103
+    ],
+    "paintedForeground": [
+      41,
+      73,
+      103
+    ],
+    "foregroundPoint": {
+      "x": 133,
+      "y": 616
+    },
+    "matchDelta": 0,
+    "minimum": 6.509422015526412,
+    "worstBacking": [
+      188,
+      219,
+      246
+    ],
+    "worstPoint": {
+      "x": 133,
+      "y": 619
+    },
+    "glyphPixels": 492
+  },
+  {
+    "mode": "light",
+    "scene": "sea",
+    "text": "Betahaus Barcelona",
+    "declared": [
+      0,
+      29,
+      51
+    ],
+    "paintedForeground": [
+      0,
+      29,
+      51
+    ],
+    "foregroundPoint": {
+      "x": 126,
+      "y": 641
+    },
+    "matchDelta": 0,
+    "minimum": 15.358135408150835,
+    "worstBacking": [
+      220,
+      247,
+      255
+    ],
+    "worstPoint": {
+      "x": 125,
+      "y": 641
+    },
+    "glyphPixels": 812
+  },
+  {
+    "mode": "light",
+    "scene": "sea",
+    "text": "Coworking · Gràcia",
+    "declared": [
+      64,
+      86,
+      105
+    ],
+    "paintedForeground": [
+      64,
+      86,
+      105
+    ],
+    "foregroundPoint": {
+      "x": 146,
+      "y": 667
+    },
+    "matchDelta": 0,
+    "minimum": 6.825561250769323,
+    "worstBacking": [
+      220,
+      247,
+      255
+    ],
+    "worstPoint": {
+      "x": 218,
+      "y": 664
+    },
+    "glyphPixels": 518
+  },
+  {
+    "mode": "light",
+    "scene": "sea",
+    "text": "Closed",
+    "declared": [
+      167,
+      55,
+      53
+    ],
+    "paintedForeground": [
+      167,
+      55,
+      53
+    ],
+    "foregroundPoint": {
+      "x": 265,
+      "y": 664
+    },
+    "matchDelta": 0,
+    "minimum": 5.3167683463440465,
+    "worstBacking": [
+      236,
+      231,
+      238
+    ],
+    "worstPoint": {
+      "x": 256,
+      "y": 666
+    },
+    "glyphPixels": 235
+  },
+  {
+    "mode": "light",
+    "scene": "sea",
+    "text": "Closed · opens tomorrow 08:30",
+    "declared": [
+      64,
+      86,
+      105
+    ],
+    "paintedForeground": [
+      64,
+      86,
+      105
+    ],
+    "foregroundPoint": {
+      "x": 220,
+      "y": 688
+    },
+    "matchDelta": 0,
+    "minimum": 6.825561250769323,
+    "worstBacking": [
+      220,
+      247,
+      255
+    ],
+    "worstPoint": {
+      "x": 126,
+      "y": 686
+    },
+    "glyphPixels": 833
+  },
+  {
+    "mode": "light",
+    "scene": "sea",
+    "text": "Carrer de Vilafranca 7, Gràcia, Barcelona",
+    "declared": [
+      64,
+      86,
+      105
+    ],
+    "paintedForeground": [
+      64,
+      86,
+      105
+    ],
+    "foregroundPoint": {
+      "x": 217,
+      "y": 706
+    },
+    "matchDelta": 0,
+    "minimum": 6.825561250769323,
+    "worstBacking": [
+      220,
+      247,
+      255
+    ],
+    "worstPoint": {
+      "x": 299,
+      "y": 705
+    },
+    "glyphPixels": 1004
+  },
+  {
+    "mode": "light",
+    "scene": "sea",
+    "text": "[search placeholder]",
+    "declared": [
+      60,
+      81,
+      99
+    ],
+    "paintedForeground": [
+      60,
+      81,
+      99
+    ],
+    "foregroundPoint": {
+      "x": 71,
+      "y": 323
+    },
+    "matchDelta": 0,
+    "minimum": 6.904572535306879,
+    "worstBacking": [
+      224,
+      237,
+      245
+    ],
+    "worstPoint": {
+      "x": 52,
+      "y": 320
+    },
+    "glyphPixels": 1011
+  },
+  {
+    "mode": "dark",
+    "scene": "land",
+    "text": "Food & drink",
+    "declared": [
+      227,
+      239,
+      255
+    ],
+    "paintedForeground": [
+      227,
+      239,
+      255
+    ],
+    "foregroundPoint": {
+      "x": 45,
+      "y": 359
+    },
+    "matchDelta": 0,
+    "minimum": 8.719895146110103,
+    "worstBacking": [
+      37,
+      68,
+      95
+    ],
+    "worstPoint": {
+      "x": 125,
+      "y": 362
+    },
+    "glyphPixels": 448
+  },
+  {
+    "mode": "dark",
+    "scene": "land",
+    "text": "Shops",
+    "declared": [
+      227,
+      239,
+      255
+    ],
+    "paintedForeground": [
+      227,
+      239,
+      255
+    ],
+    "foregroundPoint": {
+      "x": 171,
+      "y": 360
+    },
+    "matchDelta": 0,
+    "minimum": 8.063284659386976,
+    "worstBacking": [
+      42,
+      73,
+      101
+    ],
+    "worstPoint": {
+      "x": 210,
+      "y": 368
+    },
+    "glyphPixels": 255
+  },
+  {
+    "mode": "dark",
+    "scene": "land",
+    "text": "Stay",
+    "declared": [
+      227,
+      239,
+      255
+    ],
+    "paintedForeground": [
+      227,
+      239,
+      255
+    ],
+    "foregroundPoint": {
+      "x": 255,
+      "y": 360
+    },
+    "matchDelta": 0,
+    "minimum": 8.412363707202225,
+    "worstBacking": [
+      40,
+      70,
+      99
+    ],
+    "worstPoint": {
+      "x": 254,
+      "y": 367
+    },
+    "glyphPixels": 178
+  },
+  {
+    "mode": "dark",
+    "scene": "land",
+    "text": "Leisure",
+    "declared": [
+      227,
+      239,
+      255
+    ],
+    "paintedForeground": [
+      227,
+      239,
+      255
+    ],
+    "foregroundPoint": {
+      "x": 326,
+      "y": 359
+    },
+    "matchDelta": 0,
+    "minimum": 8.972842175948655,
+    "worstBacking": [
+      35,
+      66,
+      94
+    ],
+    "worstPoint": {
+      "x": 325,
+      "y": 359
+    },
+    "glyphPixels": 277
+  },
+  {
+    "mode": "dark",
+    "scene": "land",
+    "text": "Font de Canaletes",
+    "declared": [
+      227,
+      239,
+      255
+    ],
+    "paintedForeground": [
+      227,
+      239,
+      255
+    ],
+    "foregroundPoint": {
+      "x": 126,
+      "y": 391
+    },
+    "matchDelta": 0,
+    "minimum": 8.158265397297157,
+    "worstBacking": [
+      42,
+      72,
+      101
+    ],
+    "worstPoint": {
+      "x": 213,
+      "y": 391
+    },
+    "glyphPixels": 720
+  },
+  {
+    "mode": "dark",
+    "scene": "land",
+    "text": "Place",
+    "declared": [
+      166,
+      184,
+      202
+    ],
+    "paintedForeground": [
+      166,
+      184,
+      202
+    ],
+    "foregroundPoint": {
+      "x": 126,
+      "y": 414
+    },
+    "matchDelta": 0,
+    "minimum": 4.9046029638580695,
+    "worstBacking": [
+      38,
+      69,
+      97
+    ],
+    "worstPoint": {
+      "x": 152,
+      "y": 416
+    },
+    "glyphPixels": 154
+  },
+  {
+    "mode": "dark",
+    "scene": "land",
+    "text": "170 m",
+    "declared": [
+      166,
+      184,
+      202
+    ],
+    "paintedForeground": [
+      166,
+      184,
+      202
+    ],
+    "foregroundPoint": {
+      "x": 145,
+      "y": 436
+    },
+    "matchDelta": 0,
+    "minimum": 4.971041788811638,
+    "worstBacking": [
+      37,
+      68,
+      97
+    ],
+    "worstPoint": {
+      "x": 157,
+      "y": 436
+    },
+    "glyphPixels": 144
+  },
+  {
+    "mode": "dark",
+    "scene": "land",
+    "text": "Nømad Coffee Lab",
+    "declared": [
+      227,
+      239,
+      255
+    ],
+    "paintedForeground": [
+      227,
+      239,
+      255
+    ],
+    "foregroundPoint": {
+      "x": 126,
+      "y": 503
+    },
+    "matchDelta": 0,
+    "minimum": 8.163840593580584,
+    "worstBacking": [
+      38,
+      73,
+      98
+    ],
+    "worstPoint": {
+      "x": 125,
+      "y": 513
+    },
+    "glyphPixels": 768
+  },
+  {
+    "mode": "dark",
+    "scene": "land",
+    "text": "Café · Sant Pere",
+    "declared": [
+      166,
+      184,
+      202
+    ],
+    "paintedForeground": [
+      166,
+      184,
+      202
+    ],
+    "foregroundPoint": {
+      "x": 197,
+      "y": 527
+    },
+    "matchDelta": 0,
+    "minimum": 4.623069418490171,
+    "worstBacking": [
+      37,
+      74,
+      98
+    ],
+    "worstPoint": {
+      "x": 126,
+      "y": 527
+    },
+    "glyphPixels": 412
+  },
+  {
+    "mode": "dark",
+    "scene": "land",
+    "text": "Closed",
+    "declared": [
+      255,
+      179,
+      173
+    ],
+    "paintedForeground": [
+      255,
+      179,
+      173
+    ],
+    "foregroundPoint": {
+      "x": 247,
+      "y": 526
+    },
+    "matchDelta": 0,
+    "minimum": 5.926850218872306,
+    "worstBacking": [
+      63,
+      64,
+      85
+    ],
+    "worstPoint": {
+      "x": 239,
+      "y": 526
+    },
+    "glyphPixels": 233
+  },
+  {
+    "mode": "dark",
+    "scene": "land",
+    "text": "Closed · opens tomorrow 09:00",
+    "declared": [
+      166,
+      184,
+      202
+    ],
+    "paintedForeground": [
+      166,
+      184,
+      202
+    ],
+    "foregroundPoint": {
+      "x": 220,
+      "y": 550
+    },
+    "matchDelta": 0,
+    "minimum": 4.788674138385031,
+    "worstBacking": [
+      32,
+      72,
+      96
+    ],
+    "worstPoint": {
+      "x": 126,
+      "y": 548
+    },
+    "glyphPixels": 833
+  },
+  {
+    "mode": "dark",
+    "scene": "land",
+    "text": "Passatge Sert 12, Sant Pere, Barcelona",
+    "declared": [
+      166,
+      184,
+      202
+    ],
+    "paintedForeground": [
+      166,
+      184,
+      202
+    ],
+    "foregroundPoint": {
+      "x": 144,
+      "y": 568
+    },
+    "matchDelta": 0,
+    "minimum": 4.847483699238089,
+    "worstBacking": [
+      37,
+      70,
+      98
+    ],
+    "worstPoint": {
+      "x": 376,
+      "y": 570
+    },
+    "glyphPixels": 1047
+  },
+  {
+    "mode": "dark",
+    "scene": "land",
+    "text": "310 m",
+    "declared": [
+      166,
+      184,
+      202
+    ],
+    "paintedForeground": [
+      166,
+      184,
+      202
+    ],
+    "foregroundPoint": {
+      "x": 153,
+      "y": 590
+    },
+    "matchDelta": 0,
+    "minimum": 4.985882804064094,
+    "worstBacking": [
+      25,
+      70,
+      92
+    ],
+    "worstPoint": {
+      "x": 143,
+      "y": 590
+    },
+    "glyphPixels": 158
+  },
+  {
+    "mode": "dark",
+    "scene": "land",
+    "text": "Accepts FairCoin",
+    "declared": [
+      166,
+      184,
+      202
+    ],
+    "paintedForeground": [
+      166,
+      184,
+      202
+    ],
+    "foregroundPoint": {
+      "x": 246,
+      "y": 590
+    },
+    "matchDelta": 0,
+    "minimum": 4.977423460479095,
+    "worstBacking": [
+      25,
+      70,
+      93
+    ],
+    "worstPoint": {
+      "x": 208,
+      "y": 592
+    },
+    "glyphPixels": 459
+  },
+  {
+    "mode": "dark",
+    "scene": "land",
+    "text": "Verified by Oxy",
+    "declared": [
+      169,
+      202,
+      237
+    ],
+    "paintedForeground": [
+      169,
+      202,
+      237
+    ],
+    "foregroundPoint": {
+      "x": 133,
+      "y": 616
+    },
+    "matchDelta": 0,
+    "minimum": 6.611046311804078,
+    "worstBacking": [
+      18,
+      62,
+      92
+    ],
+    "worstPoint": {
+      "x": 188,
+      "y": 627
+    },
+    "glyphPixels": 488
+  },
+  {
+    "mode": "dark",
+    "scene": "land",
+    "text": "Betahaus Barcelona",
+    "declared": [
+      227,
+      239,
+      255
+    ],
+    "paintedForeground": [
+      227,
+      239,
+      255
+    ],
+    "foregroundPoint": {
+      "x": 126,
+      "y": 641
+    },
+    "matchDelta": 0,
+    "minimum": 8.651739486738352,
+    "worstBacking": [
+      28,
+      70,
+      94
+    ],
+    "worstPoint": {
+      "x": 125,
+      "y": 647
+    },
+    "glyphPixels": 823
+  },
+  {
+    "mode": "dark",
+    "scene": "land",
+    "text": "Coworking · Gràcia",
+    "declared": [
+      166,
+      184,
+      202
+    ],
+    "paintedForeground": [
+      166,
+      184,
+      202
+    ],
+    "foregroundPoint": {
+      "x": 146,
+      "y": 667
+    },
+    "matchDelta": 0,
+    "minimum": 4.94294899151123,
+    "worstBacking": [
+      29,
+      70,
+      94
+    ],
+    "worstPoint": {
+      "x": 125,
+      "y": 666
+    },
+    "glyphPixels": 517
+  },
+  {
+    "mode": "dark",
+    "scene": "land",
+    "text": "Closed",
+    "declared": [
+      255,
+      179,
+      173
+    ],
+    "paintedForeground": [
+      255,
+      179,
+      173
+    ],
+    "foregroundPoint": {
+      "x": 265,
+      "y": 664
+    },
+    "matchDelta": 0,
+    "minimum": 5.87979549671839,
+    "worstBacking": [
+      65,
+      64,
+      86
+    ],
+    "worstPoint": {
+      "x": 257,
+      "y": 664
+    },
+    "glyphPixels": 235
+  },
+  {
+    "mode": "dark",
+    "scene": "land",
+    "text": "Closed · opens tomorrow 08:30",
+    "declared": [
+      166,
+      184,
+      202
+    ],
+    "paintedForeground": [
+      166,
+      184,
+      202
+    ],
+    "foregroundPoint": {
+      "x": 220,
+      "y": 688
+    },
+    "matchDelta": 0,
+    "minimum": 4.94294899151123,
+    "worstBacking": [
+      29,
+      70,
+      94
+    ],
+    "worstPoint": {
+      "x": 126,
+      "y": 686
+    },
+    "glyphPixels": 833
+  },
+  {
+    "mode": "dark",
+    "scene": "land",
+    "text": "Carrer de Vilafranca 7, Gràcia, Barcelona",
+    "declared": [
+      166,
+      184,
+      202
+    ],
+    "paintedForeground": [
+      166,
+      184,
+      202
+    ],
+    "foregroundPoint": {
+      "x": 217,
+      "y": 706
+    },
+    "matchDelta": 0,
+    "minimum": 4.886950834895514,
+    "worstBacking": [
+      39,
+      69,
+      98
+    ],
+    "worstPoint": {
+      "x": 385,
+      "y": 713
+    },
+    "glyphPixels": 1000
+  },
+  {
+    "mode": "dark",
+    "scene": "land",
+    "text": "[search placeholder]",
+    "declared": [
+      227,
+      239,
+      255
+    ],
+    "paintedForeground": [
+      227,
+      239,
+      255
+    ],
+    "foregroundPoint": {
+      "x": 71,
+      "y": 323
+    },
+    "matchDelta": 0,
+    "minimum": 8.216599284425124,
+    "worstBacking": [
+      41,
+      72,
+      98
+    ],
+    "worstPoint": {
+      "x": 170,
+      "y": 320
+    },
+    "glyphPixels": 1034
+  },
+  {
+    "mode": "dark",
+    "scene": "sea",
+    "text": "Food & drink",
+    "declared": [
+      227,
+      239,
+      255
+    ],
+    "paintedForeground": [
+      227,
+      239,
+      255
+    ],
+    "foregroundPoint": {
+      "x": 45,
+      "y": 359
+    },
+    "matchDelta": 0,
+    "minimum": 9.420430784276087,
+    "worstBacking": [
+      28,
+      61,
+      104
+    ],
+    "worstPoint": {
+      "x": 44,
+      "y": 359
+    },
+    "glyphPixels": 448
+  },
+  {
+    "mode": "dark",
+    "scene": "sea",
+    "text": "Shops",
+    "declared": [
+      227,
+      239,
+      255
+    ],
+    "paintedForeground": [
+      227,
+      239,
+      255
+    ],
+    "foregroundPoint": {
+      "x": 171,
+      "y": 360
+    },
+    "matchDelta": 0,
+    "minimum": 9.420430784276087,
+    "worstBacking": [
+      28,
+      61,
+      104
+    ],
+    "worstPoint": {
+      "x": 171,
+      "y": 359
+    },
+    "glyphPixels": 255
+  },
+  {
+    "mode": "dark",
+    "scene": "sea",
+    "text": "Stay",
+    "declared": [
+      227,
+      239,
+      255
+    ],
+    "paintedForeground": [
+      227,
+      239,
+      255
+    ],
+    "foregroundPoint": {
+      "x": 255,
+      "y": 360
+    },
+    "matchDelta": 0,
+    "minimum": 9.420430784276087,
+    "worstBacking": [
+      28,
+      61,
+      104
+    ],
+    "worstPoint": {
+      "x": 255,
+      "y": 359
+    },
+    "glyphPixels": 178
+  },
+  {
+    "mode": "dark",
+    "scene": "sea",
+    "text": "Leisure",
+    "declared": [
+      227,
+      239,
+      255
+    ],
+    "paintedForeground": [
+      227,
+      239,
+      255
+    ],
+    "foregroundPoint": {
+      "x": 326,
+      "y": 359
+    },
+    "matchDelta": 0,
+    "minimum": 9.420430784276087,
+    "worstBacking": [
+      28,
+      61,
+      104
+    ],
+    "worstPoint": {
+      "x": 325,
+      "y": 359
+    },
+    "glyphPixels": 238
+  },
+  {
+    "mode": "dark",
+    "scene": "sea",
+    "text": "Font de Canaletes",
+    "declared": [
+      227,
+      239,
+      255
+    ],
+    "paintedForeground": [
+      227,
+      239,
+      255
+    ],
+    "foregroundPoint": {
+      "x": 126,
+      "y": 391
+    },
+    "matchDelta": 0,
+    "minimum": 9.420430784276087,
+    "worstBacking": [
+      28,
+      61,
+      104
+    ],
+    "worstPoint": {
+      "x": 125,
+      "y": 391
+    },
+    "glyphPixels": 720
+  },
+  {
+    "mode": "dark",
+    "scene": "sea",
+    "text": "Place",
+    "declared": [
+      166,
+      184,
+      202
+    ],
+    "paintedForeground": [
+      166,
+      184,
+      202
+    ],
+    "foregroundPoint": {
+      "x": 126,
+      "y": 414
+    },
+    "matchDelta": 0,
+    "minimum": 5.389514104872235,
+    "worstBacking": [
+      28,
+      61,
+      104
+    ],
+    "worstPoint": {
+      "x": 125,
+      "y": 414
+    },
+    "glyphPixels": 154
+  },
+  {
+    "mode": "dark",
+    "scene": "sea",
+    "text": "170 m",
+    "declared": [
+      166,
+      184,
+      202
+    ],
+    "paintedForeground": [
+      166,
+      184,
+      202
+    ],
+    "foregroundPoint": {
+      "x": 145,
+      "y": 436
+    },
+    "matchDelta": 0,
+    "minimum": 5.389514104872235,
+    "worstBacking": [
+      28,
+      61,
+      104
+    ],
+    "worstPoint": {
+      "x": 143,
+      "y": 436
+    },
+    "glyphPixels": 151
+  },
+  {
+    "mode": "dark",
+    "scene": "sea",
+    "text": "Nømad Coffee Lab",
+    "declared": [
+      227,
+      239,
+      255
+    ],
+    "paintedForeground": [
+      227,
+      239,
+      255
+    ],
+    "foregroundPoint": {
+      "x": 126,
+      "y": 503
+    },
+    "matchDelta": 0,
+    "minimum": 9.420430784276087,
+    "worstBacking": [
+      28,
+      61,
+      104
+    ],
+    "worstPoint": {
+      "x": 197,
+      "y": 502
+    },
+    "glyphPixels": 768
+  },
+  {
+    "mode": "dark",
+    "scene": "sea",
+    "text": "Café · Sant Pere",
+    "declared": [
+      166,
+      184,
+      202
+    ],
+    "paintedForeground": [
+      166,
+      184,
+      202
+    ],
+    "foregroundPoint": {
+      "x": 197,
+      "y": 527
+    },
+    "matchDelta": 0,
+    "minimum": 5.389514104872235,
+    "worstBacking": [
+      28,
+      61,
+      104
+    ],
+    "worstPoint": {
+      "x": 149,
+      "y": 526
+    },
+    "glyphPixels": 415
+  },
+  {
+    "mode": "dark",
+    "scene": "sea",
+    "text": "Closed",
+    "declared": [
+      255,
+      179,
+      173
+    ],
+    "paintedForeground": [
+      255,
+      179,
+      173
+    ],
+    "foregroundPoint": {
+      "x": 247,
+      "y": 526
+    },
+    "matchDelta": 0,
+    "minimum": 5.978165836860866,
+    "worstBacking": [
+      65,
+      62,
+      89
+    ],
+    "worstPoint": {
+      "x": 239,
+      "y": 526
+    },
+    "glyphPixels": 233
+  },
+  {
+    "mode": "dark",
+    "scene": "sea",
+    "text": "Closed · opens tomorrow 09:00",
+    "declared": [
+      166,
+      184,
+      202
+    ],
+    "paintedForeground": [
+      166,
+      184,
+      202
+    ],
+    "foregroundPoint": {
+      "x": 220,
+      "y": 550
+    },
+    "matchDelta": 0,
+    "minimum": 5.389514104872235,
+    "worstBacking": [
+      28,
+      61,
+      104
+    ],
+    "worstPoint": {
+      "x": 126,
+      "y": 548
+    },
+    "glyphPixels": 837
+  },
+  {
+    "mode": "dark",
+    "scene": "sea",
+    "text": "Passatge Sert 12, Sant Pere, Barcelona",
+    "declared": [
+      166,
+      184,
+      202
+    ],
+    "paintedForeground": [
+      166,
+      184,
+      202
+    ],
+    "foregroundPoint": {
+      "x": 144,
+      "y": 568
+    },
+    "matchDelta": 0,
+    "minimum": 5.389514104872235,
+    "worstBacking": [
+      28,
+      61,
+      104
+    ],
+    "worstPoint": {
+      "x": 143,
+      "y": 568
+    },
+    "glyphPixels": 1067
+  },
+  {
+    "mode": "dark",
+    "scene": "sea",
+    "text": "310 m",
+    "declared": [
+      166,
+      184,
+      202
+    ],
+    "paintedForeground": [
+      166,
+      184,
+      202
+    ],
+    "foregroundPoint": {
+      "x": 153,
+      "y": 590
+    },
+    "matchDelta": 0,
+    "minimum": 5.389514104872235,
+    "worstBacking": [
+      28,
+      61,
+      104
+    ],
+    "worstPoint": {
+      "x": 143,
+      "y": 590
+    },
+    "glyphPixels": 167
+  },
+  {
+    "mode": "dark",
+    "scene": "sea",
+    "text": "Accepts FairCoin",
+    "declared": [
+      166,
+      184,
+      202
+    ],
+    "paintedForeground": [
+      166,
+      184,
+      202
+    ],
+    "foregroundPoint": {
+      "x": 246,
+      "y": 590
+    },
+    "matchDelta": 0,
+    "minimum": 5.389514104872235,
+    "worstBacking": [
+      28,
+      61,
+      104
+    ],
+    "worstPoint": {
+      "x": 194,
+      "y": 590
+    },
+    "glyphPixels": 461
+  },
+  {
+    "mode": "dark",
+    "scene": "sea",
+    "text": "Verified by Oxy",
+    "declared": [
+      169,
+      202,
+      237
+    ],
+    "paintedForeground": [
+      169,
+      202,
+      237
+    ],
+    "foregroundPoint": {
+      "x": 133,
+      "y": 616
+    },
+    "matchDelta": 0,
+    "minimum": 6.788020233007751,
+    "worstBacking": [
+      20,
+      59,
+      95
+    ],
+    "worstPoint": {
+      "x": 188,
+      "y": 627
+    },
+    "glyphPixels": 486
+  },
+  {
+    "mode": "dark",
+    "scene": "sea",
+    "text": "Betahaus Barcelona",
+    "declared": [
+      227,
+      239,
+      255
+    ],
+    "paintedForeground": [
+      227,
+      239,
+      255
+    ],
+    "foregroundPoint": {
+      "x": 126,
+      "y": 641
+    },
+    "matchDelta": 0,
+    "minimum": 9.420430784276087,
+    "worstBacking": [
+      28,
+      61,
+      104
+    ],
+    "worstPoint": {
+      "x": 125,
+      "y": 641
+    },
+    "glyphPixels": 823
+  },
+  {
+    "mode": "dark",
+    "scene": "sea",
+    "text": "Coworking · Gràcia",
+    "declared": [
+      166,
+      184,
+      202
+    ],
+    "paintedForeground": [
+      166,
+      184,
+      202
+    ],
+    "foregroundPoint": {
+      "x": 146,
+      "y": 667
+    },
+    "matchDelta": 0,
+    "minimum": 5.389514104872235,
+    "worstBacking": [
+      28,
+      61,
+      104
+    ],
+    "worstPoint": {
+      "x": 218,
+      "y": 664
+    },
+    "glyphPixels": 520
+  },
+  {
+    "mode": "dark",
+    "scene": "sea",
+    "text": "Closed",
+    "declared": [
+      255,
+      179,
+      173
+    ],
+    "paintedForeground": [
+      255,
+      179,
+      173
+    ],
+    "foregroundPoint": {
+      "x": 265,
+      "y": 664
+    },
+    "matchDelta": 0,
+    "minimum": 5.978165836860866,
+    "worstBacking": [
+      65,
+      62,
+      89
+    ],
+    "worstPoint": {
+      "x": 257,
+      "y": 664
+    },
+    "glyphPixels": 235
+  },
+  {
+    "mode": "dark",
+    "scene": "sea",
+    "text": "Closed · opens tomorrow 08:30",
+    "declared": [
+      166,
+      184,
+      202
+    ],
+    "paintedForeground": [
+      166,
+      184,
+      202
+    ],
+    "foregroundPoint": {
+      "x": 220,
+      "y": 688
+    },
+    "matchDelta": 0,
+    "minimum": 5.389514104872235,
+    "worstBacking": [
+      28,
+      61,
+      104
+    ],
+    "worstPoint": {
+      "x": 126,
+      "y": 686
+    },
+    "glyphPixels": 837
+  },
+  {
+    "mode": "dark",
+    "scene": "sea",
+    "text": "Carrer de Vilafranca 7, Gràcia, Barcelona",
+    "declared": [
+      166,
+      184,
+      202
+    ],
+    "paintedForeground": [
+      166,
+      184,
+      202
+    ],
+    "foregroundPoint": {
+      "x": 217,
+      "y": 706
+    },
+    "matchDelta": 0,
+    "minimum": 5.389514104872235,
+    "worstBacking": [
+      28,
+      61,
+      104
+    ],
+    "worstPoint": {
+      "x": 299,
+      "y": 705
+    },
+    "glyphPixels": 1005
+  },
+  {
+    "mode": "dark",
+    "scene": "sea",
+    "text": "[search placeholder]",
+    "declared": [
+      227,
+      239,
+      255
+    ],
+    "paintedForeground": [
+      227,
+      239,
+      255
+    ],
+    "foregroundPoint": {
+      "x": 71,
+      "y": 323
+    },
+    "matchDelta": 0,
+    "minimum": 8.412782124592132,
+    "worstBacking": [
+      39,
+      70,
+      100
+    ],
+    "worstPoint": {
+      "x": 52,
+      "y": 320
+    },
+    "glyphPixels": 1034
+  }
+]
