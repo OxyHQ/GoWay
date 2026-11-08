@@ -14,10 +14,10 @@
  */
 import { useCallback, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'expo-router';
-import { Button } from '@oxy.so/bloom/button';
 import { RiListUnordered } from '@oxy.so/bloom/icons/RiListUnordered';
 import { Pressable, View } from 'react-native';
 import { useCanvasRegion } from '@oxy.so/bloom/canvas';
+import { HeaderActions, type HeaderAction } from '@oxy.so/bloom/page-header';
 import { canvasChromeInsets } from '@/lib/map/canvas-policy';
 import { useOxy } from '@oxy.so/services/ui/client';
 import { getNormalizedUserHandle } from '@oxy.so/core';
@@ -78,6 +78,42 @@ export function MapTopBar() {
     gate.run(() => aliaChatRef.current?.present());
   }, [gate]);
 
+  const actions = useMemo<readonly HeaderAction[]>(
+    () => [
+      {
+        id: 'ask-alia',
+        label: t('map.askAlia'),
+        icon: AliaAvatarIcon,
+        onPress: handleAskAlia,
+        group: 'discovery',
+        priority: 30,
+      },
+      {
+        id: 'lists',
+        label: t('lists.title'),
+        icon: RiListUnordered,
+        onPress: () => router.push('/lists'),
+        group: 'browse',
+        priority: 20,
+        labelVisibility: 'hidden',
+      },
+      {
+        id: 'saved',
+        label: t('saved.title'),
+        onPress: () => router.push('/saved'),
+        group: 'browse',
+        priority: 10,
+      },
+      {
+        id: 'contribute',
+        label: t('map.contribute'),
+        onPress: () => router.push('/contribute'),
+        group: 'browse',
+      },
+    ],
+    [handleAskAlia, router, t],
+  );
+
   return (
     <>
       <View
@@ -101,30 +137,12 @@ export function MapTopBar() {
           `t('map.title')` stays as the accessible label — the logo is the app's
           name drawn rather than typed, and a screen reader should hear a name. */}
         <GowayLogo width={BRAND_WIDTH} label={t('map.title')} />
-        <View className="flex-1 flex-row flex-wrap items-center justify-end gap-space-8">
-          <Button
-            size="sm"
-            appearance="outline"
-            leadingIcon={AliaAvatarIcon}
-            onPress={handleAskAlia}
-          >
-            {t('map.askAlia')}
-          </Button>
-          <Button
-            iconOnly
-            appearance="plain"
-            icon={RiListUnordered}
-            accessibilityLabel={t('lists.title')}
-            size="md"
-            onPress={() => router.push('/lists')}
-          />
-          <Button size="sm" appearance="outline" onPress={() => router.push('/saved')}>
-            {t('saved.title')}
-          </Button>
-          <Button size="sm" appearance="outline" onPress={() => router.push('/contribute')}>
-            Contribute
-          </Button>
-        </View>
+        <HeaderActions
+          actions={actions}
+          accessibilityLabel={t('map.actions')}
+          style={{ flex: 1, minWidth: 0 }}
+          testID="map-top-bar-actions"
+        />
 
         <Pressable
           accessibilityRole="button"
