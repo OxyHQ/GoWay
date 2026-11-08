@@ -33,6 +33,7 @@
  * where it is free.
  */
 import {
+  type ComponentRef,
   lazy,
   Suspense,
   useCallback,
@@ -42,14 +43,15 @@ import {
   useRef,
   useState,
 } from 'react';
-import { useWindowDimensions, View } from 'react-native';
+import { View } from 'react-native';
 import { useFocusEffect, useRouter } from 'expo-router';
 import Animated, {
   useAnimatedStyle,
+  useAnimatedReaction,
+  runOnJS,
   useDerivedValue,
   useSharedValue,
 } from 'react-native-reanimated';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Button } from '@oxy.so/bloom/button';
 import { Text } from '@oxy.so/bloom/typography';
 import { MapSearchAreaButton } from '@oxy.so/bloom/map-marker';
@@ -72,9 +74,14 @@ import {
   type MapViewport,
   type MapCameraChange,
 } from '@/components/map';
-import { MAP_SHEET_HALF_RATIO, MapSheet, type MapSheetSnap } from '@/components/sheet/MapSheet';
-import { SidePanel } from '@/components/sheet/SidePanel';
-import { PANEL_WIDTH, useLayoutMode } from '@/lib/useLayoutMode';
+import {
+  Canvas,
+  CanvasBackground,
+  CanvasPanel,
+  useCanvasRegion,
+  type CanvasPanelSnap,
+} from '@oxy.so/bloom/canvas';
+import { canvasChromeInsets, PANEL_WIDTH, PANEL_BREAKPOINT } from '@/lib/map/canvas-policy';
 import { useAuthGate } from '@/lib/authGate';
 import { chromeLift } from '@/lib/map/chromeLift';
 import { creditRise } from '@goway.to/maps';
@@ -153,63 +160,27 @@ function locationNoticeFor(
   }
 }
 
-/**
- * How much of the canvas is NOT free, so a fitted route lands where it can be
- * seen.
- *
- * The previous fit used a uniform 72 px, which is the right number for a map
- * with nothing on top of it and the wrong one for this screen: on a phone the
- * sheet occupies the bottom 45% at rest, so a route centred in the full canvas
- * is centred behind the sheet, and the half the user can see is the half the
- * route is not in. On a wide window the same is true of the left-hand panel.
- *
- * So the padding is asymmetric and says exactly what is covered:
- *
- *  - **sheet** — the resting height of the current detent along the bottom
- *    ({@link MAP_SHEET_HALF_RATIO} is the sheet's own number, imported rather
- *    than guessed), plus the top bar's claim at the top.
- *  - **panel** — the panel's width plus its gutter on the left.
- *
- * Assumptions, since they are worth stating: `peek` is approximated by a
- * constant because the real peek height is the MEASURED header, which lives
- * inside the sheet; and `full` is treated as `half` rather than as the whole
- * screen, because a route fitted into the sliver above a fully-open sheet is
- * not a useful frame — the user who opens the sheet that far is reading the
- * turn list, and will collapse it to look at the map.
- */
-function useMapPadding(layout: 'sheet' | 'panel', snap: MapSheetSnap): MapFitOptions['padding'] {
-  const { width, height } = useWindowDimensions();
-  const insets = useSafeAreaInsets();
-  const topEdge = useTopEdgeInset();
-
-  return useMemo(() => {
-    const top = Math.max(topEdge, insets.top) + FIT_GAP_PX;
-
-    // What the chrome WANTS. `clampFitPadding` decides what is safe to hand an
-    // engine — see `mapPadding.ts` for why that is not the same question, and
-    // why it used to be answered with a per-side cap that could go negative on
-    // a small window and claim 130% of an axis on a large one.
-    const desired =
-      layout === 'panel'
-        ? {
-            top,
-            right: FIT_GAP_PX,
-            bottom: FIT_GAP_PX + insets.bottom,
-            left: windowEdgeGap(insets.left, 0) + PANEL_WIDTH + FIT_GAP_PX,
-          }
-        : {
-            top,
-            right: FIT_GAP_PX + windowEdgeGap(insets.right, 0),
-            // `peek` shows the header only; 140 px is a generous stand-in for
-            // it, and erring large keeps a route above the sheet rather than
-            // under its lip.
-            bottom:
-              (snap === 'peek' ? 140 : Math.round(height * MAP_SHEET_HALF_RATIO)) + FIT_GAP_PX,
-            left: FIT_GAP_PX + windowEdgeGap(insets.left, 0),
-          };
-
-    return clampFitPadding(desired, { width, height }, FIT_GAP_PX);
-  }, [height, insets.bottom, insets.left, insets.right, insets.top, layout, snap, topEdge, width]);
+/** Translate measured canvas occupancy into the engine's safe camera padding. */
+function useMapPadding(): MapFitOptions['padding'] {
+  const { bounds, viewport, occupied, safeArea: insets } = useCanvasRegion();
+  return useMemo(
+    () =>
+      clampFitPadding(
+        {
+          top: Math.max(occupied.top, viewport.y, insets.top) + FIT_GAP_PX,
+          right:
+            Math.max(occupied.right, bounds.width - viewport.x - viewport.width, insets.right) +
+            FIT_GAP_PX,
+          bottom:
+            Math.max(occupied.bottom, bounds.height - viewport.y - viewport.height, insets.bottom) +
+            FIT_GAP_PX,
+          left: Math.max(occupied.left, viewport.x, insets.left) + FIT_GAP_PX,
+        },
+        bounds,
+        FIT_GAP_PX,
+      ),
+    [bounds, viewport, occupied, insets],
+  );
 }
 
 export interface ExploreScreenProps {
@@ -262,19 +233,25 @@ const LandmarksPillEntry = lazy(() =>
   import('@/features/landmarks/lazy').then((chunk) => ({ default: chunk.LandmarksPillEntry })),
 );
 
-export default function ExploreScreen({
-  initialPlaceId = null,
-  initialViewport = null,
-}: ExploreScreenProps) {
+export default function ExploreScreen(props: ExploreScreenProps) {
+  return (
+    <Canvas testID="explore-canvas">
+      <ExploreContent {...props} />
+    </Canvas>
+  );
+}
+
+function ExploreContent({ initialPlaceId = null, initialViewport = null }: ExploreScreenProps) {
   const { t } = useTranslation();
   const mapRef = useRef<MapApi>(null);
-  const insets = useSafeAreaInsets();
-  const layout = useLayoutMode();
+  const canvasRegion = useCanvasRegion();
+  const insets = canvasChromeInsets(canvasRegion);
+  const layout = canvasRegion.viewport.width >= PANEL_BREAKPOINT ? 'panel' : 'sheet';
 
-  const [snap, setSnap] = useState<MapSheetSnap>('half');
+  const [snap, setSnap] = useState<CanvasPanelSnap>('half');
   // Computed BEFORE the hook that uses it: the screen is the only thing that
   // knows how much of the canvas its own chrome is standing on.
-  const mapPadding = useMapPadding(layout, snap);
+  const mapPadding = useMapPadding();
 
   const explore = useExplore(mapRef, { initialPlaceId, mapPadding });
   const { directions, location } = explore;
@@ -432,17 +409,19 @@ export default function ExploreScreen({
   }, [guiding, followGuide, userFix]);
 
   const sheetProgress = useSharedValue(0);
-  // The sheet's live on-screen height (`MapSheet`'s `animatedHeight`).
+  // The sheet's live on-screen height (`CanvasPanel`'s `animatedHeight`).
   const sheetHeight = useSharedValue(0);
 
   const topEdge = useTopEdgeInset();
   const bottomEdge = useBottomEdgeInset();
-  const bottomGap = windowEdgeGap(insets.bottom);
+  const bottomBase = Math.max(bottomEdge, insets.bottom);
+  const bottomGap = windowEdgeGap(bottomBase);
   const sideGap = windowEdgeGap(insets.right, 0);
   // Above the map's credit, which owns the bottom-right corner (`MapAttribution`).
   const controlsBottom =
-    (bottomEdge > 0 ? bottomEdge + windowEdgeGap(0) : bottomGap) + MAP_CREDIT_CLEARANCE;
-  const areaTop = topEdge > 0 ? topEdge + windowEdgeGap(0) : windowEdgeGap(insets.top);
+    (bottomEdge > 0 ? bottomBase + windowEdgeGap(0) : bottomGap) + MAP_CREDIT_CLEARANCE;
+  const areaTop =
+    topEdge > 0 ? Math.max(topEdge, insets.top) + windowEdgeGap(0) : windowEdgeGap(insets.top);
 
   const handleViewportChange = useCallback(
     (change: MapCameraChange) => {
@@ -549,32 +528,101 @@ export default function ExploreScreen({
    * the sheet's CURRENT top edge, on the UI thread (`lib/map/chromeLift.ts`).
    * They are laid out against the sheet's resting claim on the bottom edge;
    * this lifts them the rest of the way, so at `half` the credit is visible
-   * from the first frame and while dragging they ride the sheet, then fade as
-   * it takes the screen. In panel mode nothing writes `sheetHeight` and there
+   * from the first frame and while dragging they ride the sheet, the map controls fade as
+   * it takes the screen. Official credit and scale stay visible. In panel mode nothing writes `sheetHeight` and there
    * is no provider, so the chrome sits where it always did.
    */
-  const { height: windowHeight } = useWindowDimensions();
-  const lift = useDerivedValue(
-    () => chromeLift({ sheetHeight: sheetHeight.value, claimed: bottomEdge, windowHeight }),
-    [sheetHeight, bottomEdge, windowHeight],
+  const [controlsHeight, setControlsHeight] = useState(0);
+  const [controlsShown, setControlsShown] = useState(false);
+  const controlsFocused = useRef(false);
+  const panelHandle = useRef<ComponentRef<typeof View>>(null);
+  const updateControlVisibility = useCallback((fits: boolean) => {
+    // Opacity/pointer exclusion happen on UI first; leave the focused host
+    // mounted until this threshold callback can move focus before display:none.
+    if (!fits && controlsFocused.current) panelHandle.current?.focus();
+    setControlsShown(fits);
+  }, []);
+  const [creditLayout, setCreditLayout] = useState(0);
+  // Full stops below actual foreground chrome; credit must not rise beneath
+  // the settings stack. This is adapter policy, not a guessed sheet height.
+  const [topChromeHeight, setTopChromeHeight] = useState(0);
+  const [scaleLayout, setScaleLayout] = useState(0);
+  const onChromeLayout = useCallback((part: 'credit' | 'scale', height: number) => {
+    if (part === 'credit') setCreditLayout(height);
+    else setScaleLayout(height);
+  }, []);
+  const creditLiftPx = useDerivedValue(
+    () => sheetHeight.value - bottomEdge,
+    [sheetHeight, bottomEdge],
   );
-  const liftPx = useDerivedValue(() => lift.value.lift, [lift]);
-  const liftOpacity = useDerivedValue(() => lift.value.opacity, [lift]);
+  const creditOpacity = useSharedValue(1);
   const chromeLiftValue = useMemo<MapChromeLift>(
-    () => ({ lift: liftPx, opacity: liftOpacity, rightClearance: sideGap + CONTROLS_COLUMN_WIDTH }),
-    [liftPx, liftOpacity, sideGap],
+    () => ({
+      lift: creditLiftPx,
+      opacity: creditOpacity,
+      rightClearance: sideGap + CONTROLS_COLUMN_WIDTH,
+      onChromeLayout,
+    }),
+    [creditLiftPx, creditOpacity, sideGap, onChromeLayout],
   );
   // The credit's measured height (`MapAttribution`): spelled out on a phone it
   // wraps, and "My location" and its notice stand above it rather than on it
   // (`lib/map/creditRise.ts`).
   const creditHeight = useSharedValue(0);
   const sheetLayout = layout === 'sheet';
-  const chromeStyle = useAnimatedStyle(() => {
+  const controlsGeometry = useDerivedValue(() => {
     const rise = creditRise(creditHeight.value);
-    return sheetLayout
-      ? { transform: [{ translateY: -(liftPx.value + rise) }], opacity: liftOpacity.value }
-      : { transform: [{ translateY: -rise }] };
-  }, [liftPx, liftOpacity, creditHeight, sheetLayout]);
+    const lift = chromeLift({
+      sheetHeight: sheetHeight.value,
+      claimed: bottomEdge,
+      maximumSheetHeight:
+        canvasRegion.bounds.height -
+        areaTop -
+        topChromeHeight -
+        FIT_GAP_PX -
+        controlsHeight -
+        (controlsBottom - bottomEdge) -
+        rise,
+    });
+    return {
+      translateY: -(sheetLayout ? lift.lift + rise : rise),
+      fits: !sheetLayout || (controlsHeight > 0 && lift.opacity === 1),
+    };
+  }, [
+    sheetHeight,
+    creditHeight,
+    sheetLayout,
+    bottomEdge,
+    canvasRegion.bounds.height,
+    areaTop,
+    topChromeHeight,
+    controlsHeight,
+    controlsBottom,
+  ]);
+  useAnimatedReaction(
+    () => controlsGeometry.value.fits,
+    (fits, previous) => {
+      if (fits !== previous) runOnJS(updateControlVisibility)(fits);
+    },
+    [controlsGeometry, updateControlVisibility],
+  );
+  const chromeStyle = useAnimatedStyle(
+    () => ({
+      transform: [{ translateY: controlsGeometry.value.translateY }],
+      opacity: controlsGeometry.value.fits ? 1 : 0,
+      display: controlsShown || controlsHeight === 0 ? 'flex' : 'none',
+      pointerEvents: controlsGeometry.value.fits ? 'auto' : 'none',
+    }),
+    [controlsGeometry, controlsShown, controlsHeight],
+  );
+  const noticeStyle = useAnimatedStyle(
+    () => ({
+      transform: [{ translateY: controlsGeometry.value.translateY }],
+      opacity: controlsGeometry.value.fits ? 1 : 0,
+      pointerEvents: 'none',
+    }),
+    [controlsGeometry],
+  );
 
   const header = <ExploreHeader explore={explore} />;
   const body = (
@@ -597,8 +645,9 @@ export default function ExploreScreen({
         <MapChromeLiftContext.Provider
           value={layout === 'sheet' && !immersive ? chromeLiftValue : null}
         >
-          <View className="flex-1 bg-background">
+          <>
             <MapCanvas
+              backgroundComponent={CanvasBackground}
               ref={mapRef}
               initialViewport={initialViewport ?? undefined}
               markers={markers}
@@ -695,7 +744,7 @@ export default function ExploreScreen({
                   top: areaTop,
                   left:
                     layout === 'panel'
-                      ? windowEdgeGap(insets.left, 0) + PANEL_WIDTH + FIT_GAP_PX
+                      ? Math.max(canvasRegion.occupied.left, insets.left) + FIT_GAP_PX
                       : windowEdgeGap(insets.left, 0),
                   right: sideGap + CONTROLS_COLUMN_WIDTH,
                 }}
@@ -735,6 +784,7 @@ export default function ExploreScreen({
               pointerEvents="box-none"
               className="absolute items-end gap-space-8"
               style={{ top: areaTop, right: sideGap }}
+              onLayout={(event) => setTopChromeHeight(event.nativeEvent.layout.height)}
               testID="map-top-right-stack"
             >
               {immersive ? null : (
@@ -792,7 +842,16 @@ export default function ExploreScreen({
 
             {immersive ? null : (
               <Animated.View
-                pointerEvents="box-none"
+                onFocus={() => {
+                  controlsFocused.current = true;
+                }}
+                onBlur={() => {
+                  controlsFocused.current = false;
+                }}
+                onLayout={(event) => {
+                  const height = event.nativeEvent.layout.height;
+                  if (height > 0) setControlsHeight(height);
+                }}
                 style={[
                   {
                     position: 'absolute',
@@ -805,6 +864,7 @@ export default function ExploreScreen({
                 ]}
               >
                 <ExploreMapControls
+                  orientation={layout === 'sheet' ? 'horizontal' : 'vertical'}
                   mapRef={mapRef}
                   readout={cameraReadout}
                   tilted={tilted}
@@ -832,7 +892,7 @@ export default function ExploreScreen({
                     right: sideGap + CONTROLS_COLUMN_WIDTH,
                   },
                   // Beside "My location", so it rides the sheet (and the credit) with it.
-                  chromeStyle,
+                  noticeStyle,
                 ]}
               >
                 <View className="rounded-radius-12 bg-card px-space-12 py-space-8 shadow-s">
@@ -841,25 +901,22 @@ export default function ExploreScreen({
               </Animated.View>
             ) : null}
 
-            {immersive ? null : layout === 'panel' ? (
-              <SidePanel header={header} accessibilityLabel="Places" testID="explore-panel">
-                {body}
-              </SidePanel>
-            ) : (
-              <MapSheet
-                snap={snap}
-                onSnapChange={setSnap}
-                animatedProgress={sheetProgress}
-                animatedHeight={sheetHeight}
-                manualActivation
-                header={header}
-                accessibilityLabel="Places"
-                testID="explore-sheet"
-              >
-                {body}
-              </MapSheet>
-            )}
-          </View>
+            <CanvasPanel
+              visible={!immersive}
+              handleRef={panelHandle}
+              side={{ from: PANEL_BREAKPOINT, width: PANEL_WIDTH }}
+              topClearance={topChromeHeight + creditLayout + scaleLayout + 12}
+              snap={snap}
+              onSnapChange={setSnap}
+              animatedProgress={sheetProgress}
+              animatedHeight={sheetHeight}
+              header={header}
+              accessibilityLabel={t('search.panel')}
+              testID="explore-panel"
+            >
+              {body}
+            </CanvasPanel>
+          </>
         </MapChromeLiftContext.Provider>
       </MapCreditHeightContext.Provider>
     </BrandedChromeProvider>

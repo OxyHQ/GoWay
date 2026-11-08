@@ -8,6 +8,7 @@
  * twin, so a sentence can name what failed in each language's own grammar.
  */
 export const SEARCH_EN: Record<string, string> = {
+  'search.panel': 'Places',
   'search.placeholder': 'Search places and addresses',
   'search.back.default': 'Back to results',
   'search.back.results': 'Back to search results',
@@ -80,6 +81,7 @@ export const SEARCH_EN: Record<string, string> = {
 };
 
 export const SEARCH_ES: Record<string, string> = {
+  'search.panel': 'Lugares',
   'search.placeholder': 'Busca lugares y direcciones',
   'search.back.default': 'Volver a los resultados',
   'search.back.results': 'Volver a los resultados de búsqueda',

@@ -10,7 +10,7 @@
  * GoWay speaks `{ latitude, longitude }` OBJECTS, never positional pairs; the
  * SDK is the one place a coordinate becomes an engine's `[lng, lat]`.
  */
-import type { ReactNode } from 'react';
+import type { ComponentType, ReactNode } from 'react';
 import type { StyleProp, ViewStyle } from 'react-native';
 import type { ModelPlacementInput } from '@goway.to/sdk';
 import type {
@@ -249,6 +249,8 @@ export interface MapApi extends MapViewRef {
 }
 
 export interface MapCanvasProps {
+  /** Wrap only the stable renderer/layers; credit and controls remain sibling chrome. */
+  backgroundComponent?: ComponentType<{ children: ReactNode }>;
   /** Camera on first render. Uncontrolled afterwards — move it via {@link MapApi}. */
   initialViewport?: MapViewport;
   /**

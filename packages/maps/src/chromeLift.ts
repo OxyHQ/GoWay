@@ -22,6 +22,8 @@ export interface MapChromeLift {
    * scrubber — leaves free so the two never overlap.
    */
   rightClearance: number;
+  /** Resting layout measurements; independent of animated lift. */
+  onChromeLayout?: (part: 'credit' | 'scale', height: number) => void;
 }
 
 export const MapChromeLiftContext = createContext<MapChromeLift | null>(null);

@@ -40,6 +40,7 @@ export class CameraReadout {
 }
 
 export interface ExploreMapControlsProps {
+  orientation?: 'horizontal' | 'vertical';
   mapRef: { readonly current: MapApi | null };
   readout: CameraReadout;
   tilted: boolean;
@@ -49,6 +50,7 @@ export interface ExploreMapControlsProps {
 }
 
 function ExploreMapControlsComponent({
+  orientation,
   mapRef,
   readout,
   tilted,
@@ -75,6 +77,7 @@ function ExploreMapControlsComponent({
 
   return (
     <MapControls
+      orientation={orientation}
       onLocate={onLocate}
       following={following}
       heading={heading}

@@ -20,7 +20,7 @@
  * ## What "none of the app" means concretely
  *
  * This route renders `MapCanvas` and nothing else — no `MapTopBar`, no
- * `MapSheet`, no `SidePanel`, no search, no "Search this area", no location
+ * `CanvasPanel`, no search, no "Search this area", no location
  * control. That is not a trimmed-down `ExploreScreen`; it deliberately does
  * not mount `ExploreScreen` at all, because every piece of chrome that screen
  * grows would otherwise appear in strangers' pages the day it lands.

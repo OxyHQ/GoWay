@@ -168,10 +168,8 @@ describe('every gesture callback in the app is a worklet', () => {
     text.includes("from 'react-native-gesture-handler'"),
   );
 
-  test('the scan sees the gesture code (the map sheet, at least)', () => {
-    expect(gestureFiles.map(({ path }) => path)).toContain(
-      join('components', 'sheet', 'MapSheet.tsx'),
-    );
+  test('the scan sees the app gesture root after panel gestures move to Bloom', () => {
+    expect(gestureFiles.map(({ path }) => path)).toContain(join('app', '_layout.tsx'));
   });
 
   for (const { path, text } of gestureFiles) {

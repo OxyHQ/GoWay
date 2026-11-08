@@ -14,6 +14,7 @@
  * same Bloom components as on the web.
  */
 import {
+  Fragment,
   forwardRef,
   useCallback,
   useImperativeHandle,
@@ -105,6 +106,7 @@ export const MapView = forwardRef<MapViewRef, MapViewProps>(function MapView(pro
     style,
     testID,
     children,
+    backgroundComponent: Background = Fragment,
   } = props;
   const theme = useTheme();
 
@@ -275,46 +277,48 @@ export const MapView = forwardRef<MapViewRef, MapViewProps>(function MapView(pro
   return (
     <MapCameraContext.Provider value={cameraStore}>
       <View style={[styles.root, style]} testID={testID}>
-        {styleUrl ? (
-          <NativeMap
-            key={retry}
-            ref={mapRef}
-            style={styles.fill}
-            mapStyle={styleUrl}
-            dragPan={gestures.pan}
-            touchZoom={gestures.zoom}
-            touchRotate={gestures.rotate}
-            touchPitch={gestures.pitch}
-            // The credit is `MapAttribution`, drawn below on every map.
-            attribution={false}
-            logo={false}
-            light={light ? (light as LightSpecification) : undefined}
-            compass={gestures.rotate}
-            compassPosition={{ top: 8, right: 8 }}
-            onPress={handlePress}
-            onRegionWillChange={(event) => reports.regionWillChange(event.nativeEvent)}
-            onRegionIsChanging={(event) => {
-              foldOnReaderMove(event);
-              noteZoom(event.nativeEvent.zoom);
-              reports.regionIsChanging(event.nativeEvent);
-            }}
-            onRegionDidChange={(event) => {
-              foldOnReaderMove(event);
-              noteZoom(event.nativeEvent.zoom);
-              // `false`: one frame of an animation the app drives — not settled.
-              if (!reports.regionDidChange(event.nativeEvent)) return;
-              const [longitude, latitude] = event.nativeEvent.center;
-              reportLabels({ latitude, longitude });
-            }}
-            onDidFinishLoadingStyle={handleStyleLoaded}
-            onDidFailLoadingMap={handleStyleFailed}
-          >
-            <NativeCamera ref={cameraRef} initialViewState={opening} {...stop} />
-            <MapRefContext.Provider value={api}>
-              <ZoomLevelContext.Provider value={zoomLevel}>{children}</ZoomLevelContext.Provider>
-            </MapRefContext.Provider>
-          </NativeMap>
-        ) : null}
+        <Background>
+          {styleUrl ? (
+            <NativeMap
+              key={retry}
+              ref={mapRef}
+              style={styles.fill}
+              mapStyle={styleUrl}
+              dragPan={gestures.pan}
+              touchZoom={gestures.zoom}
+              touchRotate={gestures.rotate}
+              touchPitch={gestures.pitch}
+              // The credit is `MapAttribution`, drawn below on every map.
+              attribution={false}
+              logo={false}
+              light={light ? (light as LightSpecification) : undefined}
+              compass={gestures.rotate}
+              compassPosition={{ top: 8, right: 8 }}
+              onPress={handlePress}
+              onRegionWillChange={(event) => reports.regionWillChange(event.nativeEvent)}
+              onRegionIsChanging={(event) => {
+                foldOnReaderMove(event);
+                noteZoom(event.nativeEvent.zoom);
+                reports.regionIsChanging(event.nativeEvent);
+              }}
+              onRegionDidChange={(event) => {
+                foldOnReaderMove(event);
+                noteZoom(event.nativeEvent.zoom);
+                // `false`: one frame of an animation the app drives — not settled.
+                if (!reports.regionDidChange(event.nativeEvent)) return;
+                const [longitude, latitude] = event.nativeEvent.center;
+                reportLabels({ latitude, longitude });
+              }}
+              onDidFinishLoadingStyle={handleStyleLoaded}
+              onDidFailLoadingMap={handleStyleFailed}
+            >
+              <NativeCamera ref={cameraRef} initialViewState={opening} {...stop} />
+              <MapRefContext.Provider value={api}>
+                <ZoomLevelContext.Provider value={zoomLevel}>{children}</ZoomLevelContext.Provider>
+              </MapRefContext.Provider>
+            </NativeMap>
+          ) : null}
+        </Background>
         {/* Both unconditional, with no prop to turn either off: the mark and the
           credit are on every map (`MapBrand.tsx`, `MapAttribution.tsx`). */}
         <MapBrand />

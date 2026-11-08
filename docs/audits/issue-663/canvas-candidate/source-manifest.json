@@ -1,0 +1,71 @@
+{
+  "recordedAt": "2026-11-08T10:34:00.276450+00:00",
+  "gowayBase": "0a83b1d96b49599f7a4aba1ac4ac3d3aabde1d14",
+  "bloomSource": "c64040c1",
+  "bloomPackageVersion": "17.22.0",
+  "publishedAcceptance": false,
+  "consumerDeclaredBloom": "17.19.3",
+  "packageJsonSha256": "3a345eb17d364c3be2613b4a80fb1a7831ac9055eddbf167489fdebc02b5aaf9",
+  "lockSha256": "a6d196af70d70aa4d26a16284941a21319058bf7166a8658a049530855127425",
+  "sourceFiles": {
+    "packages/frontend/app/frame.tsx": "b2e41613a79eeb32076a5a42d3c3d19ee99c82bf4c9a956e85ef3ac47a23833e",
+    "packages/frontend/components/__tests__/gestureWorklets.test.ts": "f4bd08cd595fd01ff59a53f625eeb9a1fc96defb64e5d7da0ea19e22e047e1d4",
+    "packages/frontend/components/map/MapCanvas.tsx": "893694e4191449b46c08138182ecc852c6c32e7c47d20e539002d8fc47588381",
+    "packages/frontend/components/map/MapCanvas.web.tsx": "82070dc4b0fc1e977530e2ff5eac20803189cc9fc3be9252823a7b52ff12570a",
+    "packages/frontend/components/map/types.ts": "7469c81b5b42208709cd4b17bc72fd7034c031e197525b66dbe11fd130ac4809",
+    "packages/frontend/components/sheet/MapSheet.tsx": null,
+    "packages/frontend/components/sheet/SidePanel.tsx": null,
+    "packages/frontend/features/explore/ExploreMapControls.tsx": "208ff965c6d8ab0c1aa135e71a0efe3e94098149d376f53448d8fa1c66ca3301",
+    "packages/frontend/features/explore/ExploreScreen.tsx": "f622efb246e846ca7f6fb994d8c17ade2f34a54c0ff86085b7c5ea5f43389fa3",
+    "packages/frontend/features/explore/MapTopBar.tsx": "591c21b62be7d0f4867d9a8b1c8c5375e329486a1e2c4ff529dca68d2408c468",
+    "packages/frontend/features/flyover/PlayerBar.tsx": "36d80c6e6b40f59ef82fa17453a4a914256b1d5bfa82b1e9262a8a02760d8ddd",
+    "packages/frontend/lib/map/__tests__/canvas-policy.test.ts": "fa7e455b4fccc7e455ac75928455f6215de55ca1f735118d7f5ee87362d4402f",
+    "packages/frontend/lib/map/__tests__/chromeLift.test.ts": "9246096b7e83bd1c1c87c82da9ec6bb48a7a71ab5a7cbc5ff8199f720186974b",
+    "packages/frontend/lib/map/canvas-policy.ts": "cec3d26035252f2a03c5e4fa34ccfc079427cf3b234f582ff8f1139e4dd23d71",
+    "packages/frontend/lib/map/chromeLift.ts": "c1270a733227dd758694bfbac7ae0c36bd88cc33005cab8bc35b093695d1ce25",
+    "packages/frontend/lib/messages/search.ts": "a076951295f550ddba65d7a4ab92a6e8d2e74962f1ab0b16952660dd70851bd9",
+    "packages/frontend/lib/useLayoutMode.ts": null,
+    "packages/maps/src/MapAttribution.tsx": "c920795e7c318ee1a5578521b7fdf69972b7578334e399b3ad0230ff4f812a7d",
+    "packages/maps/src/MapScale.tsx": "6a107347fb796574a161ce4648a66f3fc047e64ee3f0487e31077929b744e803",
+    "packages/maps/src/MapView.tsx": "90bf02bfb23b0e3475ce4b5d08c9620d7f0979c3137eba0a42f860f7ad616148",
+    "packages/maps/src/MapView.web.tsx": "2dd55630fa88dcd6382423913aa01a1e06bda94fd2a2c690a8108dde1de0ff42",
+    "packages/maps/src/chromeLift.ts": "fed286b10c27676092e85946728e0ed06f4dfbd4fa283dc33759d8c2065c76c6",
+    "packages/maps/src/types.ts": "07a3f1c58a127bfaf0feec7f8d30202c0cd61e1a4eeeac1db5f384871a3d1956",
+    "packages/maps/test/fixtures/credit-native-probe.ts": "29d198ca8c73bb9f19e9d6707a299db02167f1bfb1b178c0f91a9420d9ac542c",
+    "scripts/canvas-pilot/browser.mjs": "6651fab1fa96dbe608af21ba6f95b906bf19697e13b06cff9ebdaf13505851e5",
+    "scripts/canvas-pilot/contrast.mjs": "ad3a106e9ee3a0044dee4b2916b2a440ef641052b7af21a26983c78cc8ece5e5",
+    "scripts/canvas-pilot/focus.mjs": "4ad8e4c1a89ff137db5af62da383b02b6581725c4c6bd7d4c032d298fca7439a",
+    "scripts/canvas-pilot/measure-contrast.mjs": "4de4e8225686ad4d1379552896d08b81e9af3c8a024d25a6d2523cbe10157cc0",
+    "scripts/canvas-pilot/safe-area.mjs": "21a746136fc63945d99a89529139b386d6e4a76a9e3bc21d8f35eb255eb532c1",
+    "scripts/canvas-pilot/targets.mjs": "27c6ccff6fe2a47ebeabbd37287cf8fe61c8c5f1153d632e1e86d7939c4d7f44",
+    ".gitignore": "b10e88d96bfd83546a97bbe778458bffab972e4d07315fede5a5000ff6f6a18c"
+  },
+  "bloomBuiltFiles": {
+    "lib/module/canvas/CanvasPanelBase.js": "80d145f0c29a47b2a65a49b744d2a1a88e6f0220ed120e0bdceb1e9506efe6cd",
+    "lib/module/canvas/CanvasBase.js": "85f42ce3ddc11eac06d080a7729ccfc2b1f17350e06bac152f1759949cfcb246",
+    "lib/module/map-controls/MapControls.js": "c71e5b40189062a6ce9edbf8398f435733a18cd8a57d27e7bcccbc94646779e5",
+    "lib/module/text-field/shared.js": "dda5f7f26d15f2fb03233169d5cb1a4271dd1b1c22a2d2f3a38da35b7f1f2fcb"
+  },
+  "nativeGoWay": "not built or run",
+  "TalkBack": "not run",
+  "iPhone": "deferred by user",
+  "validation": {
+    "frontendTests": {
+      "pass": 1876,
+      "fail": 0,
+      "files": 181
+    },
+    "mapsTests": {
+      "pass": 155,
+      "fail": 0,
+      "files": 19
+    },
+    "candidateTypecheck": "pass (exit 0, before mirror restore)",
+    "biome": "pass, 1270 files",
+    "restoredPackage": {
+      "frontend": "17.19.3",
+      "maps": "17.19.3"
+    },
+    "publishedAcceptance": false
+  }
+}

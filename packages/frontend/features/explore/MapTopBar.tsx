@@ -14,10 +14,11 @@
  */
 import { useCallback, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'expo-router';
-import { Button, GlyphButton } from '@oxy.so/bloom/button';
+import { Button } from '@oxy.so/bloom/button';
 import { RiListUnordered } from '@oxy.so/bloom/icons/RiListUnordered';
 import { Pressable, View } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useCanvasRegion } from '@oxy.so/bloom/canvas';
+import { canvasChromeInsets } from '@/lib/map/canvas-policy';
 import { useOxy } from '@oxy.so/services/ui/client';
 import { getNormalizedUserHandle } from '@oxy.so/core';
 import { Avatar } from '@oxy.so/bloom/avatar';
@@ -44,7 +45,7 @@ export function MapTopBar() {
   const router = useRouter();
   const { t } = useTranslation();
   const theme = useTheme();
-  const insets = useSafeAreaInsets();
+  const insets = canvasChromeInsets(useCanvasRegion());
   const gate = useAuthGate();
   const { user, openAccountDialog } = useOxy();
 
@@ -62,7 +63,8 @@ export function MapTopBar() {
   useClaimTopEdge(height);
 
   const topGap = windowEdgeGap(insets.top);
-  const sideGap = windowEdgeGap(Math.max(insets.left, insets.right), 0);
+  const leftGap = windowEdgeGap(insets.left, 0);
+  const rightGap = windowEdgeGap(insets.right, 0);
 
   const handle = (user && getNormalizedUserHandle(user)) || '';
   const displayName = user?.name?.displayName?.trim() || handle;
@@ -79,10 +81,16 @@ export function MapTopBar() {
   return (
     <>
       <View
+        testID="map-top-bar"
         pointerEvents="box-none"
         onLayout={(event) => setHeight(event.nativeEvent.layout.height)}
         className="absolute left-0 right-0 top-0 flex-row items-center justify-between gap-space-12"
-        style={{ paddingTop: topGap, paddingHorizontal: sideGap, paddingBottom: 0 }}
+        style={{
+          paddingTop: topGap,
+          paddingLeft: leftGap,
+          paddingRight: rightGap,
+          paddingBottom: 0,
+        }}
       >
         {/* The logo, not the word, and standing on the map rather than on a
           plate. Both follow from the artwork: it is a sticker whose heavy
@@ -102,10 +110,12 @@ export function MapTopBar() {
           >
             {t('map.askAlia')}
           </Button>
-          <GlyphButton
+          <Button
+            iconOnly
+            appearance="plain"
             icon={RiListUnordered}
             accessibilityLabel={t('lists.title')}
-            size={36}
+            size="md"
             onPress={() => router.push('/lists')}
           />
           <Button size="sm" appearance="outline" onPress={() => router.push('/saved')}>

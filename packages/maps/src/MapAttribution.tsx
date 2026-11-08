@@ -36,8 +36,8 @@
  * whole sentence; folded, a word sits beside the ⓘ. Labelled in BOTH states,
  * for exactly as long as it is drawn.
  */
-import { memo, useCallback } from 'react';
-import { type LayoutChangeEvent, Linking, Pressable, StyleSheet, View } from 'react-native';
+import { memo, useCallback, useEffect, useRef } from 'react';
+import { type LayoutChangeEvent, StyleSheet, View } from 'react-native';
 import { withTiming } from 'react-native-reanimated';
 import { localizedLabel } from '@goway.to/sdk/map';
 import { useBloomLocale } from '@oxy.so/bloom/locale';
@@ -45,6 +45,7 @@ import { useBottomEdgeInset } from '@oxy.so/bloom/layout';
 import { RiInformationLine } from '@oxy.so/bloom/icons/RiInformationLine';
 import { useTheme } from '@oxy.so/bloom/theme';
 import { Text } from '@oxy.so/bloom/typography';
+import { Button } from '@oxy.so/bloom/button';
 
 import { useBrandedChrome } from './brand/BrandedChrome';
 import { useMapChromeLift } from './chromeLift';
@@ -113,21 +114,21 @@ function MapAttributionComponent({
   // credit takes the corner's full width.
   const brandDrawn = !useBrandedChrome();
   const heightOut = useMapCreditHeight();
+  const measuredHeight = useRef(0);
+  useEffect(() => {
+    chromeLift?.onChromeLayout?.('credit', measuredHeight.current);
+  }, [chromeLift?.onChromeLayout]);
   const measure = useCallback(
     (event: LayoutChangeEvent) => {
       const height = event.nativeEvent.layout.height;
       if (!Number.isFinite(height) || height < 0) return;
+      measuredHeight.current = height;
       onHeightChange(height);
+      chromeLift?.onChromeLayout?.('credit', height);
       heightOut?.set(withTiming(height, { duration: 160 }));
     },
-    [heightOut, onHeightChange],
+    [heightOut, onHeightChange, chromeLift?.onChromeLayout],
   );
-
-  const open = useCallback((href: string) => {
-    void Linking.openURL(href).catch(() => {
-      // A link the platform will not open costs the tap, not the map.
-    });
-  }, []);
 
   const secondary = { color: theme.colors.textSecondary };
   const primary = { color: theme.colors.text };
@@ -161,28 +162,33 @@ function MapAttributionComponent({
         <View style={styles.row}>
           {expanded
             ? links.map((link) => (
-                <Pressable
+                <Button
+                  appearance="plain"
+                  material="flat"
+                  size="md"
                   key={`${link.label}|${link.href}`}
-                  accessibilityRole="link"
+                  href={link.href}
+                  target="_blank"
                   accessibilityLabel={link.label}
-                  onPress={() => open(link.href)}
-                  hitSlop={6}
                 >
                   <Text variant="caption-1-regular" style={[styles.link, secondary]}>
                     {link.label}
                   </Text>
-                </Pressable>
+                </Button>
               ))
             : null}
-          <Pressable
-            accessibilityRole="button"
+          <Button
+            appearance="plain"
+            material="flat"
+            size="md"
+            iconOnly={!shown.tag}
+            iconPosition="right"
+            icon={<RiInformationLine width={18} height={18} fill={theme.colors.textSecondary} />}
             accessibilityLabel={
               shown.tag && disclosure ? `${disclosure.text}. ${toggleLabel}` : toggleLabel
             }
             aria-expanded={expanded}
             onPress={onToggle}
-            hitSlop={10}
-            style={({ pressed }) => [styles.toggle, pressed ? styles.pressed : null]}
             testID="map-credit-toggle"
           >
             {shown.tag ? (
@@ -194,8 +200,7 @@ function MapAttributionComponent({
                 {shown.tag}
               </Text>
             ) : null}
-            <RiInformationLine width={18} height={18} fill={theme.colors.textSecondary} />
-          </Pressable>
+          </Button>
         </View>
       </View>
     </LiftedBox>
@@ -223,12 +228,4 @@ const styles = StyleSheet.create({
     gap: 4,
   },
   link: { textDecorationLine: 'underline' },
-  toggle: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 4,
-    borderRadius: 9999,
-  },
-  pressed: { opacity: 0.7 },
 });
