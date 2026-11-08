@@ -1,0 +1,26 @@
+{
+  "index.android.bundle.map": {
+    "bytes": 38149852,
+    "sha256": "0b341bdcca44619de4e0f58608b7a9be6d17543e35721edd9a2bd1493735a9ac"
+  },
+  "source.patch": {
+    "bytes": 13298,
+    "sha256": "25c6bc5606c031b551fd472ee82e658779c3927019162c2ba8d2f7a0f9e966ef"
+  },
+  "app-canvasLab-androidTest.apk": {
+    "bytes": 519379,
+    "sha256": "5fbb11cccbf43f766764051a8c3f9f096f536495b5f949e12c8ae48f479459ce"
+  },
+  "index.android.bundle": {
+    "bytes": 74417308,
+    "sha256": "cd2328fa3548c7485a8aa55c04f44bbf6fb518172a4836111b2c46ceb00bfd07"
+  },
+  "CanvasMapProbeTest.kt": {
+    "bytes": 10826,
+    "sha256": "926deda28ef535a04a161a91ed46d73f877ea9c672ed154f9473235c933a9277"
+  },
+  "app-arm64-v8a-canvasLab.apk": {
+    "bytes": 147367512,
+    "sha256": "f06d9a66665e82f45010202ae57e1cc7bd8c0d6e4653396425e2f343f725083e"
+  }
+}
