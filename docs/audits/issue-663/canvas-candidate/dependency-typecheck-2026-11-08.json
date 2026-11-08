@@ -1,0 +1,25 @@
+{
+  "verifiedAt": "2026-11-08T23:06:36Z",
+  "consumer": {
+    "repository": "OxyHQ/GoWay",
+    "branch": "feat/issue-663-canvas",
+    "head": "eab51b3976a0cc008657bd6b744d83e68ca3c414"
+  },
+  "candidates": {
+    "@oxy.so/bloom": {
+      "version": "17.24.0",
+      "sourceCommit": "2d78fdb6e9705c4c991bbf2d8e6e258cd6b5171b",
+      "builtTarballSha256": "ef8ef5fe947b721f53428de17fa1b5869dfa8798e69a95f15bfb779ec76802d0"
+    },
+    "@oxy.so/services": {
+      "version": "14.18.0",
+      "sourceCommit": "5de60a7c850655565816e70a61350a7af214c0cb",
+      "tarballSha256": "3881ff24f35adf5214311a1e7f1bc65d5aaeb3a1a151a1505a051f51c10d0bab"
+    }
+  },
+  "command": "bun x tsc -p packages/frontend/tsconfig.issue663.json --noEmit",
+  "temporaryTsconfigSha256": "27f614b25c3d685176ef53b658ef9af1d2966d2d2c99c39e0aa13aab5a7fe1b4",
+  "result": "passed",
+  "resolution": "Bloom was provided through the built-package consumer mirror. Services was a bun-pm-packed candidate at .local/issue-663/services-14.18.0/package; a temporary tsconfig paths override routed @oxy.so/services and its subpaths to that tarball's lib/typescript/module declarations and preserved the normal @/* alias. package.json and bun.lock were not changed.",
+  "limits": "This is candidate declaration integration, not normal registry installation or Metro resolution. Registry-published GoWay acceptance still requires Bloom 17.24.0 and Services 14.18.0 to be published and the regular CI/build to pass."
+}
