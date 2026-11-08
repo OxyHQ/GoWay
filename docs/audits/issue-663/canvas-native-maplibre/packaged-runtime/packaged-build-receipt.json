@@ -1,0 +1,36 @@
+{
+  "variant": "private canvasLab release runtime, unminified native for instrumentation",
+  "appId": "to.goway.canvas663",
+  "artifact": "packages/frontend/android/app/build/outputs/apk/canvasLab/app-arm64-v8a-canvasLab.apk",
+  "sha256": "f254f25d63d5634f2de6074beb2b01a7c946dee57e864b22921e356574a90a71",
+  "bytes": 147366684,
+  "bundledJavaScript": {
+    "bytes": 74416480,
+    "sha256": "26edccdb75e064e0fbce323016a7d3d3c02bade275b13c907dd276cc1cccfc50",
+    "first8bytes": "c61fbc03c103191f"
+  },
+  "sourceMap": {
+    "path": "packages/frontend/android/app/build/generated/sourcemaps/react/canvasLab/index.android.bundle.map",
+    "sha256": "b32286767a45234b2cf17a03bcf254dc5ff0e87f09a5b0404a54f5eab9d04d8d"
+  },
+  "bloom": "17ed628a",
+  "maplibre": "ef17e631bff9fee5616e539aac37ea741df5cd08",
+  "gowayBase": "2e9a65e",
+  "physicalStatus": "not run",
+  "metroRequired": false,
+  "productSigningUnchanged": true,
+  "manifest": {
+    "package": "to.goway.canvas663",
+    "debuggable": "false",
+    "declaredPermissions": [
+      "to.goway.canvas663.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION"
+    ],
+    "sha256": "26a908a1f3b50330b4891320852ee8079848fece1620322d6e604b947a9c7c35"
+  },
+  "signerSha256": "fac61745dc0903786fb9ede62a962b399f7348f0bb6f899b8332667591033b9c",
+  "testApk": {
+    "bytes": 518767,
+    "sha256": "994a88c74432fa49a68da888971028efb27b0a06bf322bb4c0b9f423901eb1e2",
+    "sourceSha256": "7b3704973c872f48edfa9b3c9505e5aa5fc557a1bf1d1a7270d841fa747205f0"
+  }
+}

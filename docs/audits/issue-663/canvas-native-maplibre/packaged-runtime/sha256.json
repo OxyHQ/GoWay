@@ -1,0 +1,20 @@
+{
+  "README.md": "80cff171560445122a30139bc4854df5aba6c237e2900698f9d6f070fc7c17e4",
+  "back.png": "c5312c6ad2b3202c2c903cbbea74b62a4b4bf30857b64e250ca0173686b1f5c0",
+  "detent-0.png": "63933d1e4c4591e37a4ee2747f045f6a8cf34c4bd3fad939f4df630006233951",
+  "device-after-packaged.txt": "798304617c6c21d4bcc75406713cfe1fbec4c02f7b3ed3c30eeb099f7346edfa",
+  "ime.png": "e92610fa4917bd8a35f05372b9ec2b848e720cbe8167b396f672dc1aacdf233d",
+  "initial.png": "8955173ddc9d5abb871693b709700a925b8d79d366f54cd742623e19f7bcb8d0",
+  "packaged-build-receipt.json": "b3b1ba1ff14018a8a016e7fc8980152086ca41ebb10a2082fd0f7b3073377ce0",
+  "packaged-device-log.txt": "e1e8106d43312c5bf9d7e7f5137dbb680eaa0a9f224bf677770aab846f2d394f",
+  "packaged-device-test.txt": "fb852e871e98afd7be4a3db7933e95d170f9f0b4a1fd404f1a113fa9b421cbb1",
+  "packaged-fast-pinch-log.txt": "d2692d240e4724a83da22f09a0befcd226d03defa1ac1776fe3e6613b8d0542f",
+  "packaged-fast-pinch-test.txt": "74a59e907a1d928c4e1ce28b56959d012e41b2b3bbe81ad153a33485a6b63c23",
+  "packaged-region-device-log.txt": "c717214ce62208366bfdb73a736bf5e6c9d57d99ac4405a1b7f724cf6becacbc",
+  "packaged-region-device-test.txt": "65b2c68eddf0fb55299d8886a9372aa1c6f4102d959201596d36ef651729e9c1",
+  "pinch.png": "2e5a1aa1a8ea2bd1fdd7ab601bd45b35af4fcccd440a02d03bfe36a7103ad862",
+  "private-packaged-build.patch": "c7d7fd5b4dc0c6e77787aadcece372abd0335b6e9c31a59bb30ad5a9a4d8f203",
+  "region-CanvasMapProbeTest.kt": "926deda28ef535a04a161a91ed46d73f877ea9c672ed154f9473235c933a9277",
+  "region-manifest.json": "f63c3038ea54f05b32816608ec8a73b9b40091cabc5f2ea9fe0ed0ef6e104aa7",
+  "region-source.patch": "315fe9c775051c7c8ea043681d9bda30fa9c34f38514fb55e8b11dd099d9daa1"
+}

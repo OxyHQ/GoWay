@@ -1,0 +1,34 @@
+{
+  "index.android.bundle.map": {
+    "bytes": 38148567,
+    "sha256": "436126f8c67f70a04f6a42f9e1e319b37f761acab5ae9640a7b1fe8c5e778ef6"
+  },
+  "source.patch": {
+    "bytes": 10550,
+    "sha256": "315fe9c775051c7c8ea043681d9bda30fa9c34f38514fb55e8b11dd099d9daa1"
+  },
+  "app-canvasLab-androidTest.apk": {
+    "bytes": 519379,
+    "sha256": "5fbb11cccbf43f766764051a8c3f9f096f536495b5f949e12c8ae48f479459ce"
+  },
+  "index.android.bundle": {
+    "bytes": 74416784,
+    "sha256": "1793fadfa512cbb180d77a1cc25fabcb21dec2beee63d2149f8f7f5cfd44ad8f"
+  },
+  "canvas-native-entry.js": {
+    "bytes": 1931,
+    "sha256": "a79c59dd2b4b4635b0558bca5c3d255ff7d01b9f669638379a6d5c602c152275"
+  },
+  "CanvasMapProbeTest.kt": {
+    "bytes": 10826,
+    "sha256": "926deda28ef535a04a161a91ed46d73f877ea9c672ed154f9473235c933a9277"
+  },
+  "app-arm64-v8a-canvasLab.apk": {
+    "bytes": 147366988,
+    "sha256": "af0b40e414d5c0ad8bcaa9adc880f1b8a367e18be524e1433286a81273f2c809"
+  },
+  "app-build.gradle": {
+    "bytes": 15968,
+    "sha256": "9273d24c3dcdd77bf45ea3ade810e8bb5389b92ff1346ec82337cc4474c6d641"
+  }
+}

@@ -1,0 +1,169 @@
+diff --git a/.gitignore b/.gitignore
+index 58e4445..0b23cc6 100644
+--- a/.gitignore
++++ b/.gitignore
+@@ -50,3 +50,7 @@ yarn-error.*
+ 
+ # Local verification output (durable evidence lives in docs/audits).
+ .local/
++
++# Private native verification output, not product source.
++packages/frontend/android/
++packages/frontend/bloom-local/
+diff --git a/bun.lock b/bun.lock
+index 76f9180..6d30a5e 100644
+--- a/bun.lock
++++ b/bun.lock
+@@ -216,6 +216,7 @@
+     },
+   },
+   "overrides": {
++    "@maplibre/maplibre-react-native": "file:/home/nate/Oxy/GoWay/.worktrees/issue-663-canvas-native/packages/frontend/.local/issue-663/native/maplibre-maplibre-react-native-11.5.1-canvas663.2.tgz",
+     "@oxy.so/bloom": "17.19.3",
+     "@oxy.so/contracts": "6.19.0",
+     "@oxy.so/core": "7.42.0",
+@@ -706,9 +707,9 @@
+ 
+     "@maplibre/geojson-vt": ["@maplibre/geojson-vt@6.1.1", "", { "dependencies": { "kdbush": "^4.1.0" } }, "sha512-FVMOcmSP/yqol45t7StApEyTL5/vmqBCuFhH9n+fFuINenhaX+YgHHIt1yJ86S8kln3uJLcMvmEU2cfn6E2eCQ=="],
+ 
+-    "@maplibre/maplibre-gl-style-spec": ["@maplibre/maplibre-gl-style-spec@26.2.1", "", { "dependencies": { "@mapbox/jsonlint-lines-primitives": "^2.0.3", "@mapbox/unitbezier": "^1.0.0", "json-stringify-pretty-compact": "^4.0.0", "minimist": "^1.2.8", "quickselect": "^3.0.0", "tinyqueue": "^3.0.0" }, "bin": { "gl-style-format": "dist/gl-style-format.mjs", "gl-style-migrate": "dist/gl-style-migrate.mjs", "gl-style-validate": "dist/gl-style-validate.mjs" } }, "sha512-QFKCXkOeSzOr8jF75jm6kySOg+dUvOehPhRi68gcOYPHb7U5JloUq0dJW0Y5/fZV8ygfT0Vp2RWodvq+fyxFWA=="],
++    "@maplibre/maplibre-gl-style-spec": ["@maplibre/maplibre-gl-style-spec@26.4.4", "", { "dependencies": { "@mapbox/jsonlint-lines-primitives": "^2.0.3", "@mapbox/unitbezier": "^1.0.0", "json-stringify-pretty-compact": "^4.0.0", "minimist": "^1.2.8", "quickselect": "^3.0.0", "tinyqueue": "^3.0.0" }, "bin": { "gl-style-format": "dist/gl-style-format.mjs", "gl-style-migrate": "dist/gl-style-migrate.mjs", "gl-style-validate": "dist/gl-style-validate.mjs" } }, "sha512-hG4RZR4PBd/+6A3ODdZ3AnQRF106ZQk1y3bhwDg8bH/A4Oz2tnRUJVVWs9BZa6gXZ1d3UKe89C+Mm+olGBELvA=="],
+ 
+-    "@maplibre/maplibre-react-native": ["@maplibre/maplibre-react-native@11.4.1", "", { "dependencies": { "@maplibre/maplibre-gl-style-spec": "26.2.1", "@turf/distance": "^7.4.0", "@turf/helpers": "^7.4.0", "@turf/length": "^7.4.0", "@turf/nearest-point-on-line": "^7.4.0" }, "peerDependencies": { "@types/geojson": "^7946.0.0", "@types/react": ">=19.1.0", "expo": ">=54.0.0", "react": ">=19.1.0", "react-native": ">=0.80.0" }, "optionalPeers": ["@types/geojson", "@types/react", "expo"] }, "sha512-cpqkHsZuXMIC8InoEBe1nmWyzTTED/5gTx92Sx1gxJC4qBnshDtY9Rg05oZphHSyS4ALvpFEaH7/Ua4qKdfCaA=="],
++    "@maplibre/maplibre-react-native": ["@maplibre/maplibre-react-native@/home/nate/Oxy/GoWay/.worktrees/issue-663-canvas-native/packages/frontend/.local/issue-663/native/maplibre-maplibre-react-native-11.5.1-canvas663.2.tgz", { "dependencies": { "@maplibre/maplibre-gl-style-spec": "26.4.4", "@turf/distance": "^7.4.0", "@turf/helpers": "^7.4.0", "@turf/length": "^7.4.0", "@turf/nearest-point-on-line": "^7.4.0" }, "peerDependencies": { "@types/geojson": "^7946.0.0", "@types/react": ">=19.1.0", "expo": ">=54.0.0", "react": ">=19.1.0", "react-native": ">=0.80.0" }, "optionalPeers": ["@types/geojson", "@types/react", "expo"] }, "sha512-FQadt2f5e4IcwkWz2A2tt9PAw3ywhHcHo3wHbYQB7UAlBIIU6PB5sxBGBCqFNlkf6p1WybiVoNL0u2kDHHd6qQ=="],
+ 
+     "@maplibre/mlt": ["@maplibre/mlt@1.3.0", "", { "dependencies": { "@mapbox/point-geometry": "^1.1.0" } }, "sha512-7M2O7ABM80Oi8XPkfkrjKB8mOBIxGoVgkA52Mu4RMWoBvvMdagQ522+WxVYujZsMpqIr3BpzrTbXrm4k8lCzCQ=="],
+ 
+@@ -2412,8 +2413,6 @@
+ 
+     "log-symbols/chalk": ["chalk@2.4.2", "", { "dependencies": { "ansi-styles": "^3.2.1", "escape-string-regexp": "^1.0.5", "supports-color": "^5.3.0" } }, "sha512-Mti+f9lpJNcwF4tWV8/OrTTtF1gZi+f8FqlyAdouralcFWFQWF2+NgCHShjkCb+IFBLq9buZwE1xckQU4peSuQ=="],
+ 
+-    "maplibre-gl/@maplibre/maplibre-gl-style-spec": ["@maplibre/maplibre-gl-style-spec@26.4.4", "", { "dependencies": { "@mapbox/jsonlint-lines-primitives": "^2.0.3", "@mapbox/unitbezier": "^1.0.0", "json-stringify-pretty-compact": "^4.0.0", "minimist": "^1.2.8", "quickselect": "^3.0.0", "tinyqueue": "^3.0.0" }, "bin": { "gl-style-format": "dist/gl-style-format.mjs", "gl-style-migrate": "dist/gl-style-migrate.mjs", "gl-style-validate": "dist/gl-style-validate.mjs" } }, "sha512-hG4RZR4PBd/+6A3ODdZ3AnQRF106ZQk1y3bhwDg8bH/A4Oz2tnRUJVVWs9BZa6gXZ1d3UKe89C+Mm+olGBELvA=="],
+-
+     "metro/flow-parser": ["flow-parser@0.331.0", "", { "dependencies": { "flow-estree": "0.331.0" } }, "sha512-vEZcHIlnKeN8JSVtYFczj8sWJfHIJOkz+YG00O/oul/Bete+t1ZhTi+O6JRRLFYvGW+yJkZ0YgL16iStnbkUqQ=="],
+ 
+     "metro-babel-transformer/flow-parser": ["flow-parser@0.331.0", "", { "dependencies": { "flow-estree": "0.331.0" } }, "sha512-vEZcHIlnKeN8JSVtYFczj8sWJfHIJOkz+YG00O/oul/Bete+t1ZhTi+O6JRRLFYvGW+yJkZ0YgL16iStnbkUqQ=="],
+diff --git a/package.json b/package.json
+index bbd1a8f..dfe86e9 100644
+--- a/package.json
++++ b/package.json
+@@ -3,7 +3,7 @@
+   "version": "0.1.0",
+   "private": true,
+   "license": "SEE LICENSE IN LICENSE",
+-  "description": "GoWay — Oxy's open map and geographic platform",
++  "description": "GoWay \u2014 Oxy's open map and geographic platform",
+   "workspaces": [
+     "packages/contracts",
+     "packages/sdk",
+@@ -82,7 +82,8 @@
+     "@oxy.so/services": "14.14.0",
+     "lightningcss": "1.30.1",
+     "react-native-css": "3.1.0-rc.0",
+-    "expo-modules-core": "58.0.23"
++    "expo-modules-core": "58.0.23",
++    "@maplibre/maplibre-react-native": "file:/home/nate/Oxy/GoWay/.worktrees/issue-663-canvas-native/packages/frontend/.local/issue-663/native/maplibre-maplibre-react-native-11.5.1-canvas663.2.tgz"
+   },
+   "resolutions": {
+     "@oxy.so/core": "7.42.0",
+diff --git a/packages/frontend/app.config.js b/packages/frontend/app.config.js
+index 20f7888..f6afe50 100644
+--- a/packages/frontend/app.config.js
++++ b/packages/frontend/app.config.js
+@@ -194,3 +194,12 @@ module.exports = {
+     },
+   },
+ };
++
++// Local issue-663 native verification only; never a product build.
++module.exports.expo.name = 'GoWay Canvas Lab';
++module.exports.expo.scheme = 'goway-canvas-663';
++module.exports.expo.android.package = 'to.goway.canvas663';
++module.exports.expo.ios.bundleIdentifier = 'to.goway.canvas663';
++module.exports.expo.updates = { enabled: false };
++module.exports.expo.plugins = module.exports.expo.plugins.filter((plugin) =>
++  (Array.isArray(plugin) ? plugin[0] : plugin) !== '@oxy.so/app-preset/plugin/withOxyUpdates');
+diff --git a/packages/frontend/components/map/MapCanvas.tsx b/packages/frontend/components/map/MapCanvas.tsx
+index a808e42..f6cd9bd 100644
+--- a/packages/frontend/components/map/MapCanvas.tsx
++++ b/packages/frontend/components/map/MapCanvas.tsx
+@@ -11,7 +11,7 @@
+  * This is also the file TypeScript reads for `./MapCanvas`: both forks
+  * implement the same `MapCanvasProps` and `MapApi`.
+  */
+-import { forwardRef, useCallback, useImperativeHandle, useMemo, useRef, useState } from 'react';
++import { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState } from 'react';
+ import { StyleSheet, View } from 'react-native';
+ import {
+   DefaultMapMarker,
+@@ -82,6 +82,11 @@ export const MapCanvas = forwardRef<MapApi, MapCanvasProps>(function MapCanvas(
+   },
+   ref,
+ ) {
++  const [probeId] = useState(() => Date.now());
++  useEffect(() => {
++    console.info('[CanvasProbe mounted]', probeId);
++    return () => console.info('[CanvasProbe unmounted]', probeId);
++  }, [probeId]);
+   const theme = useTheme();
+   const mapRef = useRef<MapViewRef>(null);
+ 
+@@ -161,12 +166,13 @@ export const MapCanvas = forwardRef<MapApi, MapCanvasProps>(function MapCanvas(
+     (change: MapCameraChange) => {
+       onViewportChange?.(change);
+       if (!change.isFinal) return;
++      console.info('[CanvasProbe camera]', JSON.stringify({ probeId, ...change }));
+       const centre = { latitude: change.viewport.latitude, longitude: change.viewport.longitude };
+       settleSunLight(centre);
+       settleMapStyle(centre);
+       if (imageryMode) setImageryView({ zoom: change.viewport.zoom, ...change.bounds });
+     },
+-    [onViewportChange, settleSunLight, settleMapStyle, imageryMode],
++    [onViewportChange, settleSunLight, settleMapStyle, imageryMode, probeId],
+   );
+ 
+   useImperativeHandle(
+diff --git a/packages/frontend/features/explore/ExploreScreen.tsx b/packages/frontend/features/explore/ExploreScreen.tsx
+index 95bc0d8..10dc9f6 100644
+--- a/packages/frontend/features/explore/ExploreScreen.tsx
++++ b/packages/frontend/features/explore/ExploreScreen.tsx
+@@ -245,6 +245,10 @@ function ExploreContent({ initialPlaceId = null, initialViewport = null }: Explo
+   const { t } = useTranslation();
+   const mapRef = useRef<MapApi>(null);
+   const canvasRegion = useCanvasRegion();
++  // Private packaged verification: owner coordinates, never a product behavior.
++  useEffect(() => {
++    console.info('[CanvasRegionProbe]', JSON.stringify({bounds: canvasRegion.bounds, viewport: canvasRegion.viewport, safeArea: canvasRegion.safeArea, occupied: canvasRegion.occupied}));
++  }, [canvasRegion]);
+   const insets = canvasChromeInsets(canvasRegion);
+   const layout = canvasRegion.viewport.width >= PANEL_BREAKPOINT ? 'panel' : 'sheet';
+ 
+diff --git a/packages/frontend/metro.config.js b/packages/frontend/metro.config.js
+index b14bd33..310a4fe 100644
+--- a/packages/frontend/metro.config.js
++++ b/packages/frontend/metro.config.js
+@@ -22,7 +22,10 @@ module.exports = withDevTerrain(
+       createOxyMetroConfig(__dirname, {
+         // The Python/CUDA worker is not a JS workspace. Watching its virtualenv
+         // and vendor trees can stall Metro before it opens the development port.
+-        extraBlockList: [require('node:path').resolve(__dirname, '../reconstruction-worker')],
++        extraBlockList: [
++          require('node:path').resolve(__dirname, '../reconstruction-worker'),
++          require('node:path').resolve(__dirname, '.local'),
++        ],
+       }),
+     ),
+   ),
+diff --git a/packages/frontend/package.json b/packages/frontend/package.json
+index 636eb88..8d05b47 100644
+--- a/packages/frontend/package.json
++++ b/packages/frontend/package.json
+@@ -3,7 +3,7 @@
+   "version": "0.1.0",
+   "license": "SEE LICENSE IN LICENSE",
+   "private": true,
+-  "main": "expo-router/entry",
++  "main": "./canvas-native-entry.js",
+   "scripts": {
+     "start": "expo start",
+     "android": "expo run:android",

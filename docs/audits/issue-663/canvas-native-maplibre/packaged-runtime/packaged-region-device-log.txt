@@ -1,0 +1,664 @@
+11-08 15:26:55.976 22748 22762 I TestRunner: started: realMapPanPinchDetentsAndKeyboard(to.goway.canvas663.CanvasMapProbeTest)
+11-08 15:26:58.439 22748 22748 I CanvasMapProbe: {"step":"initial","viewIdentity":18065321,"mapIdentity":136974638,"latitude":41.38739999999997,"longitude":2.1685999999999694,"zoom":11,"zoomGesturesEnabled":true,"width":1080,"height":2400,"hillshade":[{"id":"goway:relief:hillshade","shadow":["rgba(6.000000476837158,11,22,1)"],"highlight":["rgba(93,115.00000762939453,144,1)"]}],"handleY":1321,"handleHeight":126,"handleValue":"{\"text\":\"Half open\",\"min\":0,\"now\":1,\"max\":2}","imeVisible":false}
+11-08 15:26:58.885 22748 22762 I CanvasMapInput: action=0 pointers=1 elapsedMs=15
+11-08 15:26:58.885 22748 22748 I CanvasMapInput: delivered action=0 count=1 ids=[0] elapsed=1
+11-08 15:26:58.887 22748 22762 I CanvasMapInput: action=2 pointers=1 elapsedMs=2
+11-08 15:26:58.890 22748 22748 I CanvasMapInput: delivered action=2 count=1 ids=[0] elapsed=16
+11-08 15:26:58.906 22748 22762 I CanvasMapInput: action=2 pointers=1 elapsedMs=1
+11-08 15:26:58.916 22748 22748 I CanvasMapInput: delivered action=2 count=1 ids=[0] elapsed=41
+11-08 15:26:58.924 22748 22762 I CanvasMapInput: action=2 pointers=1 elapsedMs=2
+11-08 15:26:58.932 22748 22748 I CanvasMapInput: delivered action=2 count=1 ids=[0] elapsed=57
+11-08 15:26:58.943 22748 22762 I CanvasMapInput: action=2 pointers=1 elapsedMs=2
+11-08 15:26:58.949 22748 22748 I CanvasMapInput: delivered action=2 count=1 ids=[0] elapsed=74
+11-08 15:26:58.961 22748 22762 I CanvasMapInput: action=2 pointers=1 elapsedMs=2
+11-08 15:26:58.965 22748 22748 I CanvasMapInput: delivered action=2 count=1 ids=[0] elapsed=91
+11-08 15:26:58.979 22748 22762 I CanvasMapInput: action=2 pointers=1 elapsedMs=1
+11-08 15:26:58.991 22748 22748 I CanvasMapInput: delivered action=2 count=1 ids=[0] elapsed=116
+11-08 15:26:58.998 22748 22762 I CanvasMapInput: action=2 pointers=1 elapsedMs=2
+11-08 15:26:59.007 22748 22748 I CanvasMapInput: delivered action=2 count=1 ids=[0] elapsed=133
+11-08 15:26:59.018 22748 22762 I CanvasMapInput: action=2 pointers=1 elapsedMs=2
+11-08 15:26:59.024 22748 22748 I CanvasMapInput: delivered action=2 count=1 ids=[0] elapsed=150
+11-08 15:26:59.035 22748 22762 I CanvasMapInput: action=2 pointers=1 elapsedMs=1
+11-08 15:26:59.041 22748 22748 I CanvasMapInput: delivered action=2 count=1 ids=[0] elapsed=166
+11-08 15:26:59.055 22748 22762 I CanvasMapInput: action=2 pointers=1 elapsedMs=4
+11-08 15:26:59.058 22748 22748 I CanvasMapInput: delivered action=2 count=1 ids=[0] elapsed=183
+11-08 15:26:59.073 22748 22762 I CanvasMapInput: action=2 pointers=1 elapsedMs=1
+11-08 15:26:59.083 22748 22748 I CanvasMapInput: delivered action=2 count=1 ids=[0] elapsed=203
+11-08 15:26:59.093 22748 22762 I CanvasMapInput: action=2 pointers=1 elapsedMs=3
+11-08 15:26:59.100 22748 22748 I CanvasMapInput: delivered action=2 count=1 ids=[0] elapsed=225
+11-08 15:26:59.111 22748 22762 I CanvasMapInput: action=2 pointers=1 elapsedMs=2
+11-08 15:26:59.116 22748 22748 I CanvasMapInput: delivered action=2 count=1 ids=[0] elapsed=242
+11-08 15:26:59.130 22748 22762 I CanvasMapInput: action=2 pointers=1 elapsedMs=1
+11-08 15:26:59.141 22748 22748 I CanvasMapInput: delivered action=2 count=1 ids=[0] elapsed=267
+11-08 15:26:59.148 22748 22762 I CanvasMapInput: action=2 pointers=1 elapsedMs=2
+11-08 15:26:59.158 22748 22748 I CanvasMapInput: delivered action=2 count=1 ids=[0] elapsed=283
+11-08 15:26:59.166 22748 22762 I CanvasMapInput: action=2 pointers=1 elapsedMs=2
+11-08 15:26:59.175 22748 22748 I CanvasMapInput: delivered action=2 count=1 ids=[0] elapsed=300
+11-08 15:26:59.184 22748 22762 I CanvasMapInput: action=2 pointers=1 elapsedMs=1
+11-08 15:26:59.191 22748 22748 I CanvasMapInput: delivered action=2 count=1 ids=[0] elapsed=317
+11-08 15:26:59.201 22748 22762 I CanvasMapInput: action=2 pointers=1 elapsedMs=1
+11-08 15:26:59.208 22748 22748 I CanvasMapInput: delivered action=2 count=1 ids=[0] elapsed=334
+11-08 15:26:59.219 22748 22762 I CanvasMapInput: action=2 pointers=1 elapsedMs=2
+11-08 15:26:59.225 22748 22748 I CanvasMapInput: delivered action=2 count=1 ids=[0] elapsed=350
+11-08 15:26:59.237 22748 22762 I CanvasMapInput: action=2 pointers=1 elapsedMs=1
+11-08 15:26:59.242 22748 22748 I CanvasMapInput: delivered action=2 count=1 ids=[0] elapsed=367
+11-08 15:26:59.255 22748 22762 I CanvasMapInput: action=2 pointers=1 elapsedMs=1
+11-08 15:26:59.258 22748 22748 I CanvasMapInput: delivered action=2 count=1 ids=[0] elapsed=384
+11-08 15:26:59.273 22748 22762 I CanvasMapInput: action=2 pointers=1 elapsedMs=1
+11-08 15:26:59.283 22748 22748 I CanvasMapInput: delivered action=2 count=1 ids=[0] elapsed=409
+11-08 15:26:59.290 22748 22762 I CanvasMapInput: action=2 pointers=1 elapsedMs=1
+11-08 15:26:59.300 22748 22748 I CanvasMapInput: delivered action=2 count=1 ids=[0] elapsed=425
+11-08 15:26:59.309 22748 22762 I CanvasMapInput: action=2 pointers=1 elapsedMs=2
+11-08 15:26:59.317 22748 22748 I CanvasMapInput: delivered action=2 count=1 ids=[0] elapsed=442
+11-08 15:26:59.327 22748 22748 I CanvasMapInput: delivered action=1 count=1 ids=[0] elapsed=456
+11-08 15:26:59.345 22748 22762 I CanvasMapInput: action=1 pointers=1 elapsedMs=20
+11-08 15:27:00.549 22748 22748 I CanvasMapProbe: {"step":"pan","viewIdentity":18065321,"mapIdentity":136974638,"latitude":41.38739999996389,"longitude":2.140012761095221,"zoom":11,"zoomGesturesEnabled":true,"width":1080,"height":2400,"hillshade":[{"id":"goway:relief:hillshade","shadow":["rgba(6.000000476837158,11,22,1)"],"highlight":["rgba(93,115.00000762939453,144,1)"]}],"handleY":1321,"handleHeight":126,"handleValue":"{\"text\":\"Half open\",\"min\":0,\"now\":1,\"max\":2}","imeVisible":false}
+11-08 15:27:01.003 22748 22748 I CanvasMapInput: delivered action=0 count=1 ids=[0] elapsed=0
+11-08 15:27:01.003 22748 22762 I CanvasMapInput: action=0 pointers=1 elapsedMs=14
+11-08 15:27:01.004 22748 22748 I CanvasMapInput: delivered action=5 count=2 ids=[0, 1] elapsed=15
+11-08 15:27:01.004 22748 22762 I CanvasMapInput: action=261 pointers=2 elapsedMs=1
+11-08 15:27:01.005 22748 22748 I CanvasMapScale: pointers=2 span=0.0 threshold=18.375 enabled=true progress=false
+11-08 15:27:01.006 22748 22762 I CanvasMapInput: action=2 pointers=2 elapsedMs=1
+11-08 15:27:01.016 22748 22748 I CanvasMapInput: delivered action=2 count=2 ids=[0, 1] elapsed=16
+11-08 15:27:01.017 22748 22748 I CanvasMapScale: pointers=2 span=368.0 threshold=18.375 enabled=true progress=false
+11-08 15:27:01.024 22748 22762 I CanvasMapInput: action=2 pointers=2 elapsedMs=2
+11-08 15:27:01.030 22748 22748 I CanvasMapInput: delivered action=2 count=2 ids=[0, 1] elapsed=36
+11-08 15:27:01.031 22748 22748 I CanvasMapScale: pointers=2 span=423.79297 threshold=18.375 enabled=true progress=true
+11-08 15:27:01.044 22748 22762 I CanvasMapInput: action=2 pointers=2 elapsedMs=3
+11-08 15:27:01.047 22748 22748 I CanvasMapInput: delivered action=2 count=2 ids=[0, 1] elapsed=53
+11-08 15:27:01.049 22748 22748 I CanvasMapScale: pointers=2 span=468.26953 threshold=18.375 enabled=true progress=true
+11-08 15:27:01.062 22748 22762 I CanvasMapInput: action=2 pointers=2 elapsedMs=2
+11-08 15:27:01.072 22748 22748 I CanvasMapInput: delivered action=2 count=2 ids=[0, 1] elapsed=79
+11-08 15:27:01.074 22748 22748 I CanvasMapScale: pointers=2 span=528.96875 threshold=18.375 enabled=true progress=true
+11-08 15:27:01.082 22748 22762 I CanvasMapInput: action=2 pointers=2 elapsedMs=3
+11-08 15:27:01.089 22748 22748 I CanvasMapInput: delivered action=2 count=2 ids=[0, 1] elapsed=95
+11-08 15:27:01.091 22748 22748 I CanvasMapScale: pointers=2 span=572.6133 threshold=18.375 enabled=true progress=true
+11-08 15:27:01.100 22748 22762 I CanvasMapInput: action=2 pointers=2 elapsedMs=2
+11-08 15:27:01.106 22748 22748 I CanvasMapInput: delivered action=2 count=2 ids=[0, 1] elapsed=112
+11-08 15:27:01.108 22748 22748 I CanvasMapScale: pointers=2 span=614.8906 threshold=18.375 enabled=true progress=true
+11-08 15:27:01.118 22748 22762 I CanvasMapInput: action=2 pointers=2 elapsedMs=1
+11-08 15:27:01.123 22748 22748 I CanvasMapInput: delivered action=2 count=2 ids=[0, 1] elapsed=129
+11-08 15:27:01.124 22748 22748 I CanvasMapScale: pointers=2 span=659.78906 threshold=18.375 enabled=true progress=true
+11-08 15:27:01.136 22748 22762 I CanvasMapInput: action=2 pointers=2 elapsedMs=1
+11-08 15:27:01.140 22748 22748 I CanvasMapInput: delivered action=2 count=2 ids=[0, 1] elapsed=146
+11-08 15:27:01.142 22748 22748 I CanvasMapScale: pointers=2 span=704.33594 threshold=18.375 enabled=true progress=true
+11-08 15:27:01.154 22748 22762 I CanvasMapInput: action=2 pointers=2 elapsedMs=1
+11-08 15:27:01.165 22748 22748 I CanvasMapInput: delivered action=2 count=2 ids=[0, 1] elapsed=171
+11-08 15:27:01.167 22748 22748 I CanvasMapScale: pointers=2 span=767.6719 threshold=18.375 enabled=true progress=true
+11-08 15:27:01.172 22748 22762 I CanvasMapInput: action=2 pointers=2 elapsedMs=1
+11-08 15:27:01.181 22748 22748 I CanvasMapInput: delivered action=2 count=2 ids=[0, 1] elapsed=187
+11-08 15:27:01.183 22748 22748 I CanvasMapScale: pointers=2 span=813.14453 threshold=18.375 enabled=true progress=true
+11-08 15:27:01.191 22748 22762 I CanvasMapInput: action=2 pointers=2 elapsedMs=3
+11-08 15:27:01.198 22748 22748 I CanvasMapInput: delivered action=2 count=2 ids=[0, 1] elapsed=204
+11-08 15:27:01.199 22748 22748 I CanvasMapScale: pointers=2 span=861.0781 threshold=18.375 enabled=true progress=true
+11-08 15:27:01.209 22748 22762 I CanvasMapInput: action=2 pointers=2 elapsedMs=1
+11-08 15:27:01.215 22748 22748 I CanvasMapInput: delivered action=2 count=2 ids=[0, 1] elapsed=221
+11-08 15:27:01.217 22748 22748 I CanvasMapScale: pointers=2 span=899.28516 threshold=18.375 enabled=true progress=true
+11-08 15:27:01.227 22748 22762 I CanvasMapInput: action=2 pointers=2 elapsedMs=1
+11-08 15:27:01.231 22748 22748 I CanvasMapInput: delivered action=2 count=2 ids=[0, 1] elapsed=238
+11-08 15:27:01.233 22748 22748 I CanvasMapScale: pointers=2 span=944.1836 threshold=18.375 enabled=true progress=true
+11-08 15:27:01.245 22748 22762 I CanvasMapInput: action=2 pointers=2 elapsedMs=1
+11-08 15:27:01.256 22748 22748 I CanvasMapInput: delivered action=2 count=2 ids=[0, 1] elapsed=263
+11-08 15:27:01.258 22748 22748 I CanvasMapScale: pointers=2 span=1014.58984 threshold=18.375 enabled=true progress=true
+11-08 15:27:01.264 22748 22762 I CanvasMapInput: action=2 pointers=2 elapsedMs=2
+11-08 15:27:01.273 22748 22748 I CanvasMapInput: delivered action=2 count=2 ids=[0, 1] elapsed=279
+11-08 15:27:01.275 22748 22748 I CanvasMapScale: pointers=2 span=1058.3242 threshold=18.375 enabled=true progress=true
+11-08 15:27:01.281 22748 22762 I CanvasMapInput: action=2 pointers=2 elapsedMs=1
+11-08 15:27:01.290 22748 22748 I CanvasMapInput: delivered action=2 count=2 ids=[0, 1] elapsed=296
+11-08 15:27:01.291 22748 22748 I CanvasMapScale: pointers=2 span=1099.5742 threshold=18.375 enabled=true progress=true
+11-08 15:27:01.299 22748 22762 I CanvasMapInput: action=2 pointers=2 elapsedMs=1
+11-08 15:27:01.306 22748 22748 I CanvasMapInput: delivered action=2 count=2 ids=[0, 1] elapsed=313
+11-08 15:27:01.308 22748 22748 I CanvasMapScale: pointers=2 span=1144.7617 threshold=18.375 enabled=true progress=true
+11-08 15:27:01.318 22748 22762 I CanvasMapInput: action=2 pointers=2 elapsedMs=1
+11-08 15:27:01.323 22748 22748 I CanvasMapInput: delivered action=2 count=2 ids=[0, 1] elapsed=330
+11-08 15:27:01.325 22748 22748 I CanvasMapScale: pointers=2 span=1189.3594 threshold=18.375 enabled=true progress=true
+11-08 15:27:01.336 22748 22762 I CanvasMapInput: action=2 pointers=2 elapsedMs=2
+11-08 15:27:01.340 22748 22748 I CanvasMapInput: delivered action=2 count=2 ids=[0, 1] elapsed=346
+11-08 15:27:01.341 22748 22748 I CanvasMapScale: pointers=2 span=1233.9297 threshold=18.375 enabled=true progress=true
+11-08 15:27:01.354 22748 22762 I CanvasMapInput: action=2 pointers=2 elapsedMs=2
+11-08 15:27:01.365 22748 22748 I CanvasMapInput: delivered action=2 count=2 ids=[0, 1] elapsed=371
+11-08 15:27:01.367 22748 22748 I CanvasMapScale: pointers=2 span=1300.8984 threshold=18.375 enabled=true progress=true
+11-08 15:27:01.373 22748 22762 I CanvasMapInput: action=2 pointers=2 elapsedMs=2
+11-08 15:27:01.382 22748 22748 I CanvasMapInput: delivered action=2 count=2 ids=[0, 1] elapsed=388
+11-08 15:27:01.384 22748 22748 I CanvasMapScale: pointers=2 span=1342.125 threshold=18.375 enabled=true progress=true
+11-08 15:27:01.391 22748 22762 I CanvasMapInput: action=2 pointers=2 elapsedMs=2
+11-08 15:27:01.399 22748 22748 I CanvasMapInput: delivered action=2 count=2 ids=[0, 1] elapsed=405
+11-08 15:27:01.400 22748 22748 I CanvasMapScale: pointers=2 span=1387.457 threshold=18.375 enabled=true progress=true
+11-08 15:27:01.409 22748 22762 I CanvasMapInput: action=2 pointers=2 elapsedMs=1
+11-08 15:27:01.415 22748 22748 I CanvasMapInput: delivered action=2 count=2 ids=[0, 1] elapsed=422
+11-08 15:27:01.417 22748 22748 I CanvasMapScale: pointers=2 span=1432.0078 threshold=18.375 enabled=true progress=true
+11-08 15:27:01.427 22748 22762 I CanvasMapInput: action=2 pointers=2 elapsedMs=2
+11-08 15:27:01.432 22748 22748 I CanvasMapInput: delivered action=2 count=2 ids=[0, 1] elapsed=438
+11-08 15:27:01.433 22748 22748 I CanvasMapScale: pointers=2 span=1476.5703 threshold=18.375 enabled=true progress=true
+11-08 15:27:01.444 22748 22762 I CanvasMapInput: action=262 pointers=2 elapsedMs=1
+11-08 15:27:01.444 22748 22748 I CanvasMapInput: delivered action=6 count=2 ids=[0, 1] elapsed=455
+11-08 15:27:01.446 22748 22748 I CanvasMapScale: pointers=1 span=0.0 threshold=18.375 enabled=true progress=false
+11-08 15:27:01.446 22748 22748 I CanvasMapInput: delivered action=1 count=1 ids=[0] elapsed=456
+11-08 15:27:01.459 22748 22762 I CanvasMapInput: action=1 pointers=1 elapsedMs=15
+11-08 15:27:02.661 22748 22748 I CanvasMapProbe: {"step":"pinch","viewIdentity":18065321,"mapIdentity":136974638,"latitude":41.42030271024253,"longitude":2.1360486758869968,"zoom":12.964523315429688,"zoomGesturesEnabled":true,"width":1080,"height":2400,"hillshade":[{"id":"goway:relief:hillshade","shadow":["rgba(6.000000476837158,11,22,1)"],"highlight":["rgba(93,115.00000762939453,144,1)"]}],"handleY":1321,"handleHeight":126,"handleValue":"{\"text\":\"Half open\",\"min\":0,\"now\":1,\"max\":2}","imeVisible":false}
+11-08 15:27:02.975 22748 22762 I CanvasMapProbe: {"step":"pinch-result","passed":true}
+11-08 15:27:02.989 22748 22762 I CanvasMapInput: action=0 pointers=1 elapsedMs=9
+11-08 15:27:02.990 22748 22748 I CanvasMapInput: delivered action=0 count=1 ids=[0] elapsed=0
+11-08 15:27:03.055 22748 22762 I CanvasMapInput: action=1 pointers=1 elapsedMs=14
+11-08 15:27:03.101 22748 22748 I CanvasMapInput: delivered action=1 count=1 ids=[0] elapsed=61
+11-08 15:27:04.313 22748 22748 I CanvasMapProbe: {"step":"detent-0","viewIdentity":18065321,"mapIdentity":136974638,"latitude":41.42030271024253,"longitude":2.1360486758869968,"zoom":12.964523315429688,"zoomGesturesEnabled":true,"width":1080,"height":2400,"hillshade":[{"id":"goway:relief:hillshade","shadow":["rgba(6.000000476837158,11,22,1)"],"highlight":["rgba(93,115.00000762939453,144,1)"]}],"handleY":809,"handleHeight":126,"handleValue":"{\"text\":\"Expanded\",\"min\":0,\"now\":2,\"max\":2}","imeVisible":false}
+11-08 15:27:04.600 22748 22762 I CanvasMapProbe: {"step":"detent-result-0","expected":2,"settled":true}
+11-08 15:27:04.620 22748 22762 I CanvasMapInput: action=0 pointers=1 elapsedMs=7
+11-08 15:27:04.620 22748 22748 I CanvasMapInput: delivered action=0 count=1 ids=[0] elapsed=0
+11-08 15:27:04.672 22748 22748 I CanvasMapInput: delivered action=1 count=1 ids=[0] elapsed=58
+11-08 15:27:04.686 22748 22762 I CanvasMapInput: action=1 pointers=1 elapsedMs=15
+11-08 15:27:05.950 22748 22748 I CanvasMapProbe: {"step":"detent-1","viewIdentity":18065321,"mapIdentity":136974638,"latitude":41.42030271024253,"longitude":2.1360486758869968,"zoom":12.964523315429688,"zoomGesturesEnabled":true,"width":1080,"height":2400,"hillshade":[{"id":"goway:relief:hillshade","shadow":["rgba(6.000000476837158,11,22,1)"],"highlight":["rgba(93,115.00000762939453,144,1)"]}],"handleY":1981,"handleHeight":126,"handleValue":"{\"text\":\"Collapsed\",\"min\":0,\"now\":0,\"max\":2}","imeVisible":false}
+11-08 15:27:06.461 22748 22762 I CanvasMapProbe: {"step":"detent-result-1","expected":0,"settled":true}
+11-08 15:27:06.478 22748 22748 I CanvasMapInput: delivered action=0 count=1 ids=[0] elapsed=0
+11-08 15:27:06.478 22748 22762 I CanvasMapInput: action=0 pointers=1 elapsedMs=13
+11-08 15:27:06.530 22748 22748 I CanvasMapInput: delivered action=1 count=1 ids=[0] elapsed=64
+11-08 15:27:06.533 22748 22762 I CanvasMapInput: action=1 pointers=1 elapsedMs=4
+11-08 15:27:07.790 22748 22748 I CanvasMapProbe: {"step":"detent-2","viewIdentity":18065321,"mapIdentity":136974638,"latitude":41.42030271024253,"longitude":2.1360486758869968,"zoom":12.964523315429688,"zoomGesturesEnabled":true,"width":1080,"height":2400,"hillshade":[{"id":"goway:relief:hillshade","shadow":["rgba(6.000000476837158,11,22,1)"],"highlight":["rgba(93,115.00000762939453,144,1)"]}],"handleY":1321,"handleHeight":126,"handleValue":"{\"text\":\"Half open\",\"min\":0,\"now\":1,\"max\":2}","imeVisible":false}
+11-08 15:27:08.184 22748 22762 I CanvasMapProbe: {"step":"detent-result-2","expected":1,"settled":true}
+11-08 15:27:08.205 22748 22748 I CanvasMapInput: delivered action=0 count=1 ids=[0] elapsed=0
+11-08 15:27:08.205 22748 22762 I CanvasMapInput: action=0 pointers=1 elapsedMs=9
+11-08 15:27:08.257 22748 22748 I CanvasMapInput: delivered action=1 count=1 ids=[0] elapsed=61
+11-08 15:27:08.264 22748 22762 I CanvasMapInput: action=1 pointers=1 elapsedMs=8
+11-08 15:27:09.523 22748 22748 I CanvasMapProbe: {"step":"ime","viewIdentity":18065321,"mapIdentity":136974638,"latitude":41.42030271024253,"longitude":2.1360486758869968,"zoom":12.964523315429688,"zoomGesturesEnabled":true,"width":1080,"height":2400,"hillshade":[{"id":"goway:relief:hillshade","shadow":["rgba(6.000000476837158,11,22,1)"],"highlight":["rgba(93,115.00000762939453,144,1)"]}],"handleY":827,"handleHeight":126,"handleValue":"{\"text\":\"Half open\",\"min\":0,\"now\":1,\"max\":2}","imeVisible":true}
+11-08 15:27:10.298 22748 22748 I CanvasMapProbe: {"step":"back","viewIdentity":18065321,"mapIdentity":136974638,"latitude":41.42030271024253,"longitude":2.1360486758869968,"zoom":12.964523315429688,"zoomGesturesEnabled":true,"width":1080,"height":2400,"hillshade":[{"id":"goway:relief:hillshade","shadow":["rgba(6.000000476837158,11,22,1)"],"highlight":["rgba(93,115.00000762939453,144,1)"]}],"handleY":1321,"handleHeight":126,"handleValue":"{\"text\":\"Half open\",\"min\":0,\"now\":1,\"max\":2}","imeVisible":false}
+11-08 15:27:10.667 22748 22762 I CanvasMapProbe: {"step":"matrix-results","detents":[true,true,true],"imeOpened":true,"imeClosed":true}
+11-08 15:27:10.668 22748 22762 I TestRunner: finished: realMapPanPinchDetentsAndKeyboard(to.goway.canvas663.CanvasMapProbeTest)
+11-08 15:29:20.842 22949 22994 I TestRunner: started: realMapPanPinchDetentsAndKeyboard(to.goway.canvas663.CanvasMapProbeTest)
+11-08 15:29:23.273 22949 22949 I CanvasMapProbe: {"step":"initial","viewIdentity":163810430,"mapIdentity":75851231,"latitude":41.38739999999997,"longitude":2.1685999999999694,"zoom":11,"zoomGesturesEnabled":true,"width":1080,"height":2400,"hillshade":[{"id":"goway:relief:hillshade","shadow":["rgba(6.000000476837158,11,22,1)"],"highlight":["rgba(93,115.00000762939453,144,1)"]}],"handleY":1321,"handleHeight":126,"handleValue":"{\"text\":\"Half open\",\"min\":0,\"now\":1,\"max\":2}","imeVisible":false}
+11-08 15:29:23.717 22949 22949 I CanvasMapInput: delivered action=0 count=1 ids=[0] elapsed=0
+11-08 15:29:23.718 22949 22994 I CanvasMapInput: action=0 pointers=1 elapsedMs=14
+11-08 15:29:23.720 22949 22994 I CanvasMapInput: action=2 pointers=1 elapsedMs=1
+11-08 15:29:23.729 22949 22949 I CanvasMapInput: delivered action=2 count=1 ids=[0] elapsed=21
+11-08 15:29:23.738 22949 22994 I CanvasMapInput: action=2 pointers=1 elapsedMs=1
+11-08 15:29:23.746 22949 22949 I CanvasMapInput: delivered action=2 count=1 ids=[0] elapsed=38
+11-08 15:29:23.756 22949 22994 I CanvasMapInput: action=2 pointers=1 elapsedMs=1
+11-08 15:29:23.763 22949 22949 I CanvasMapInput: delivered action=2 count=1 ids=[0] elapsed=54
+11-08 15:29:23.774 22949 22994 I CanvasMapInput: action=2 pointers=1 elapsedMs=1
+11-08 15:29:23.779 22949 22949 I CanvasMapInput: delivered action=2 count=1 ids=[0] elapsed=71
+11-08 15:29:23.793 22949 22994 I CanvasMapInput: action=2 pointers=1 elapsedMs=2
+11-08 15:29:23.796 22949 22949 I CanvasMapInput: delivered action=2 count=1 ids=[0] elapsed=88
+11-08 15:29:23.810 22949 22994 I CanvasMapInput: action=2 pointers=1 elapsedMs=1
+11-08 15:29:23.822 22949 22949 I CanvasMapInput: delivered action=2 count=1 ids=[0] elapsed=113
+11-08 15:29:23.828 22949 22994 I CanvasMapInput: action=2 pointers=1 elapsedMs=1
+11-08 15:29:23.838 22949 22949 I CanvasMapInput: delivered action=2 count=1 ids=[0] elapsed=130
+11-08 15:29:23.847 22949 22994 I CanvasMapInput: action=2 pointers=1 elapsedMs=2
+11-08 15:29:23.855 22949 22949 I CanvasMapInput: delivered action=2 count=1 ids=[0] elapsed=146
+11-08 15:29:23.864 22949 22994 I CanvasMapInput: action=2 pointers=1 elapsedMs=1
+11-08 15:29:23.872 22949 22949 I CanvasMapInput: delivered action=2 count=1 ids=[0] elapsed=163
+11-08 15:29:23.882 22949 22994 I CanvasMapInput: action=2 pointers=1 elapsedMs=1
+11-08 15:29:23.889 22949 22949 I CanvasMapInput: delivered action=2 count=1 ids=[0] elapsed=180
+11-08 15:29:23.901 22949 22994 I CanvasMapInput: action=2 pointers=1 elapsedMs=1
+11-08 15:29:23.905 22949 22949 I CanvasMapInput: delivered action=2 count=1 ids=[0] elapsed=196
+11-08 15:29:23.919 22949 22994 I CanvasMapInput: action=2 pointers=1 elapsedMs=2
+11-08 15:29:23.930 22949 22949 I CanvasMapInput: delivered action=2 count=1 ids=[0] elapsed=222
+11-08 15:29:23.937 22949 22994 I CanvasMapInput: action=2 pointers=1 elapsedMs=1
+11-08 15:29:23.947 22949 22949 I CanvasMapInput: delivered action=2 count=1 ids=[0] elapsed=238
+11-08 15:29:23.957 22949 22994 I CanvasMapInput: action=2 pointers=1 elapsedMs=3
+11-08 15:29:23.964 22949 22949 I CanvasMapInput: delivered action=2 count=1 ids=[0] elapsed=255
+11-08 15:29:23.977 22949 22994 I CanvasMapInput: action=2 pointers=1 elapsedMs=3
+11-08 15:29:23.980 22949 22949 I CanvasMapInput: delivered action=2 count=1 ids=[0] elapsed=272
+11-08 15:29:23.995 22949 22994 I CanvasMapInput: action=2 pointers=1 elapsedMs=2
+11-08 15:29:24.006 22949 22949 I CanvasMapInput: delivered action=2 count=1 ids=[0] elapsed=297
+11-08 15:29:24.014 22949 22994 I CanvasMapInput: action=2 pointers=1 elapsedMs=2
+11-08 15:29:24.022 22949 22949 I CanvasMapInput: delivered action=2 count=1 ids=[0] elapsed=314
+11-08 15:29:24.031 22949 22994 I CanvasMapInput: action=2 pointers=1 elapsedMs=1
+11-08 15:29:24.039 22949 22949 I CanvasMapInput: delivered action=2 count=1 ids=[0] elapsed=330
+11-08 15:29:24.049 22949 22994 I CanvasMapInput: action=2 pointers=1 elapsedMs=1
+11-08 15:29:24.056 22949 22949 I CanvasMapInput: delivered action=2 count=1 ids=[0] elapsed=347
+11-08 15:29:24.068 22949 22994 I CanvasMapInput: action=2 pointers=1 elapsedMs=2
+11-08 15:29:24.073 22949 22949 I CanvasMapInput: delivered action=2 count=1 ids=[0] elapsed=364
+11-08 15:29:24.086 22949 22994 I CanvasMapInput: action=2 pointers=1 elapsedMs=2
+11-08 15:29:24.097 22949 22949 I CanvasMapInput: delivered action=2 count=1 ids=[0] elapsed=389
+11-08 15:29:24.103 22949 22994 I CanvasMapInput: action=2 pointers=1 elapsedMs=1
+11-08 15:29:24.114 22949 22949 I CanvasMapInput: delivered action=2 count=1 ids=[0] elapsed=405
+11-08 15:29:24.121 22949 22994 I CanvasMapInput: action=2 pointers=1 elapsedMs=1
+11-08 15:29:24.131 22949 22949 I CanvasMapInput: delivered action=2 count=1 ids=[0] elapsed=422
+11-08 15:29:24.140 22949 22994 I CanvasMapInput: action=2 pointers=1 elapsedMs=2
+11-08 15:29:24.148 22949 22949 I CanvasMapInput: delivered action=2 count=1 ids=[0] elapsed=439
+11-08 15:29:24.159 22949 22949 I CanvasMapInput: delivered action=1 count=1 ids=[0] elapsed=453
+11-08 15:29:24.173 22949 22994 I CanvasMapInput: action=1 pointers=1 elapsedMs=16
+11-08 15:29:25.375 22949 22949 I CanvasMapProbe: {"step":"pan","viewIdentity":163810430,"mapIdentity":75851231,"latitude":41.38739999995137,"longitude":2.1387799667119225,"zoom":11,"zoomGesturesEnabled":true,"width":1080,"height":2400,"hillshade":[{"id":"goway:relief:hillshade","shadow":["rgba(6.000000476837158,11,22,1)"],"highlight":["rgba(93,115.00000762939453,144,1)"]}],"handleY":1321,"handleHeight":126,"handleValue":"{\"text\":\"Half open\",\"min\":0,\"now\":1,\"max\":2}","imeVisible":false}
+11-08 15:29:25.837 22949 22949 I CanvasMapInput: delivered action=0 count=1 ids=[0] elapsed=0
+11-08 15:29:25.837 22949 22994 I CanvasMapInput: action=0 pointers=1 elapsedMs=20
+11-08 15:29:25.839 22949 22949 I CanvasMapInput: delivered action=5 count=2 ids=[0, 1] elapsed=20
+11-08 15:29:25.839 22949 22994 I CanvasMapInput: action=261 pointers=2 elapsedMs=2
+11-08 15:29:25.839 22949 22949 I CanvasMapScale: pointers=2 span=0.0 threshold=18.375 enabled=true progress=false
+11-08 15:29:25.840 22949 22994 I CanvasMapInput: action=2 pointers=2 elapsedMs=1
+11-08 15:29:25.844 22949 22949 I CanvasMapInput: delivered action=2 count=2 ids=[0, 1] elapsed=22
+11-08 15:29:25.845 22949 22949 I CanvasMapScale: pointers=2 span=368.0 threshold=18.375 enabled=true progress=false
+11-08 15:29:25.858 22949 22994 I CanvasMapInput: action=2 pointers=2 elapsedMs=1
+11-08 15:29:25.869 22949 22949 I CanvasMapInput: delivered action=2 count=2 ids=[0, 1] elapsed=47
+11-08 15:29:25.871 22949 22949 I CanvasMapScale: pointers=2 span=438.58984 threshold=18.375 enabled=true progress=true
+11-08 15:29:25.877 22949 22994 I CanvasMapInput: action=2 pointers=2 elapsedMs=2
+11-08 15:29:25.886 22949 22949 I CanvasMapInput: delivered action=2 count=2 ids=[0, 1] elapsed=63
+11-08 15:29:25.888 22949 22949 I CanvasMapScale: pointers=2 span=478.76562 threshold=18.375 enabled=true progress=true
+11-08 15:29:25.896 22949 22994 I CanvasMapInput: action=2 pointers=2 elapsedMs=3
+11-08 15:29:25.903 22949 22949 I CanvasMapInput: delivered action=2 count=2 ids=[0, 1] elapsed=80
+11-08 15:29:25.905 22949 22949 I CanvasMapScale: pointers=2 span=525.10156 threshold=18.375 enabled=true progress=true
+11-08 15:29:25.914 22949 22994 I CanvasMapInput: action=2 pointers=2 elapsedMs=2
+11-08 15:29:25.920 22949 22949 I CanvasMapInput: delivered action=2 count=2 ids=[0, 1] elapsed=97
+11-08 15:29:25.922 22949 22949 I CanvasMapScale: pointers=2 span=566.6094 threshold=18.375 enabled=true progress=true
+11-08 15:29:25.931 22949 22994 I CanvasMapInput: action=2 pointers=2 elapsedMs=1
+11-08 15:29:25.936 22949 22949 I CanvasMapInput: delivered action=2 count=2 ids=[0, 1] elapsed=114
+11-08 15:29:25.938 22949 22949 I CanvasMapScale: pointers=2 span=611.4336 threshold=18.375 enabled=true progress=true
+11-08 15:29:25.951 22949 22994 I CanvasMapInput: action=2 pointers=2 elapsedMs=3
+11-08 15:29:25.962 22949 22949 I CanvasMapInput: delivered action=2 count=2 ids=[0, 1] elapsed=139
+11-08 15:29:25.964 22949 22949 I CanvasMapScale: pointers=2 span=677.33203 threshold=18.375 enabled=true progress=true
+11-08 15:29:25.969 22949 22994 I CanvasMapInput: action=2 pointers=2 elapsedMs=2
+11-08 15:29:25.978 22949 22949 I CanvasMapInput: delivered action=2 count=2 ids=[0, 1] elapsed=156
+11-08 15:29:25.980 22949 22949 I CanvasMapScale: pointers=2 span=719.3008 threshold=18.375 enabled=true progress=true
+11-08 15:29:25.987 22949 22994 I CanvasMapInput: action=2 pointers=2 elapsedMs=1
+11-08 15:29:25.995 22949 22949 I CanvasMapInput: delivered action=2 count=2 ids=[0, 1] elapsed=172
+11-08 15:29:25.997 22949 22949 I CanvasMapScale: pointers=2 span=761.4922 threshold=18.375 enabled=true progress=true
+11-08 15:29:26.005 22949 22994 I CanvasMapInput: action=2 pointers=2 elapsedMs=1
+11-08 15:29:26.012 22949 22949 I CanvasMapInput: delivered action=2 count=2 ids=[0, 1] elapsed=189
+11-08 15:29:26.014 22949 22949 I CanvasMapScale: pointers=2 span=809.78125 threshold=18.375 enabled=true progress=true
+11-08 15:29:26.024 22949 22994 I CanvasMapInput: action=2 pointers=2 elapsedMs=2
+11-08 15:29:26.028 22949 22949 I CanvasMapInput: delivered action=2 count=2 ids=[0, 1] elapsed=206
+11-08 15:29:26.030 22949 22949 I CanvasMapScale: pointers=2 span=850.96484 threshold=18.375 enabled=true progress=true
+11-08 15:29:26.041 22949 22994 I CanvasMapInput: action=2 pointers=2 elapsedMs=1
+11-08 15:29:26.053 22949 22949 I CanvasMapInput: delivered action=2 count=2 ids=[0, 1] elapsed=231
+11-08 15:29:26.055 22949 22949 I CanvasMapScale: pointers=2 span=917.33203 threshold=18.375 enabled=true progress=true
+11-08 15:29:26.060 22949 22994 I CanvasMapInput: action=2 pointers=2 elapsedMs=1
+11-08 15:29:26.070 22949 22949 I CanvasMapInput: delivered action=2 count=2 ids=[0, 1] elapsed=247
+11-08 15:29:26.072 22949 22949 I CanvasMapScale: pointers=2 span=962.6211 threshold=18.375 enabled=true progress=true
+11-08 15:29:26.078 22949 22994 I CanvasMapInput: action=2 pointers=2 elapsedMs=1
+11-08 15:29:26.087 22949 22949 I CanvasMapInput: delivered action=2 count=2 ids=[0, 1] elapsed=264
+11-08 15:29:26.089 22949 22949 I CanvasMapScale: pointers=2 span=1007.21875 threshold=18.375 enabled=true progress=true
+11-08 15:29:26.097 22949 22994 I CanvasMapInput: action=2 pointers=2 elapsedMs=3
+11-08 15:29:26.103 22949 22949 I CanvasMapInput: delivered action=2 count=2 ids=[0, 1] elapsed=281
+11-08 15:29:26.105 22949 22949 I CanvasMapScale: pointers=2 span=1051.7891 threshold=18.375 enabled=true progress=true
+11-08 15:29:26.116 22949 22994 I CanvasMapInput: action=2 pointers=2 elapsedMs=2
+11-08 15:29:26.120 22949 22949 I CanvasMapInput: delivered action=2 count=2 ids=[0, 1] elapsed=298
+11-08 15:29:26.122 22949 22949 I CanvasMapScale: pointers=2 span=1090.7461 threshold=18.375 enabled=true progress=true
+11-08 15:29:26.133 22949 22994 I CanvasMapInput: action=2 pointers=2 elapsedMs=1
+11-08 15:29:26.145 22949 22949 I CanvasMapInput: delivered action=2 count=2 ids=[0, 1] elapsed=323
+11-08 15:29:26.147 22949 22949 I CanvasMapScale: pointers=2 span=1157.332 threshold=18.375 enabled=true progress=true
+11-08 15:29:26.152 22949 22994 I CanvasMapInput: action=2 pointers=2 elapsedMs=2
+11-08 15:29:26.162 22949 22949 I CanvasMapInput: delivered action=2 count=2 ids=[0, 1] elapsed=339
+11-08 15:29:26.164 22949 22949 I CanvasMapScale: pointers=2 span=1202.4844 threshold=18.375 enabled=true progress=true
+11-08 15:29:26.169 22949 22994 I CanvasMapInput: action=2 pointers=2 elapsedMs=1
+11-08 15:29:26.179 22949 22949 I CanvasMapInput: delivered action=2 count=2 ids=[0, 1] elapsed=356
+11-08 15:29:26.180 22949 22949 I CanvasMapScale: pointers=2 span=1247.0352 threshold=18.375 enabled=true progress=true
+11-08 15:29:26.186 22949 22994 I CanvasMapInput: action=2 pointers=2 elapsedMs=1
+11-08 15:29:26.195 22949 22949 I CanvasMapInput: delivered action=2 count=2 ids=[0, 1] elapsed=373
+11-08 15:29:26.197 22949 22949 I CanvasMapScale: pointers=2 span=1295.0742 threshold=18.375 enabled=true progress=true
+11-08 15:29:26.203 22949 22994 I CanvasMapInput: action=2 pointers=2 elapsedMs=1
+11-08 15:29:26.212 22949 22949 I CanvasMapInput: delivered action=2 count=2 ids=[0, 1] elapsed=390
+11-08 15:29:26.214 22949 22949 I CanvasMapScale: pointers=2 span=1342.2812 threshold=18.375 enabled=true progress=true
+11-08 15:29:26.222 22949 22994 I CanvasMapInput: action=2 pointers=2 elapsedMs=1
+11-08 15:29:26.229 22949 22949 I CanvasMapInput: delivered action=2 count=2 ids=[0, 1] elapsed=406
+11-08 15:29:26.230 22949 22949 I CanvasMapScale: pointers=2 span=1386.0781 threshold=18.375 enabled=true progress=true
+11-08 15:29:26.239 22949 22994 I CanvasMapInput: action=2 pointers=2 elapsedMs=1
+11-08 15:29:26.246 22949 22949 I CanvasMapInput: delivered action=2 count=2 ids=[0, 1] elapsed=423
+11-08 15:29:26.247 22949 22949 I CanvasMapScale: pointers=2 span=1430.6289 threshold=18.375 enabled=true progress=true
+11-08 15:29:26.257 22949 22994 I CanvasMapInput: action=2 pointers=2 elapsedMs=1
+11-08 15:29:26.262 22949 22949 I CanvasMapInput: delivered action=2 count=2 ids=[0, 1] elapsed=440
+11-08 15:29:26.264 22949 22949 I CanvasMapScale: pointers=2 span=1478.1992 threshold=18.375 enabled=true progress=true
+11-08 15:29:26.274 22949 22994 I CanvasMapInput: action=262 pointers=2 elapsedMs=0
+11-08 15:29:26.274 22949 22949 I CanvasMapInput: delivered action=6 count=2 ids=[0, 1] elapsed=456
+11-08 15:29:26.275 22949 22949 I CanvasMapScale: pointers=1 span=0.0 threshold=18.375 enabled=true progress=false
+11-08 15:29:26.276 22949 22949 I CanvasMapInput: delivered action=1 count=1 ids=[0] elapsed=457
+11-08 15:29:26.291 22949 22994 I CanvasMapInput: action=1 pointers=1 elapsedMs=16
+11-08 15:29:27.496 22949 22949 I CanvasMapProbe: {"step":"pinch","viewIdentity":163810430,"mapIdentity":75851231,"latitude":41.41992218496721,"longitude":2.1348617383327166,"zoom":12.91687297821045,"zoomGesturesEnabled":true,"width":1080,"height":2400,"hillshade":[{"id":"goway:relief:hillshade","shadow":["rgba(6.000000476837158,11,22,1)"],"highlight":["rgba(93,115.00000762939453,144,1)"]}],"handleY":1321,"handleHeight":126,"handleValue":"{\"text\":\"Half open\",\"min\":0,\"now\":1,\"max\":2}","imeVisible":false}
+11-08 15:29:27.888 22949 22994 I CanvasMapProbe: {"step":"pinch-result","passed":true}
+11-08 15:29:27.910 22949 22994 I CanvasMapInput: action=0 pointers=1 elapsedMs=12
+11-08 15:29:27.912 22949 22949 I CanvasMapInput: delivered action=0 count=1 ids=[0] elapsed=0
+11-08 15:29:27.964 22949 22949 I CanvasMapInput: delivered action=1 count=1 ids=[0] elapsed=63
+11-08 15:29:27.968 22949 22994 I CanvasMapInput: action=1 pointers=1 elapsedMs=7
+11-08 15:29:29.228 22949 22949 I CanvasMapProbe: {"step":"detent-0","viewIdentity":163810430,"mapIdentity":75851231,"latitude":41.41992218496721,"longitude":2.1348617383327166,"zoom":12.91687297821045,"zoomGesturesEnabled":true,"width":1080,"height":2400,"hillshade":[{"id":"goway:relief:hillshade","shadow":["rgba(6.000000476837158,11,22,1)"],"highlight":["rgba(93,115.00000762939453,144,1)"]}],"handleY":809,"handleHeight":126,"handleValue":"{\"text\":\"Expanded\",\"min\":0,\"now\":2,\"max\":2}","imeVisible":false}
+11-08 15:29:29.518 22949 22994 I CanvasMapProbe: {"step":"detent-result-0","expected":2,"settled":true}
+11-08 15:29:29.533 22949 22994 I CanvasMapInput: action=0 pointers=1 elapsedMs=4
+11-08 15:29:29.533 22949 22949 I CanvasMapInput: delivered action=0 count=1 ids=[0] elapsed=0
+11-08 15:29:29.586 22949 22949 I CanvasMapInput: delivered action=1 count=1 ids=[0] elapsed=55
+11-08 15:29:29.599 22949 22994 I CanvasMapInput: action=1 pointers=1 elapsedMs=15
+11-08 15:29:30.868 22949 22949 I CanvasMapProbe: {"step":"detent-1","viewIdentity":163810430,"mapIdentity":75851231,"latitude":41.41992218496721,"longitude":2.1348617383327166,"zoom":12.91687297821045,"zoomGesturesEnabled":true,"width":1080,"height":2400,"hillshade":[{"id":"goway:relief:hillshade","shadow":["rgba(6.000000476837158,11,22,1)"],"highlight":["rgba(93,115.00000762939453,144,1)"]}],"handleY":1981,"handleHeight":126,"handleValue":"{\"text\":\"Collapsed\",\"min\":0,\"now\":0,\"max\":2}","imeVisible":false}
+11-08 15:29:31.379 22949 22994 I CanvasMapProbe: {"step":"detent-result-1","expected":0,"settled":true}
+11-08 15:29:31.398 22949 22994 I CanvasMapInput: action=0 pointers=1 elapsedMs=8
+11-08 15:29:31.398 22949 22949 I CanvasMapInput: delivered action=0 count=1 ids=[0] elapsed=0
+11-08 15:29:31.449 22949 22949 I CanvasMapInput: delivered action=1 count=1 ids=[0] elapsed=59
+11-08 15:29:31.464 22949 22994 I CanvasMapInput: action=1 pointers=1 elapsedMs=15
+11-08 15:29:32.732 22949 22949 I CanvasMapProbe: {"step":"detent-2","viewIdentity":163810430,"mapIdentity":75851231,"latitude":41.41992218496721,"longitude":2.1348617383327166,"zoom":12.91687297821045,"zoomGesturesEnabled":true,"width":1080,"height":2400,"hillshade":[{"id":"goway:relief:hillshade","shadow":["rgba(6.000000476837158,11,22,1)"],"highlight":["rgba(93,115.00000762939453,144,1)"]}],"handleY":1321,"handleHeight":126,"handleValue":"{\"text\":\"Half open\",\"min\":0,\"now\":1,\"max\":2}","imeVisible":false}
+11-08 15:29:33.122 22949 22994 I CanvasMapProbe: {"step":"detent-result-2","expected":1,"settled":true}
+11-08 15:29:33.138 22949 22994 I CanvasMapInput: action=0 pointers=1 elapsedMs=6
+11-08 15:29:33.139 22949 22949 I CanvasMapInput: delivered action=0 count=1 ids=[0] elapsed=0
+11-08 15:29:33.191 22949 22949 I CanvasMapInput: delivered action=1 count=1 ids=[0] elapsed=57
+11-08 15:29:33.202 22949 22994 I CanvasMapInput: action=1 pointers=1 elapsedMs=13
+11-08 15:29:34.457 22949 22949 I CanvasMapProbe: {"step":"ime","viewIdentity":163810430,"mapIdentity":75851231,"latitude":41.41992218496721,"longitude":2.1348617383327166,"zoom":12.91687297821045,"zoomGesturesEnabled":true,"width":1080,"height":2400,"hillshade":[{"id":"goway:relief:hillshade","shadow":["rgba(6.000000476837158,11,22,1)"],"highlight":["rgba(93,115.00000762939453,144,1)"]}],"handleY":827,"handleHeight":126,"handleValue":"{\"text\":\"Half open\",\"min\":0,\"now\":1,\"max\":2}","imeVisible":true}
+11-08 15:29:35.150 22949 22949 I CanvasMapProbe: {"step":"back","viewIdentity":163810430,"mapIdentity":75851231,"latitude":41.41992218496721,"longitude":2.1348617383327166,"zoom":12.91687297821045,"zoomGesturesEnabled":true,"width":1080,"height":2400,"hillshade":[{"id":"goway:relief:hillshade","shadow":["rgba(6.000000476837158,11,22,1)"],"highlight":["rgba(93,115.00000762939453,144,1)"]}],"handleY":1321,"handleHeight":126,"handleValue":"{\"text\":\"Half open\",\"min\":0,\"now\":1,\"max\":2}","imeVisible":false}
+11-08 15:29:35.544 22949 22994 I CanvasMapProbe: {"step":"matrix-results","detents":[true,true,true],"imeOpened":true,"imeClosed":true}
+11-08 15:29:35.546 22949 22994 I TestRunner: finished: realMapPanPinchDetentsAndKeyboard(to.goway.canvas663.CanvasMapProbeTest)
+11-08 15:30:29.813 23142 23154 I TestRunner: started: realMapPanPinchDetentsAndKeyboard(to.goway.canvas663.CanvasMapProbeTest)
+11-08 15:30:50.437 23142 23142 I CanvasMapProbe: {"step":"initial","viewIdentity":84510080,"mapIdentity":213583801,"latitude":41.38739999999997,"longitude":2.1685999999999694,"zoom":11,"zoomGesturesEnabled":true,"width":1080,"height":2400,"hillshade":[{"id":"goway:relief:hillshade","shadow":["rgba(6.000000476837158,11,22,1)"],"highlight":["rgba(93,115.00000762939453,144,1)"]}],"handleY":1321,"handleHeight":126,"handleValue":"{\"text\":\"Half open\",\"min\":0,\"now\":1,\"max\":2}","chrome":[{"id":"map-credit","x":21,"y":1146,"width":1038,"height":164,"visibleRect":"[21,1146][1059,1310]","globalVisible":true,"shown":true},{"id":"map-credit-toggle","x":944,"y":1210,"width":94,"height":94,"visibleRect":"[944,1210][1038,1304]","globalVisible":true,"shown":true},{"id":"map-scale","x":21,"y":1058,"width":288,"height":77,"visibleRect":"[21,1058][309,1135]","globalVisible":true,"shown":true}],"imeVisible":false}
+11-08 15:30:50.911 23142 23154 I CanvasMapInput: action=0 pointers=1 elapsedMs=16
+11-08 15:30:50.912 23142 23142 I CanvasMapInput: delivered action=0 count=1 ids=[0] elapsed=1
+11-08 15:30:50.912 23142 23154 I CanvasMapInput: action=2 pointers=1 elapsedMs=1
+11-08 15:30:50.919 23142 23142 I CanvasMapInput: delivered action=2 count=1 ids=[0] elapsed=20
+11-08 15:30:50.931 23142 23154 I CanvasMapInput: action=2 pointers=1 elapsedMs=2
+11-08 15:30:50.935 23142 23142 I CanvasMapInput: delivered action=2 count=1 ids=[0] elapsed=36
+11-08 15:30:50.950 23142 23154 I CanvasMapInput: action=2 pointers=1 elapsedMs=3
+11-08 15:30:50.960 23142 23142 I CanvasMapInput: delivered action=2 count=1 ids=[0] elapsed=61
+11-08 15:30:50.969 23142 23154 I CanvasMapInput: action=2 pointers=1 elapsedMs=2
+11-08 15:30:50.977 23142 23142 I CanvasMapInput: delivered action=2 count=1 ids=[0] elapsed=78
+11-08 15:30:50.987 23142 23154 I CanvasMapInput: action=2 pointers=1 elapsedMs=2
+11-08 15:30:50.994 23142 23142 I CanvasMapInput: delivered action=2 count=1 ids=[0] elapsed=95
+11-08 15:30:51.005 23142 23154 I CanvasMapInput: action=2 pointers=1 elapsedMs=2
+11-08 15:30:51.011 23142 23142 I CanvasMapInput: delivered action=2 count=1 ids=[0] elapsed=112
+11-08 15:30:51.025 23142 23154 I CanvasMapInput: action=2 pointers=1 elapsedMs=2
+11-08 15:30:51.035 23142 23142 I CanvasMapInput: delivered action=2 count=1 ids=[0] elapsed=137
+11-08 15:30:51.042 23142 23154 I CanvasMapInput: action=2 pointers=1 elapsedMs=1
+11-08 15:30:51.052 23142 23142 I CanvasMapInput: delivered action=2 count=1 ids=[0] elapsed=154
+11-08 15:30:51.060 23142 23154 I CanvasMapInput: action=2 pointers=1 elapsedMs=1
+11-08 15:30:51.069 23142 23142 I CanvasMapInput: delivered action=2 count=1 ids=[0] elapsed=170
+11-08 15:30:51.079 23142 23154 I CanvasMapInput: action=2 pointers=1 elapsedMs=1
+11-08 15:30:51.086 23142 23142 I CanvasMapInput: delivered action=2 count=1 ids=[0] elapsed=187
+11-08 15:30:51.098 23142 23154 I CanvasMapInput: action=2 pointers=1 elapsedMs=2
+11-08 15:30:51.102 23142 23142 I CanvasMapInput: delivered action=2 count=1 ids=[0] elapsed=204
+11-08 15:30:51.116 23142 23154 I CanvasMapInput: action=2 pointers=1 elapsedMs=1
+11-08 15:30:51.128 23142 23142 I CanvasMapInput: delivered action=2 count=1 ids=[0] elapsed=229
+11-08 15:30:51.134 23142 23154 I CanvasMapInput: action=2 pointers=1 elapsedMs=1
+11-08 15:30:51.144 23142 23142 I CanvasMapInput: delivered action=2 count=1 ids=[0] elapsed=246
+11-08 15:30:51.153 23142 23154 I CanvasMapInput: action=2 pointers=1 elapsedMs=2
+11-08 15:30:51.161 23142 23142 I CanvasMapInput: delivered action=2 count=1 ids=[0] elapsed=262
+11-08 15:30:51.171 23142 23154 I CanvasMapInput: action=2 pointers=1 elapsedMs=2
+11-08 15:30:51.178 23142 23142 I CanvasMapInput: delivered action=2 count=1 ids=[0] elapsed=279
+11-08 15:30:51.188 23142 23154 I CanvasMapInput: action=2 pointers=1 elapsedMs=1
+11-08 15:30:51.194 23142 23142 I CanvasMapInput: delivered action=2 count=1 ids=[0] elapsed=296
+11-08 15:30:51.207 23142 23154 I CanvasMapInput: action=2 pointers=1 elapsedMs=3
+11-08 15:30:51.211 23142 23142 I CanvasMapInput: delivered action=2 count=1 ids=[0] elapsed=312
+11-08 15:30:51.225 23142 23154 I CanvasMapInput: action=2 pointers=1 elapsedMs=2
+11-08 15:30:51.236 23142 23142 I CanvasMapInput: delivered action=2 count=1 ids=[0] elapsed=338
+11-08 15:30:51.243 23142 23154 I CanvasMapInput: action=2 pointers=1 elapsedMs=1
+11-08 15:30:51.253 23142 23142 I CanvasMapInput: delivered action=2 count=1 ids=[0] elapsed=354
+11-08 15:30:51.262 23142 23154 I CanvasMapInput: action=2 pointers=1 elapsedMs=2
+11-08 15:30:51.270 23142 23142 I CanvasMapInput: delivered action=2 count=1 ids=[0] elapsed=371
+11-08 15:30:51.281 23142 23154 I CanvasMapInput: action=2 pointers=1 elapsedMs=2
+11-08 15:30:51.287 23142 23142 I CanvasMapInput: delivered action=2 count=1 ids=[0] elapsed=388
+11-08 15:30:51.300 23142 23154 I CanvasMapInput: action=2 pointers=1 elapsedMs=2
+11-08 15:30:51.303 23142 23142 I CanvasMapInput: delivered action=2 count=1 ids=[0] elapsed=404
+11-08 15:30:51.319 23142 23154 I CanvasMapInput: action=2 pointers=1 elapsedMs=2
+11-08 15:30:51.328 23142 23142 I CanvasMapInput: delivered action=2 count=1 ids=[0] elapsed=430
+11-08 15:30:51.338 23142 23154 I CanvasMapInput: action=2 pointers=1 elapsedMs=2
+11-08 15:30:51.345 23142 23142 I CanvasMapInput: delivered action=2 count=1 ids=[0] elapsed=446
+11-08 15:30:51.357 23142 23142 I CanvasMapInput: delivered action=1 count=1 ids=[0] elapsed=461
+11-08 15:30:51.371 23142 23154 I CanvasMapInput: action=1 pointers=1 elapsedMs=17
+11-08 15:30:52.574 23142 23142 I CanvasMapProbe: {"step":"pan","viewIdentity":84510080,"mapIdentity":213583801,"latitude":41.38739999995137,"longitude":2.1383721433392395,"zoom":11,"zoomGesturesEnabled":true,"width":1080,"height":2400,"hillshade":[{"id":"goway:relief:hillshade","shadow":["rgba(6.000000476837158,11,22,1)"],"highlight":["rgba(93,115.00000762939453,144,1)"]}],"handleY":1321,"handleHeight":126,"handleValue":"{\"text\":\"Half open\",\"min\":0,\"now\":1,\"max\":2}","chrome":[{"id":"map-credit","x":923,"y":1205,"width":136,"height":105,"visibleRect":"[923,1205][1059,1310]","globalVisible":true,"shown":true},{"id":"map-credit-toggle","x":944,"y":1210,"width":94,"height":94,"visibleRect":"[944,1210][1038,1304]","globalVisible":true,"shown":true},{"id":"map-scale","x":21,"y":1117,"width":288,"height":77,"visibleRect":"[21,1117][309,1194]","globalVisible":true,"shown":true}],"imeVisible":false}
+11-08 15:30:53.028 23142 23154 I CanvasMapInput: action=0 pointers=1 elapsedMs=12
+11-08 15:30:53.028 23142 23142 I CanvasMapInput: delivered action=0 count=1 ids=[0] elapsed=1
+11-08 15:30:53.029 23142 23154 I CanvasMapInput: action=261 pointers=2 elapsedMs=1
+11-08 15:30:53.030 23142 23142 I CanvasMapInput: delivered action=5 count=2 ids=[0, 1] elapsed=13
+11-08 15:30:53.030 23142 23154 I CanvasMapInput: action=2 pointers=2 elapsedMs=1
+11-08 15:30:53.031 23142 23142 I CanvasMapScale: pointers=2 span=0.0 threshold=18.375 enabled=true progress=false
+11-08 15:30:53.040 23142 23142 I CanvasMapInput: delivered action=2 count=2 ids=[0, 1] elapsed=14
+11-08 15:30:53.041 23142 23142 I CanvasMapScale: pointers=2 span=368.0 threshold=18.375 enabled=true progress=false
+11-08 15:30:53.049 23142 23154 I CanvasMapInput: action=2 pointers=2 elapsedMs=2
+11-08 15:30:53.057 23142 23142 I CanvasMapInput: delivered action=2 count=2 ids=[0, 1] elapsed=36
+11-08 15:30:53.059 23142 23142 I CanvasMapScale: pointers=2 span=429.05078 threshold=18.375 enabled=true progress=true
+11-08 15:30:53.067 23142 23154 I CanvasMapInput: action=2 pointers=2 elapsedMs=2
+11-08 15:30:53.075 23142 23142 I CanvasMapInput: delivered action=2 count=2 ids=[0, 1] elapsed=55
+11-08 15:30:53.077 23142 23142 I CanvasMapScale: pointers=2 span=477.97852 threshold=18.375 enabled=true progress=true
+11-08 15:30:53.085 23142 23154 I CanvasMapInput: action=2 pointers=2 elapsedMs=1
+11-08 15:30:53.092 23142 23142 I CanvasMapInput: delivered action=2 count=2 ids=[0, 1] elapsed=71
+11-08 15:30:53.094 23142 23142 I CanvasMapScale: pointers=2 span=522.4219 threshold=18.375 enabled=true progress=true
+11-08 15:30:53.105 23142 23154 I CanvasMapInput: action=2 pointers=2 elapsedMs=3
+11-08 15:30:53.109 23142 23142 I CanvasMapInput: delivered action=2 count=2 ids=[0, 1] elapsed=88
+11-08 15:30:53.111 23142 23142 I CanvasMapScale: pointers=2 span=563.98047 threshold=18.375 enabled=true progress=true
+11-08 15:30:53.123 23142 23154 I CanvasMapInput: action=2 pointers=2 elapsedMs=2
+11-08 15:30:53.134 23142 23142 I CanvasMapInput: delivered action=2 count=2 ids=[0, 1] elapsed=113
+11-08 15:30:53.136 23142 23142 I CanvasMapScale: pointers=2 span=628.04297 threshold=18.375 enabled=true progress=true
+11-08 15:30:53.141 23142 23154 I CanvasMapInput: action=2 pointers=2 elapsedMs=2
+11-08 15:30:53.151 23142 23142 I CanvasMapInput: delivered action=2 count=2 ids=[0, 1] elapsed=130
+11-08 15:30:53.153 23142 23142 I CanvasMapScale: pointers=2 span=673.7578 threshold=18.375 enabled=true progress=true
+11-08 15:30:53.159 23142 23154 I CanvasMapInput: action=2 pointers=2 elapsedMs=1
+11-08 15:30:53.168 23142 23142 I CanvasMapInput: delivered action=2 count=2 ids=[0, 1] elapsed=147
+11-08 15:30:53.169 23142 23142 I CanvasMapScale: pointers=2 span=718.3672 threshold=18.375 enabled=true progress=true
+11-08 15:30:53.178 23142 23154 I CanvasMapInput: action=2 pointers=2 elapsedMs=2
+11-08 15:30:53.184 23142 23142 I CanvasMapInput: delivered action=2 count=2 ids=[0, 1] elapsed=164
+11-08 15:30:53.186 23142 23142 I CanvasMapScale: pointers=2 span=759.91406 threshold=18.375 enabled=true progress=true
+11-08 15:30:53.196 23142 23154 I CanvasMapInput: action=2 pointers=2 elapsedMs=2
+11-08 15:30:53.201 23142 23142 I CanvasMapInput: delivered action=2 count=2 ids=[0, 1] elapsed=180
+11-08 15:30:53.203 23142 23142 I CanvasMapScale: pointers=2 span=804.91406 threshold=18.375 enabled=true progress=true
+11-08 15:30:53.216 23142 23154 I CanvasMapInput: action=2 pointers=2 elapsedMs=2
+11-08 15:30:53.226 23142 23142 I CanvasMapInput: delivered action=2 count=2 ids=[0, 1] elapsed=205
+11-08 15:30:53.228 23142 23142 I CanvasMapScale: pointers=2 span=868.01953 threshold=18.375 enabled=true progress=true
+11-08 15:30:53.235 23142 23154 I CanvasMapInput: action=2 pointers=2 elapsedMs=2
+11-08 15:30:53.243 23142 23142 I CanvasMapInput: delivered action=2 count=2 ids=[0, 1] elapsed=222
+11-08 15:30:53.244 23142 23142 I CanvasMapScale: pointers=2 span=910.27734 threshold=18.375 enabled=true progress=true
+11-08 15:30:53.253 23142 23154 I CanvasMapInput: action=2 pointers=2 elapsedMs=2
+11-08 15:30:53.260 23142 23142 I CanvasMapInput: delivered action=2 count=2 ids=[0, 1] elapsed=239
+11-08 15:30:53.261 23142 23142 I CanvasMapScale: pointers=2 span=952.46875 threshold=18.375 enabled=true progress=true
+11-08 15:30:53.271 23142 23154 I CanvasMapInput: action=2 pointers=2 elapsedMs=1
+11-08 15:30:53.276 23142 23142 I CanvasMapInput: delivered action=2 count=2 ids=[0, 1] elapsed=256
+11-08 15:30:53.278 23142 23142 I CanvasMapScale: pointers=2 span=997.52734 threshold=18.375 enabled=true progress=true
+11-08 15:30:53.289 23142 23154 I CanvasMapInput: action=2 pointers=2 elapsedMs=1
+11-08 15:30:53.293 23142 23142 I CanvasMapInput: delivered action=2 count=2 ids=[0, 1] elapsed=272
+11-08 15:30:53.295 23142 23142 I CanvasMapScale: pointers=2 span=1042.1523 threshold=18.375 enabled=true progress=true
+11-08 15:30:53.306 23142 23154 I CanvasMapInput: action=2 pointers=2 elapsedMs=1
+11-08 15:30:53.318 23142 23142 I CanvasMapInput: delivered action=2 count=2 ids=[0, 1] elapsed=297
+11-08 15:30:53.320 23142 23142 I CanvasMapScale: pointers=2 span=1108.9766 threshold=18.375 enabled=true progress=true
+11-08 15:30:53.324 23142 23154 I CanvasMapInput: action=2 pointers=2 elapsedMs=1
+11-08 15:30:53.335 23142 23142 I CanvasMapInput: delivered action=2 count=2 ids=[0, 1] elapsed=314
+11-08 15:30:53.336 23142 23142 I CanvasMapScale: pointers=2 span=1153.5352 threshold=18.375 enabled=true progress=true
+11-08 15:30:53.342 23142 23154 I CanvasMapInput: action=2 pointers=2 elapsedMs=2
+11-08 15:30:53.351 23142 23142 I CanvasMapInput: delivered action=2 count=2 ids=[0, 1] elapsed=331
+11-08 15:30:53.353 23142 23142 I CanvasMapScale: pointers=2 span=1201.7578 threshold=18.375 enabled=true progress=true
+11-08 15:30:53.360 23142 23154 I CanvasMapInput: action=2 pointers=2 elapsedMs=2
+11-08 15:30:53.368 23142 23142 I CanvasMapInput: delivered action=2 count=2 ids=[0, 1] elapsed=348
+11-08 15:30:53.370 23142 23142 I CanvasMapScale: pointers=2 span=1245.3516 threshold=18.375 enabled=true progress=true
+11-08 15:30:53.379 23142 23154 I CanvasMapInput: action=2 pointers=2 elapsedMs=3
+11-08 15:30:53.385 23142 23142 I CanvasMapInput: delivered action=2 count=2 ids=[0, 1] elapsed=364
+11-08 15:30:53.386 23142 23142 I CanvasMapScale: pointers=2 span=1289.9219 threshold=18.375 enabled=true progress=true
+11-08 15:30:53.396 23142 23154 I CanvasMapInput: action=2 pointers=2 elapsedMs=1
+11-08 15:30:53.401 23142 23142 I CanvasMapInput: delivered action=2 count=2 ids=[0, 1] elapsed=381
+11-08 15:30:53.403 23142 23142 I CanvasMapScale: pointers=2 span=1331.6445 threshold=18.375 enabled=true progress=true
+11-08 15:30:53.413 23142 23154 I CanvasMapInput: action=2 pointers=2 elapsedMs=1
+11-08 15:30:53.418 23142 23142 I CanvasMapInput: delivered action=2 count=2 ids=[0, 1] elapsed=398
+11-08 15:30:53.420 23142 23142 I CanvasMapScale: pointers=2 span=1379.2344 threshold=18.375 enabled=true progress=true
+11-08 15:30:53.432 23142 23154 I CanvasMapInput: action=2 pointers=2 elapsedMs=1
+11-08 15:30:53.443 23142 23142 I CanvasMapInput: delivered action=2 count=2 ids=[0, 1] elapsed=423
+11-08 15:30:53.445 23142 23142 I CanvasMapScale: pointers=2 span=1445.332 threshold=18.375 enabled=true progress=true
+11-08 15:30:53.449 23142 23154 I CanvasMapInput: action=2 pointers=2 elapsedMs=1
+11-08 15:30:53.460 23142 23142 I CanvasMapInput: delivered action=2 count=2 ids=[0, 1] elapsed=439
+11-08 15:30:53.462 23142 23142 I CanvasMapScale: pointers=2 span=1490.4961 threshold=18.375 enabled=true progress=true
+11-08 15:30:53.467 23142 23142 I CanvasMapInput: delivered action=6 count=2 ids=[0, 1] elapsed=450
+11-08 15:30:53.467 23142 23154 I CanvasMapInput: action=262 pointers=2 elapsedMs=1
+11-08 15:30:53.469 23142 23142 I CanvasMapScale: pointers=1 span=0.0 threshold=18.375 enabled=true progress=false
+11-08 15:30:53.470 23142 23142 I CanvasMapInput: delivered action=1 count=1 ids=[0] elapsed=452
+11-08 15:30:53.487 23142 23154 I CanvasMapInput: action=1 pointers=1 elapsedMs=19
+11-08 15:30:54.691 23142 23142 I CanvasMapProbe: {"step":"pinch","viewIdentity":84510080,"mapIdentity":213583801,"latitude":41.420288408947,"longitude":2.1344097828761903,"zoom":12.962703704833984,"zoomGesturesEnabled":true,"width":1080,"height":2400,"hillshade":[{"id":"goway:relief:hillshade","shadow":["rgba(6.000000476837158,11,22,1)"],"highlight":["rgba(93,115.00000762939453,144,1)"]}],"handleY":1321,"handleHeight":126,"handleValue":"{\"text\":\"Half open\",\"min\":0,\"now\":1,\"max\":2}","chrome":[{"id":"map-credit","x":923,"y":1205,"width":136,"height":105,"visibleRect":"[923,1205][1059,1310]","globalVisible":true,"shown":true},{"id":"map-credit-toggle","x":944,"y":1210,"width":94,"height":94,"visibleRect":"[944,1210][1038,1304]","globalVisible":true,"shown":true},{"id":"map-scale","x":21,"y":1117,"width":420,"height":77,"visibleRect":"[21,1117][441,1194]","globalVisible":true,"shown":true}],"imeVisible":false}
+11-08 15:30:55.081 23142 23154 I CanvasMapProbe: {"step":"pinch-result","passed":true}
+11-08 15:30:55.094 23142 23142 I CanvasMapInput: delivered action=0 count=1 ids=[0] elapsed=0
+11-08 15:30:55.094 23142 23154 I CanvasMapInput: action=0 pointers=1 elapsedMs=9
+11-08 15:30:55.147 23142 23142 I CanvasMapInput: delivered action=1 count=1 ids=[0] elapsed=60
+11-08 15:30:55.158 23142 23154 I CanvasMapInput: action=1 pointers=1 elapsedMs=13
+11-08 15:30:56.421 23142 23142 I CanvasMapProbe: {"step":"detent-0","viewIdentity":84510080,"mapIdentity":213583801,"latitude":41.420288408947,"longitude":2.1344097828761903,"zoom":12.962703704833984,"zoomGesturesEnabled":true,"width":1080,"height":2400,"hillshade":[{"id":"goway:relief:hillshade","shadow":["rgba(6.000000476837158,11,22,1)"],"highlight":["rgba(93,115.00000762939453,144,1)"]}],"handleY":809,"handleHeight":126,"handleValue":"{\"text\":\"Expanded\",\"min\":0,\"now\":2,\"max\":2}","chrome":[{"id":"map-credit","x":923,"y":693,"width":136,"height":105,"visibleRect":"[923,693][1059,798]","globalVisible":true,"shown":true},{"id":"map-credit-toggle","x":944,"y":698,"width":94,"height":94,"visibleRect":"[944,698][1038,792]","globalVisible":true,"shown":true},{"id":"map-scale","x":21,"y":605,"width":420,"height":77,"visibleRect":"[21,605][441,682]","globalVisible":true,"shown":true}],"imeVisible":false}
+11-08 15:30:56.709 23142 23154 I CanvasMapProbe: {"step":"detent-result-0","expected":2,"settled":true}
+11-08 15:30:56.740 23142 23154 I CanvasMapInput: action=0 pointers=1 elapsedMs=20
+11-08 15:30:56.740 23142 23142 I CanvasMapInput: delivered action=0 count=1 ids=[0] elapsed=0
+11-08 15:30:56.793 23142 23142 I CanvasMapInput: delivered action=1 count=1 ids=[0] elapsed=71
+11-08 15:30:56.798 23142 23154 I CanvasMapInput: action=1 pointers=1 elapsedMs=7
+11-08 15:30:58.053 23142 23142 I CanvasMapProbe: {"step":"detent-1","viewIdentity":84510080,"mapIdentity":213583801,"latitude":41.420288408947,"longitude":2.1344097828761903,"zoom":12.962703704833984,"zoomGesturesEnabled":true,"width":1080,"height":2400,"hillshade":[{"id":"goway:relief:hillshade","shadow":["rgba(6.000000476837158,11,22,1)"],"highlight":["rgba(93,115.00000762939453,144,1)"]}],"handleY":1981,"handleHeight":126,"handleValue":"{\"text\":\"Collapsed\",\"min\":0,\"now\":0,\"max\":2}","chrome":[{"id":"map-credit","x":923,"y":1865,"width":136,"height":105,"visibleRect":"[923,1865][1059,1970]","globalVisible":true,"shown":true},{"id":"map-credit-toggle","x":944,"y":1870,"width":94,"height":94,"visibleRect":"[944,1870][1038,1964]","globalVisible":true,"shown":true},{"id":"map-scale","x":21,"y":1777,"width":420,"height":77,"visibleRect":"[21,1777][441,1854]","globalVisible":true,"shown":true}],"imeVisible":false}
+11-08 15:30:58.551 23142 23154 I CanvasMapProbe: {"step":"detent-result-1","expected":0,"settled":true}
+11-08 15:30:58.571 23142 23142 I CanvasMapInput: delivered action=0 count=1 ids=[0] elapsed=1
+11-08 15:30:58.571 23142 23154 I CanvasMapInput: action=0 pointers=1 elapsedMs=10
+11-08 15:30:58.623 23142 23142 I CanvasMapInput: delivered action=1 count=1 ids=[0] elapsed=61
+11-08 15:30:58.629 23142 23154 I CanvasMapInput: action=1 pointers=1 elapsedMs=7
+11-08 15:30:59.888 23142 23142 I CanvasMapProbe: {"step":"detent-2","viewIdentity":84510080,"mapIdentity":213583801,"latitude":41.420288408947,"longitude":2.1344097828761903,"zoom":12.962703704833984,"zoomGesturesEnabled":true,"width":1080,"height":2400,"hillshade":[{"id":"goway:relief:hillshade","shadow":["rgba(6.000000476837158,11,22,1)"],"highlight":["rgba(93,115.00000762939453,144,1)"]}],"handleY":1321,"handleHeight":126,"handleValue":"{\"text\":\"Half open\",\"min\":0,\"now\":1,\"max\":2}","chrome":[{"id":"map-credit","x":923,"y":1205,"width":136,"height":105,"visibleRect":"[923,1205][1059,1310]","globalVisible":true,"shown":true},{"id":"map-credit-toggle","x":944,"y":1210,"width":94,"height":94,"visibleRect":"[944,1210][1038,1304]","globalVisible":true,"shown":true},{"id":"map-scale","x":21,"y":1117,"width":420,"height":77,"visibleRect":"[21,1117][441,1194]","globalVisible":true,"shown":true}],"imeVisible":false}
+11-08 15:31:00.274 23142 23154 I CanvasMapProbe: {"step":"detent-result-2","expected":1,"settled":true}
+11-08 15:31:00.292 23142 23154 I CanvasMapInput: action=0 pointers=1 elapsedMs=10
+11-08 15:31:00.292 23142 23142 I CanvasMapInput: delivered action=0 count=1 ids=[0] elapsed=0
+11-08 15:31:00.344 23142 23142 I CanvasMapInput: delivered action=1 count=1 ids=[0] elapsed=60
+11-08 15:31:00.350 23142 23154 I CanvasMapInput: action=1 pointers=1 elapsedMs=7
+11-08 15:31:01.607 23142 23142 I CanvasMapProbe: {"step":"ime","viewIdentity":84510080,"mapIdentity":213583801,"latitude":41.420288408947,"longitude":2.1344097828761903,"zoom":12.962703704833984,"zoomGesturesEnabled":true,"width":1080,"height":2400,"hillshade":[{"id":"goway:relief:hillshade","shadow":["rgba(6.000000476837158,11,22,1)"],"highlight":["rgba(93,115.00000762939453,144,1)"]}],"handleY":827,"handleHeight":126,"handleValue":"{\"text\":\"Half open\",\"min\":0,\"now\":1,\"max\":2}","chrome":[{"id":"map-credit","x":923,"y":1609,"width":136,"height":105,"visibleRect":"[923,1609][1059,1714]","globalVisible":true,"shown":true},{"id":"map-credit-toggle","x":944,"y":1614,"width":94,"height":94,"visibleRect":"[944,1614][1038,1708]","globalVisible":true,"shown":true},{"id":"map-scale","x":21,"y":1521,"width":420,"height":77,"visibleRect":"[21,1521][441,1598]","globalVisible":true,"shown":true}],"imeVisible":true}
+11-08 15:31:02.382 23142 23142 I CanvasMapProbe: {"step":"back","viewIdentity":84510080,"mapIdentity":213583801,"latitude":41.420288408947,"longitude":2.1344097828761903,"zoom":12.962703704833984,"zoomGesturesEnabled":true,"width":1080,"height":2400,"hillshade":[{"id":"goway:relief:hillshade","shadow":["rgba(6.000000476837158,11,22,1)"],"highlight":["rgba(93,115.00000762939453,144,1)"]}],"handleY":1321,"handleHeight":126,"handleValue":"{\"text\":\"Half open\",\"min\":0,\"now\":1,\"max\":2}","chrome":[{"id":"map-credit","x":923,"y":1205,"width":136,"height":105,"visibleRect":"[923,1205][1059,1310]","globalVisible":true,"shown":true},{"id":"map-credit-toggle","x":944,"y":1210,"width":94,"height":94,"visibleRect":"[944,1210][1038,1304]","globalVisible":true,"shown":true},{"id":"map-scale","x":21,"y":1117,"width":420,"height":77,"visibleRect":"[21,1117][441,1194]","globalVisible":true,"shown":true}],"imeVisible":false}
+11-08 15:31:02.773 23142 23154 I CanvasMapProbe: {"step":"matrix-results","detents":[true,true,true],"imeOpened":true,"imeClosed":true}
+11-08 15:31:02.773 23142 23154 I TestRunner: finished: realMapPanPinchDetentsAndKeyboard(to.goway.canvas663.CanvasMapProbeTest)
+11-08 15:32:16.377 23313 23325 I TestRunner: started: realMapPanPinchDetentsAndKeyboard(to.goway.canvas663.CanvasMapProbeTest)
+11-08 15:32:16.912 23313 23352 I ReactNativeJS: '[CanvasRegionProbe]', '{"bounds":{"x":0,"y":0,"width":0,"height":0},"viewport":{"x":0,"y":0,"width":0,"height":0},"safeArea":{"top":0,"right":0,"bottom":0,"left":0},"occupied":{"top":0,"right":0,"bottom":0,"left":0}}'
+11-08 15:32:16.927 23313 23352 I ReactNativeJS: '[CanvasRegionProbe]', '{"bounds":{"x":0,"y":0,"width":411.4285583496094,"height":914.2857055664062},"viewport":{"x":0,"y":0,"width":411.4285583496094,"height":914.2857055664062},"safeArea":{"top":46.095237731933594,"left":0,"right":0,"bottom":23.999991280691916},"occupied":{"top":0,"right":0,"bottom":0,"left":0}}'
+11-08 15:32:16.944 23313 23352 I ReactNativeJS: '[CanvasRegionProbe]', '{"bounds":{"x":0,"y":0,"width":411.4285583496094,"height":914.2857055664062},"viewport":{"x":0,"y":0,"width":411.4285583496094,"height":914.2857055664062},"safeArea":{"top":46.095237731933594,"left":0,"right":0,"bottom":23.999991280691916},"occupied":{"top":0,"right":0,"bottom":411.42856750488284,"left":0}}'
+11-08 15:32:17.163 23313 23352 I ReactNativeJS: '[CanvasRegionProbe]', '{"bounds":{"x":0,"y":0,"width":411.4285583496094,"height":914.2857055664062},"viewport":{"x":0,"y":0,"width":411.4285583496094,"height":914.2857055664062},"safeArea":{"top":46.095237731933594,"left":0,"right":0,"bottom":23.999991280691916},"occupied":{"top":122.28571319580078,"right":0,"bottom":411.42856750488284,"left":0}}'
+11-08 15:32:18.868 23313 23313 I CanvasMapProbe: {"step":"initial","viewIdentity":110012962,"mapIdentity":182516915,"latitude":41.38739999999997,"longitude":2.1685999999999694,"zoom":11,"zoomGesturesEnabled":true,"width":1080,"height":2400,"hillshade":[{"id":"goway:relief:hillshade","shadow":["rgba(6.000000476837158,11,22,1)"],"highlight":["rgba(93,115.00000762939453,144,1)"]}],"handleY":1321,"handleHeight":126,"handleValue":"{\"text\":\"Half open\",\"min\":0,\"now\":1,\"max\":2}","chrome":[{"id":"map-credit","x":21,"y":1146,"width":1038,"height":164,"visibleRect":"[21,1146][1059,1310]","globalVisible":true,"shown":true},{"id":"map-credit-toggle","x":944,"y":1210,"width":94,"height":94,"visibleRect":"[944,1210][1038,1304]","globalVisible":true,"shown":true},{"id":"map-scale","x":21,"y":1058,"width":288,"height":77,"visibleRect":"[21,1058][309,1135]","globalVisible":true,"shown":true}],"imeVisible":false}
+11-08 15:32:19.296 23313 23325 I CanvasMapInput: action=0 pointers=1 elapsedMs=14
+11-08 15:32:19.299 23313 23325 I CanvasMapInput: action=2 pointers=1 elapsedMs=3
+11-08 15:32:19.317 23313 23325 I CanvasMapInput: action=2 pointers=1 elapsedMs=2
+11-08 15:32:19.335 23313 23325 I CanvasMapInput: action=2 pointers=1 elapsedMs=2
+11-08 15:32:19.353 23313 23325 I CanvasMapInput: action=2 pointers=1 elapsedMs=2
+11-08 15:32:19.371 23313 23325 I CanvasMapInput: action=2 pointers=1 elapsedMs=2
+11-08 15:32:19.389 23313 23325 I CanvasMapInput: action=2 pointers=1 elapsedMs=1
+11-08 15:32:19.407 23313 23325 I CanvasMapInput: action=2 pointers=1 elapsedMs=2
+11-08 15:32:19.425 23313 23325 I CanvasMapInput: action=2 pointers=1 elapsedMs=2
+11-08 15:32:19.442 23313 23325 I CanvasMapInput: action=2 pointers=1 elapsedMs=1
+11-08 15:32:19.460 23313 23325 I CanvasMapInput: action=2 pointers=1 elapsedMs=1
+11-08 15:32:19.471 23313 23313 I CanvasMapInput: delivered action=0 count=1 ids=[0] elapsed=0
+11-08 15:32:19.476 23313 23313 I CanvasMapInput: delivered action=2 count=1 ids=[0] elapsed=187
+11-08 15:32:19.478 23313 23325 I CanvasMapInput: action=2 pointers=1 elapsedMs=1
+11-08 15:32:19.483 23313 23313 I CanvasMapInput: delivered action=2 count=1 ids=[0] elapsed=197
+11-08 15:32:19.496 23313 23325 I CanvasMapInput: action=2 pointers=1 elapsedMs=2
+11-08 15:32:19.507 23313 23313 I CanvasMapInput: delivered action=2 count=1 ids=[0] elapsed=221
+11-08 15:32:19.514 23313 23325 I CanvasMapInput: action=2 pointers=1 elapsedMs=1
+11-08 15:32:19.524 23313 23313 I CanvasMapInput: delivered action=2 count=1 ids=[0] elapsed=239
+11-08 15:32:19.531 23313 23325 I CanvasMapInput: action=2 pointers=1 elapsedMs=1
+11-08 15:32:19.541 23313 23313 I CanvasMapInput: delivered action=2 count=1 ids=[0] elapsed=255
+11-08 15:32:19.551 23313 23325 I CanvasMapInput: action=2 pointers=1 elapsedMs=2
+11-08 15:32:19.558 23313 23313 I CanvasMapInput: delivered action=2 count=1 ids=[0] elapsed=272
+11-08 15:32:19.568 23313 23325 I CanvasMapInput: action=2 pointers=1 elapsedMs=1
+11-08 15:32:19.575 23313 23313 I CanvasMapInput: delivered action=2 count=1 ids=[0] elapsed=289
+11-08 15:32:19.586 23313 23325 I CanvasMapInput: action=2 pointers=1 elapsedMs=1
+11-08 15:32:19.591 23313 23313 I CanvasMapInput: delivered action=2 count=1 ids=[0] elapsed=306
+11-08 15:32:19.604 23313 23325 I CanvasMapInput: action=2 pointers=1 elapsedMs=1
+11-08 15:32:19.608 23313 23313 I CanvasMapInput: delivered action=2 count=1 ids=[0] elapsed=322
+11-08 15:32:19.623 23313 23325 I CanvasMapInput: action=2 pointers=1 elapsedMs=1
+11-08 15:32:19.633 23313 23313 I CanvasMapInput: delivered action=2 count=1 ids=[0] elapsed=348
+11-08 15:32:19.641 23313 23325 I CanvasMapInput: action=2 pointers=1 elapsedMs=1
+11-08 15:32:19.650 23313 23313 I CanvasMapInput: delivered action=2 count=1 ids=[0] elapsed=364
+11-08 15:32:19.658 23313 23325 I CanvasMapInput: action=2 pointers=1 elapsedMs=1
+11-08 15:32:19.667 23313 23313 I CanvasMapInput: delivered action=2 count=1 ids=[0] elapsed=381
+11-08 15:32:19.676 23313 23325 I CanvasMapInput: action=2 pointers=1 elapsedMs=1
+11-08 15:32:19.686 23313 23313 I CanvasMapInput: delivered action=2 count=1 ids=[0] elapsed=398
+11-08 15:32:19.695 23313 23325 I CanvasMapInput: action=2 pointers=1 elapsedMs=1
+11-08 15:32:19.700 23313 23313 I CanvasMapInput: delivered action=2 count=1 ids=[0] elapsed=414
+11-08 15:32:19.712 23313 23325 I CanvasMapInput: action=2 pointers=1 elapsedMs=0
+11-08 15:32:19.717 23313 23313 I CanvasMapInput: delivered action=2 count=1 ids=[0] elapsed=431
+11-08 15:32:19.730 23313 23313 I CanvasMapInput: delivered action=1 count=1 ids=[0] elapsed=448
+11-08 15:32:19.743 23313 23325 I CanvasMapInput: action=1 pointers=1 elapsedMs=15
+11-08 15:32:20.952 23313 23313 I CanvasMapProbe: {"step":"pan","viewIdentity":110012962,"mapIdentity":182516915,"latitude":41.387399999979586,"longitude":2.150827810938125,"zoom":11,"zoomGesturesEnabled":true,"width":1080,"height":2400,"hillshade":[{"id":"goway:relief:hillshade","shadow":["rgba(6.000000476837158,11,22,1)"],"highlight":["rgba(93,115.00000762939453,144,1)"]}],"handleY":1321,"handleHeight":126,"handleValue":"{\"text\":\"Half open\",\"min\":0,\"now\":1,\"max\":2}","chrome":[{"id":"map-credit","x":923,"y":1205,"width":136,"height":105,"visibleRect":"[923,1205][1059,1310]","globalVisible":true,"shown":true},{"id":"map-credit-toggle","x":944,"y":1210,"width":94,"height":94,"visibleRect":"[944,1210][1038,1304]","globalVisible":true,"shown":true},{"id":"map-scale","x":21,"y":1117,"width":288,"height":77,"visibleRect":"[21,1117][309,1194]","globalVisible":true,"shown":true}],"imeVisible":false}
+11-08 15:32:21.406 23313 23325 I CanvasMapInput: action=0 pointers=1 elapsedMs=15
+11-08 15:32:21.407 23313 23313 I CanvasMapInput: delivered action=0 count=1 ids=[0] elapsed=0
+11-08 15:32:21.409 23313 23313 I CanvasMapInput: delivered action=5 count=2 ids=[0, 1] elapsed=16
+11-08 15:32:21.410 23313 23325 I CanvasMapInput: action=261 pointers=2 elapsedMs=2
+11-08 15:32:21.411 23313 23313 I CanvasMapScale: pointers=2 span=0.0 threshold=18.375 enabled=true progress=false
+11-08 15:32:21.411 23313 23325 I CanvasMapInput: action=2 pointers=2 elapsedMs=1
+11-08 15:32:21.422 23313 23313 I CanvasMapInput: delivered action=2 count=2 ids=[0, 1] elapsed=19
+11-08 15:32:21.424 23313 23313 I CanvasMapScale: pointers=2 span=368.0 threshold=18.375 enabled=true progress=false
+11-08 15:32:21.431 23313 23325 I CanvasMapInput: action=2 pointers=2 elapsedMs=2
+11-08 15:32:21.439 23313 23313 I CanvasMapInput: delivered action=2 count=2 ids=[0, 1] elapsed=42
+11-08 15:32:21.441 23313 23313 I CanvasMapScale: pointers=2 span=430.91797 threshold=18.375 enabled=true progress=true
+11-08 15:32:21.449 23313 23325 I CanvasMapInput: action=2 pointers=2 elapsedMs=2
+11-08 15:32:21.456 23313 23313 I CanvasMapInput: delivered action=2 count=2 ids=[0, 1] elapsed=59
+11-08 15:32:21.458 23313 23313 I CanvasMapScale: pointers=2 span=472.23828 threshold=18.375 enabled=true progress=true
+11-08 15:32:21.467 23313 23325 I CanvasMapInput: action=2 pointers=2 elapsedMs=2
+11-08 15:32:21.472 23313 23313 I CanvasMapInput: delivered action=2 count=2 ids=[0, 1] elapsed=75
+11-08 15:32:21.475 23313 23313 I CanvasMapScale: pointers=2 span=517.1406 threshold=18.375 enabled=true progress=true
+11-08 15:32:21.485 23313 23325 I CanvasMapInput: action=2 pointers=2 elapsedMs=2
+11-08 15:32:21.489 23313 23313 I CanvasMapInput: delivered action=2 count=2 ids=[0, 1] elapsed=92
+11-08 15:32:21.492 23313 23313 I CanvasMapScale: pointers=2 span=562.5508 threshold=18.375 enabled=true progress=true
+11-08 15:32:21.504 23313 23325 I CanvasMapInput: action=2 pointers=2 elapsedMs=1
+11-08 15:32:21.514 23313 23313 I CanvasMapInput: delivered action=2 count=2 ids=[0, 1] elapsed=118
+11-08 15:32:21.517 23313 23313 I CanvasMapScale: pointers=2 span=625.78516 threshold=18.375 enabled=true progress=true
+11-08 15:32:21.521 23313 23325 I CanvasMapInput: action=2 pointers=2 elapsedMs=1
+11-08 15:32:21.531 23313 23313 I CanvasMapInput: delivered action=2 count=2 ids=[0, 1] elapsed=134
+11-08 15:32:21.533 23313 23313 I CanvasMapScale: pointers=2 span=671.35156 threshold=18.375 enabled=true progress=true
+11-08 15:32:21.539 23313 23325 I CanvasMapInput: action=2 pointers=2 elapsedMs=1
+11-08 15:32:21.548 23313 23313 I CanvasMapInput: delivered action=2 count=2 ids=[0, 1] elapsed=151
+11-08 15:32:21.550 23313 23313 I CanvasMapScale: pointers=2 span=715.91797 threshold=18.375 enabled=true progress=true
+11-08 15:32:21.557 23313 23325 I CanvasMapInput: action=2 pointers=2 elapsedMs=1
+11-08 15:32:21.564 23313 23313 I CanvasMapInput: delivered action=2 count=2 ids=[0, 1] elapsed=168
+11-08 15:32:21.567 23313 23313 I CanvasMapScale: pointers=2 span=760.4922 threshold=18.375 enabled=true progress=true
+11-08 15:32:21.575 23313 23325 I CanvasMapInput: action=2 pointers=2 elapsedMs=2
+11-08 15:32:21.581 23313 23313 I CanvasMapInput: delivered action=2 count=2 ids=[0, 1] elapsed=184
+11-08 15:32:21.583 23313 23313 I CanvasMapScale: pointers=2 span=808.19727 threshold=18.375 enabled=true progress=true
+11-08 15:32:21.593 23313 23325 I CanvasMapInput: action=2 pointers=2 elapsedMs=2
+11-08 15:32:21.598 23313 23313 I CanvasMapInput: delivered action=2 count=2 ids=[0, 1] elapsed=201
+11-08 15:32:21.600 23313 23313 I CanvasMapScale: pointers=2 span=852.3789 threshold=18.375 enabled=true progress=true
+11-08 15:32:21.611 23313 23325 I CanvasMapInput: action=2 pointers=2 elapsedMs=2
+11-08 15:32:21.614 23313 23313 I CanvasMapInput: delivered action=2 count=2 ids=[0, 1] elapsed=218
+11-08 15:32:21.618 23313 23313 I CanvasMapScale: pointers=2 span=896.93164 threshold=18.375 enabled=true progress=true
+11-08 15:32:21.629 23313 23325 I CanvasMapInput: action=2 pointers=2 elapsedMs=1
+11-08 15:32:21.639 23313 23313 I CanvasMapInput: delivered action=2 count=2 ids=[0, 1] elapsed=243
+11-08 15:32:21.642 23313 23313 I CanvasMapScale: pointers=2 span=963.8008 threshold=18.375 enabled=true progress=true
+11-08 15:32:21.647 23313 23325 I CanvasMapInput: action=2 pointers=2 elapsedMs=2
+11-08 15:32:21.656 23313 23313 I CanvasMapInput: delivered action=2 count=2 ids=[0, 1] elapsed=260
+11-08 15:32:21.659 23313 23313 I CanvasMapScale: pointers=2 span=1008.39844 threshold=18.375 enabled=true progress=true
+11-08 15:32:21.666 23313 23325 I CanvasMapInput: action=2 pointers=2 elapsedMs=3
+11-08 15:32:21.673 23313 23313 I CanvasMapInput: delivered action=2 count=2 ids=[0, 1] elapsed=276
+11-08 15:32:21.675 23313 23313 I CanvasMapScale: pointers=2 span=1052.9805 threshold=18.375 enabled=true progress=true
+11-08 15:32:21.684 23313 23325 I CanvasMapInput: action=2 pointers=2 elapsedMs=2
+11-08 15:32:21.690 23313 23313 I CanvasMapInput: delivered action=2 count=2 ids=[0, 1] elapsed=293
+11-08 15:32:21.691 23313 23313 I CanvasMapScale: pointers=2 span=1094.5469 threshold=18.375 enabled=true progress=true
+11-08 15:32:21.701 23313 23325 I CanvasMapInput: action=2 pointers=2 elapsedMs=1
+11-08 15:32:21.706 23313 23313 I CanvasMapInput: delivered action=2 count=2 ids=[0, 1] elapsed=310
+11-08 15:32:21.709 23313 23313 I CanvasMapScale: pointers=2 span=1139.4961 threshold=18.375 enabled=true progress=true
+11-08 15:32:21.719 23313 23325 I CanvasMapInput: action=2 pointers=2 elapsedMs=1
+11-08 15:32:21.723 23313 23313 I CanvasMapInput: delivered action=2 count=2 ids=[0, 1] elapsed=327
+11-08 15:32:21.725 23313 23313 I CanvasMapScale: pointers=2 span=1186.8945 threshold=18.375 enabled=true progress=true
+11-08 15:32:21.737 23313 23325 I CanvasMapInput: action=2 pointers=2 elapsedMs=1
+11-08 15:32:21.749 23313 23313 I CanvasMapInput: delivered action=2 count=2 ids=[0, 1] elapsed=352
+11-08 15:32:21.755 23313 23313 I CanvasMapScale: pointers=2 span=1253.332 threshold=18.375 enabled=true progress=true
+11-08 15:32:21.755 23313 23325 I CanvasMapInput: action=2 pointers=2 elapsedMs=1
+11-08 15:32:21.767 23313 23313 I CanvasMapInput: delivered action=2 count=2 ids=[0, 1] elapsed=368
+11-08 15:32:21.769 23313 23313 I CanvasMapScale: pointers=2 span=1294.7305 threshold=18.375 enabled=true progress=true
+11-08 15:32:21.774 23313 23325 I CanvasMapInput: action=2 pointers=2 elapsedMs=1
+11-08 15:32:21.782 23313 23313 I CanvasMapInput: delivered action=2 count=2 ids=[0, 1] elapsed=385
+11-08 15:32:21.784 23313 23313 I CanvasMapScale: pointers=2 span=1343.6719 threshold=18.375 enabled=true progress=true
+11-08 15:32:21.792 23313 23325 I CanvasMapInput: action=2 pointers=2 elapsedMs=2
+11-08 15:32:21.798 23313 23313 I CanvasMapInput: delivered action=2 count=2 ids=[0, 1] elapsed=402
+11-08 15:32:21.801 23313 23313 I CanvasMapScale: pointers=2 span=1384.2578 threshold=18.375 enabled=true progress=true
+11-08 15:32:21.809 23313 23325 I CanvasMapInput: action=2 pointers=2 elapsedMs=1
+11-08 15:32:21.815 23313 23313 I CanvasMapInput: delivered action=2 count=2 ids=[0, 1] elapsed=418
+11-08 15:32:21.817 23313 23313 I CanvasMapScale: pointers=2 span=1429.2695 threshold=18.375 enabled=true progress=true
+11-08 15:32:21.827 23313 23325 I CanvasMapInput: action=2 pointers=2 elapsedMs=1
+11-08 15:32:21.832 23313 23313 I CanvasMapInput: delivered action=2 count=2 ids=[0, 1] elapsed=435
+11-08 15:32:21.835 23313 23313 I CanvasMapScale: pointers=2 span=1473.8594 threshold=18.375 enabled=true progress=true
+11-08 15:32:21.844 23313 23325 I CanvasMapInput: action=262 pointers=2 elapsedMs=1
+11-08 15:32:21.844 23313 23313 I CanvasMapInput: delivered action=6 count=2 ids=[0, 1] elapsed=452
+11-08 15:32:21.846 23313 23313 I CanvasMapScale: pointers=1 span=0.0 threshold=18.375 enabled=true progress=false
+11-08 15:32:21.846 23313 23313 I CanvasMapInput: delivered action=1 count=1 ids=[0] elapsed=453
+11-08 15:32:21.858 23313 23325 I CanvasMapInput: action=1 pointers=1 elapsedMs=14
+11-08 15:32:23.064 23313 23313 I CanvasMapProbe: {"step":"pinch","viewIdentity":110012962,"mapIdentity":182516915,"latitude":41.420076684551795,"longitude":2.146890963931071,"zoom":12.936030387878418,"zoomGesturesEnabled":true,"width":1080,"height":2400,"hillshade":[{"id":"goway:relief:hillshade","shadow":["rgba(6.000000476837158,11,22,1)"],"highlight":["rgba(93,115.00000762939453,144,1)"]}],"handleY":1321,"handleHeight":126,"handleValue":"{\"text\":\"Half open\",\"min\":0,\"now\":1,\"max\":2}","chrome":[{"id":"map-credit","x":923,"y":1205,"width":136,"height":105,"visibleRect":"[923,1205][1059,1310]","globalVisible":true,"shown":true},{"id":"map-credit-toggle","x":944,"y":1210,"width":94,"height":94,"visibleRect":"[944,1210][1038,1304]","globalVisible":true,"shown":true},{"id":"map-scale","x":21,"y":1117,"width":416,"height":77,"visibleRect":"[21,1117][437,1194]","globalVisible":true,"shown":true}],"imeVisible":false}
+11-08 15:32:23.429 23313 23325 I CanvasMapProbe: {"step":"pinch-result","passed":true}
+11-08 15:32:23.449 23313 23325 I CanvasMapInput: action=0 pointers=1 elapsedMs=14
+11-08 15:32:23.449 23313 23313 I CanvasMapInput: delivered action=0 count=1 ids=[0] elapsed=0
+11-08 15:32:23.501 23313 23313 I CanvasMapInput: delivered action=1 count=1 ids=[0] elapsed=65
+11-08 15:32:23.506 23313 23325 I CanvasMapInput: action=1 pointers=1 elapsedMs=6
+11-08 15:32:23.824 23313 23352 I ReactNativeJS: '[CanvasRegionProbe]', '{"bounds":{"x":0,"y":0,"width":411.4285583496094,"height":914.2857055664062},"viewport":{"x":0,"y":0,"width":411.4285583496094,"height":914.2857055664062},"safeArea":{"top":46.095237731933594,"left":0,"right":0,"bottom":23.999991280691916},"occupied":{"top":122.28571319580078,"right":0,"bottom":606.6666488647461,"left":0}}'
+11-08 15:32:24.173 23313 23352 I ReactNativeJS: '[CanvasRegionProbe]', '{"bounds":{"x":0,"y":0,"width":411.4285583496094,"height":914.2857055664062},"viewport":{"x":0,"y":0,"width":411.4285583496094,"height":914.2857055664062},"safeArea":{"top":46.095237731933594,"left":0,"right":0,"bottom":23.999991280691916},"occupied":{"top":122.28571319580078,"right":0,"bottom":606.2857284545898,"left":0}}'
+11-08 15:32:24.459 23313 23352 I ReactNativeJS: '[CanvasRegionProbe]', '{"bounds":{"x":0,"y":0,"width":411.4285583496094,"height":914.2857055664062},"viewport":{"x":0,"y":0,"width":411.4285583496094,"height":914.2857055664062},"safeArea":{"top":46.095237731933594,"left":0,"right":0,"bottom":23.999991280691916},"occupied":{"top":122.28571319580078,"right":0,"bottom":606.2856979370117,"left":0}}'
+11-08 15:32:24.770 23313 23313 I CanvasMapProbe: {"step":"detent-0","viewIdentity":110012962,"mapIdentity":182516915,"latitude":41.420076684551795,"longitude":2.146890963931071,"zoom":12.936030387878418,"zoomGesturesEnabled":true,"width":1080,"height":2400,"hillshade":[{"id":"goway:relief:hillshade","shadow":["rgba(6.000000476837158,11,22,1)"],"highlight":["rgba(93,115.00000762939453,144,1)"]}],"handleY":809,"handleHeight":126,"handleValue":"{\"text\":\"Expanded\",\"min\":0,\"now\":2,\"max\":2}","chrome":[{"id":"map-credit","x":923,"y":693,"width":136,"height":105,"visibleRect":"[923,693][1059,798]","globalVisible":true,"shown":true},{"id":"map-credit-toggle","x":944,"y":698,"width":94,"height":94,"visibleRect":"[944,698][1038,792]","globalVisible":true,"shown":true},{"id":"map-scale","x":21,"y":605,"width":416,"height":77,"visibleRect":"[21,605][437,682]","globalVisible":true,"shown":true}],"imeVisible":false}
+11-08 15:32:25.051 23313 23325 I CanvasMapProbe: {"step":"detent-result-0","expected":2,"settled":true}
+11-08 15:32:25.071 23313 23325 I CanvasMapInput: action=0 pointers=1 elapsedMs=8
+11-08 15:32:25.071 23313 23313 I CanvasMapInput: delivered action=0 count=1 ids=[0] elapsed=0
+11-08 15:32:25.123 23313 23313 I CanvasMapInput: delivered action=1 count=1 ids=[0] elapsed=58
+11-08 15:32:25.135 23313 23325 I CanvasMapInput: action=1 pointers=1 elapsedMs=14
+11-08 15:32:25.433 23313 23352 I ReactNativeJS: '[CanvasRegionProbe]', '{"bounds":{"x":0,"y":0,"width":411.4285583496094,"height":914.2857055664062},"viewport":{"x":0,"y":0,"width":411.4285583496094,"height":914.2857055664062},"safeArea":{"top":46.095237731933594,"left":0,"right":0,"bottom":23.999991280691916},"occupied":{"top":122.28571319580078,"right":0,"bottom":159.99999128069192,"left":0}}'
+11-08 15:32:26.398 23313 23313 I CanvasMapProbe: {"step":"detent-1","viewIdentity":110012962,"mapIdentity":182516915,"latitude":41.420076684551795,"longitude":2.146890963931071,"zoom":12.936030387878418,"zoomGesturesEnabled":true,"width":1080,"height":2400,"hillshade":[{"id":"goway:relief:hillshade","shadow":["rgba(6.000000476837158,11,22,1)"],"highlight":["rgba(93,115.00000762939453,144,1)"]}],"handleY":1981,"handleHeight":126,"handleValue":"{\"text\":\"Collapsed\",\"min\":0,\"now\":0,\"max\":2}","chrome":[{"id":"map-credit","x":923,"y":1865,"width":136,"height":105,"visibleRect":"[923,1865][1059,1970]","globalVisible":true,"shown":true},{"id":"map-credit-toggle","x":944,"y":1870,"width":94,"height":94,"visibleRect":"[944,1870][1038,1964]","globalVisible":true,"shown":true},{"id":"map-scale","x":21,"y":1777,"width":416,"height":77,"visibleRect":"[21,1777][437,1854]","globalVisible":true,"shown":true}],"imeVisible":false}
+11-08 15:32:26.844 23313 23325 I CanvasMapProbe: {"step":"detent-result-1","expected":0,"settled":true}
+11-08 15:32:26.861 23313 23325 I CanvasMapInput: action=0 pointers=1 elapsedMs=7
+11-08 15:32:26.862 23313 23313 I CanvasMapInput: delivered action=0 count=1 ids=[0] elapsed=0
+11-08 15:32:26.915 23313 23313 I CanvasMapInput: delivered action=1 count=1 ids=[0] elapsed=59
+11-08 15:32:26.926 23313 23325 I CanvasMapInput: action=1 pointers=1 elapsedMs=12
+11-08 15:32:27.325 23313 23352 I ReactNativeJS: '[CanvasRegionProbe]', '{"bounds":{"x":0,"y":0,"width":411.4285583496094,"height":914.2857055664062},"viewport":{"x":0,"y":0,"width":411.4285583496094,"height":914.2857055664062},"safeArea":{"top":46.095237731933594,"left":0,"right":0,"bottom":23.999991280691916},"occupied":{"top":122.28571319580078,"right":0,"bottom":411.42856750488284,"left":0}}'
+11-08 15:32:28.212 23313 23313 I CanvasMapProbe: {"step":"detent-2","viewIdentity":110012962,"mapIdentity":182516915,"latitude":41.420076684551795,"longitude":2.146890963931071,"zoom":12.936030387878418,"zoomGesturesEnabled":true,"width":1080,"height":2400,"hillshade":[{"id":"goway:relief:hillshade","shadow":["rgba(6.000000476837158,11,22,1)"],"highlight":["rgba(93,115.00000762939453,144,1)"]}],"handleY":1321,"handleHeight":126,"handleValue":"{\"text\":\"Half open\",\"min\":0,\"now\":1,\"max\":2}","chrome":[{"id":"map-credit","x":923,"y":1205,"width":136,"height":105,"visibleRect":"[923,1205][1059,1310]","globalVisible":true,"shown":true},{"id":"map-credit-toggle","x":944,"y":1210,"width":94,"height":94,"visibleRect":"[944,1210][1038,1304]","globalVisible":true,"shown":true},{"id":"map-scale","x":21,"y":1117,"width":416,"height":77,"visibleRect":"[21,1117][437,1194]","globalVisible":true,"shown":true}],"imeVisible":false}
+11-08 15:32:28.630 23313 23325 I CanvasMapProbe: {"step":"detent-result-2","expected":1,"settled":true}
+11-08 15:32:28.651 23313 23313 I CanvasMapInput: delivered action=0 count=1 ids=[0] elapsed=0
+11-08 15:32:28.652 23313 23325 I CanvasMapInput: action=0 pointers=1 elapsedMs=17
+11-08 15:32:28.705 23313 23313 I CanvasMapInput: delivered action=1 count=1 ids=[0] elapsed=68
+11-08 15:32:28.714 23313 23325 I CanvasMapInput: action=1 pointers=1 elapsedMs=11
+11-08 15:32:28.873 23313 23352 I ReactNativeJS: '[CanvasRegionProbe]', '{"bounds":{"x":0,"y":0,"width":411.4285583496094,"height":914.2857055664062},"viewport":{"x":0,"y":0,"width":411.4285583496094,"height":572.1904907226562},"safeArea":{"top":46.095237731933594,"left":0,"right":0,"bottom":0},"occupied":{"top":122.28571319580078,"right":0,"bottom":411.42856750488284,"left":0}}'
+11-08 15:32:29.042 23313 23352 I ReactNativeJS: '[CanvasRegionProbe]', '{"bounds":{"x":0,"y":0,"width":411.4285583496094,"height":914.2857055664062},"viewport":{"x":0,"y":0,"width":411.4285583496094,"height":572.1904907226562},"safeArea":{"top":46.095237731933594,"left":0,"right":0,"bottom":0},"occupied":{"top":122.28571319580078,"right":0,"bottom":599.5809356689454,"left":0}}'
+11-08 15:32:29.974 23313 23313 I CanvasMapProbe: {"step":"ime","viewIdentity":110012962,"mapIdentity":182516915,"latitude":41.420076684551795,"longitude":2.146890963931071,"zoom":12.936030387878418,"zoomGesturesEnabled":true,"width":1080,"height":2400,"hillshade":[{"id":"goway:relief:hillshade","shadow":["rgba(6.000000476837158,11,22,1)"],"highlight":["rgba(93,115.00000762939453,144,1)"]}],"handleY":827,"handleHeight":126,"handleValue":"{\"text\":\"Half open\",\"min\":0,\"now\":1,\"max\":2}","chrome":[{"id":"map-credit","x":923,"y":1609,"width":136,"height":105,"visibleRect":"[923,1609][1059,1714]","globalVisible":true,"shown":true},{"id":"map-credit-toggle","x":944,"y":1614,"width":94,"height":94,"visibleRect":"[944,1614][1038,1708]","globalVisible":true,"shown":true},{"id":"map-scale","x":21,"y":1521,"width":416,"height":77,"visibleRect":"[21,1521][437,1598]","globalVisible":true,"shown":true}],"imeVisible":true}
+11-08 15:32:30.400 23313 23352 I ReactNativeJS: '[CanvasRegionProbe]', '{"bounds":{"x":0,"y":0,"width":411.4285583496094,"height":914.2857055664062},"viewport":{"x":0,"y":0,"width":411.4285583496094,"height":914.2857055664062},"safeArea":{"top":46.095237731933594,"left":0,"right":0,"bottom":23.999991280691916},"occupied":{"top":122.28571319580078,"right":0,"bottom":599.5809356689454,"left":0}}'
+11-08 15:32:30.599 23313 23352 I ReactNativeJS: '[CanvasRegionProbe]', '{"bounds":{"x":0,"y":0,"width":411.4285583496094,"height":914.2857055664062},"viewport":{"x":0,"y":0,"width":411.4285583496094,"height":914.2857055664062},"safeArea":{"top":46.095237731933594,"left":0,"right":0,"bottom":23.999991280691916},"occupied":{"top":122.28571319580078,"right":0,"bottom":411.42856750488284,"left":0}}'
+11-08 15:32:30.728 23313 23313 I CanvasMapProbe: {"step":"back","viewIdentity":110012962,"mapIdentity":182516915,"latitude":41.420076684551795,"longitude":2.146890963931071,"zoom":12.936030387878418,"zoomGesturesEnabled":true,"width":1080,"height":2400,"hillshade":[{"id":"goway:relief:hillshade","shadow":["rgba(6.000000476837158,11,22,1)"],"highlight":["rgba(93,115.00000762939453,144,1)"]}],"handleY":1321,"handleHeight":126,"handleValue":"{\"text\":\"Half open\",\"min\":0,\"now\":1,\"max\":2}","chrome":[{"id":"map-credit","x":923,"y":1205,"width":136,"height":105,"visibleRect":"[923,1205][1059,1310]","globalVisible":true,"shown":true},{"id":"map-credit-toggle","x":944,"y":1210,"width":94,"height":94,"visibleRect":"[944,1210][1038,1304]","globalVisible":true,"shown":true},{"id":"map-scale","x":21,"y":1117,"width":416,"height":77,"visibleRect":"[21,1117][437,1194]","globalVisible":true,"shown":true}],"imeVisible":false}
+11-08 15:32:31.095 23313 23325 I CanvasMapProbe: {"step":"matrix-results","detents":[true,true,true],"imeOpened":true,"imeClosed":true}
+11-08 15:32:31.098 23313 23325 I TestRunner: finished: realMapPanPinchDetentsAndKeyboard(to.goway.canvas663.CanvasMapProbeTest)

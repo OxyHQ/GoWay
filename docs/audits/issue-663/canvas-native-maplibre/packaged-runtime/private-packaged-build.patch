@@ -1,0 +1,22 @@
+--- a/packages/frontend/android/app/build.gradle
++++ b/packages/frontend/android/app/build.gradle
+@@ -299,3 +299,19 @@
+         task.dependsOn(oxyVerifyReleaseSigning)
+     }
+ }
++
++// Private test application only: packaged production JS, no Metro/LogBox.
++// Production release signing and its verification task remain unchanged.
++android {
++    buildTypes {
++        canvasLab {
++            initWith release
++            debuggable false
++            signingConfig signingConfigs.debug
++            minifyEnabled false
++            shrinkResources false
++            matchingFallbacks = ['release']
++        }
++    }
++    testBuildType "canvasLab"
++}
