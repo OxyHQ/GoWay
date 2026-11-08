@@ -1,0 +1,135 @@
+{
+  "method": "Original dependency downloadPrebuiltBinaries succeeded on subsequent real Gradle build; manual extraction receipt absent, no manual recovery claimed. Post-build archives verified against digest-pinned official asset.",
+  "officialAsset": 407376170,
+  "size": 2635453,
+  "sha256": "5f6d01fc82cb736f00485f40d78735414494096a3a14be616c17666babbc046a",
+  "archives": [
+    {
+      "path": "node_modules/react-native-audio-api/common/cpp/audioapi/external/android/armeabi-v7a/libvorbisfile.a",
+      "sha256": "b2392aaa2478cb2f68e10244441d6388f096dfc8acd09de36897dcd090d35928",
+      "links": 1
+    },
+    {
+      "path": "node_modules/react-native-audio-api/common/cpp/audioapi/external/android/armeabi-v7a/libogg.a",
+      "sha256": "8dc95acc32ae7d97b94a63acec14321464ec7f54c51663eb1d441913066bacb8",
+      "links": 1
+    },
+    {
+      "path": "node_modules/react-native-audio-api/common/cpp/audioapi/external/android/armeabi-v7a/libvorbisenc.a",
+      "sha256": "cc978136a525dd46e5e29626355cbfd0f919a3f4e6fac66aec37158c9e7c64a2",
+      "links": 1
+    },
+    {
+      "path": "node_modules/react-native-audio-api/common/cpp/audioapi/external/android/armeabi-v7a/libopus.a",
+      "sha256": "4382b6d6aa64450aa971172bf88841fd492ee3a30d3350e6264494304fb8691d",
+      "links": 1
+    },
+    {
+      "path": "node_modules/react-native-audio-api/common/cpp/audioapi/external/android/armeabi-v7a/libopusfile.a",
+      "sha256": "3c141a00b041e78afc16b9e65564169ff48db30ffa78fa0da9e8f4a4ef6c9f39",
+      "links": 1
+    },
+    {
+      "path": "node_modules/react-native-audio-api/common/cpp/audioapi/external/android/armeabi-v7a/libvorbis.a",
+      "sha256": "f24e031e4835953a43669c6205dcc879dbbe3945228e86253061ec19d4e0ce27",
+      "links": 1
+    },
+    {
+      "path": "node_modules/react-native-audio-api/common/cpp/audioapi/external/android/x86/libvorbisfile.a",
+      "sha256": "38f8f9d75e438e3d44752241f53ebaf17f6d1d1ca4328d0a74b36f607610cb08",
+      "links": 1
+    },
+    {
+      "path": "node_modules/react-native-audio-api/common/cpp/audioapi/external/android/x86/libogg.a",
+      "sha256": "473d59ab6ed12ba5f346df8d629eea562d5b7239f9c432ab9a4c0bd116216dd6",
+      "links": 1
+    },
+    {
+      "path": "node_modules/react-native-audio-api/common/cpp/audioapi/external/android/x86/libvorbisenc.a",
+      "sha256": "dd135c0cef668a3d2553bae75ac4b31ab69649f65fcf39986aa9c7fd6e044fba",
+      "links": 1
+    },
+    {
+      "path": "node_modules/react-native-audio-api/common/cpp/audioapi/external/android/x86/libopus.a",
+      "sha256": "84e6c61d79b76b7b31978043b1c113edd586677d4ace35ab807419768beed07d",
+      "links": 1
+    },
+    {
+      "path": "node_modules/react-native-audio-api/common/cpp/audioapi/external/android/x86/libopusfile.a",
+      "sha256": "510b13e88438017541d5f002e229975cc690f14867265ca4b5c1b5490799a20a",
+      "links": 1
+    },
+    {
+      "path": "node_modules/react-native-audio-api/common/cpp/audioapi/external/android/x86/libvorbis.a",
+      "sha256": "3715cab72ca81de92d0efd98702fc68c3f5ef2c900aa6d20f9780f85672a2671",
+      "links": 1
+    },
+    {
+      "path": "node_modules/react-native-audio-api/common/cpp/audioapi/external/android/arm64-v8a/libvorbisfile.a",
+      "sha256": "62ad5066d163558cfde08cd5987b0c06a783d0787cdea22c2b6976207832ae08",
+      "links": 1
+    },
+    {
+      "path": "node_modules/react-native-audio-api/common/cpp/audioapi/external/android/arm64-v8a/libogg.a",
+      "sha256": "ccb1d093d033982094509c1a6698322c4525e09d231831731a8533b83fcf06d6",
+      "links": 1
+    },
+    {
+      "path": "node_modules/react-native-audio-api/common/cpp/audioapi/external/android/arm64-v8a/libvorbisenc.a",
+      "sha256": "b07842e9b20fcae4b2182edbb845274f63f6259b5a6ac2e9b0a721038812568f",
+      "links": 1
+    },
+    {
+      "path": "node_modules/react-native-audio-api/common/cpp/audioapi/external/android/arm64-v8a/libopus.a",
+      "sha256": "ee192c686bc760677f768f2ee907c1d2be0fbb398c6cdb1d7a1d8f54d179bf91",
+      "links": 1
+    },
+    {
+      "path": "node_modules/react-native-audio-api/common/cpp/audioapi/external/android/arm64-v8a/libopusfile.a",
+      "sha256": "e8739ac65ba42947b905e7bce87d01c3fd793c045811ef9aef6b81f94246ef70",
+      "links": 1
+    },
+    {
+      "path": "node_modules/react-native-audio-api/common/cpp/audioapi/external/android/arm64-v8a/libvorbis.a",
+      "sha256": "65e90e811022a144cf9912c534eaa1aea7531e507d1287258a78014e2154d1cf",
+      "links": 1
+    },
+    {
+      "path": "node_modules/react-native-audio-api/common/cpp/audioapi/external/android/x86_64/libvorbisfile.a",
+      "sha256": "06b3cbb91c660a2983ebff8e9bc086a30d9743bbd0878ed8de6cfee43bcc3adc",
+      "links": 1
+    },
+    {
+      "path": "node_modules/react-native-audio-api/common/cpp/audioapi/external/android/x86_64/libogg.a",
+      "sha256": "6c8e98788f49c242ae52f100772100cee9bec6f1233809639a7790b9cd47f93a",
+      "links": 1
+    },
+    {
+      "path": "node_modules/react-native-audio-api/common/cpp/audioapi/external/android/x86_64/libvorbisenc.a",
+      "sha256": "bdd1cf4d1c5f3c65e579e70c689bd789dab7280808c85288877c4f3680e5c799",
+      "links": 1
+    },
+    {
+      "path": "node_modules/react-native-audio-api/common/cpp/audioapi/external/android/x86_64/libopus.a",
+      "sha256": "cd6b8d73428387b43d2af6dcfa811fa45ba558baa3464d897371e10b622d6cb8",
+      "links": 1
+    },
+    {
+      "path": "node_modules/react-native-audio-api/common/cpp/audioapi/external/android/x86_64/libopusfile.a",
+      "sha256": "ef6206786b4456763f6ed111b4aeb73c9563aa7a99808f6101e7344dd85f0d1f",
+      "links": 1
+    },
+    {
+      "path": "node_modules/react-native-audio-api/common/cpp/audioapi/external/android/x86_64/libvorbis.a",
+      "sha256": "91678d5096cd6931ee067455cd4c687082e4927ca3a07d5351f2290f35c27aa7",
+      "links": 1
+    }
+  ],
+  "apk": {
+    "path": "packages/frontend/android/app/build/outputs/apk/debug/app-arm64-v8a-debug.apk",
+    "sha256": "6e6d768b9f1a3a0e9346f2d536fdabcc9b1965c13459113f8bda9836da622e88",
+    "bytes": 127169680
+  },
+  "buildLog": "build-debug-recovered.log",
+  "result": "BUILD SUCCESSFUL in 1m 45s; 632 tasks"
+}

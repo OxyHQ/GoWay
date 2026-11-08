@@ -1,0 +1,47 @@
+{
+  "upstream": "https://github.com/maplibre/maplibre-react-native",
+  "baseTag": "v11.5.1",
+  "baseSha": "6941f96d1c7bc0e52847663d46935dc43e3ce2ab",
+  "sourceSha": "ef17e631bff9fee5616e539aac37ea741df5cd08",
+  "artifactVersion": "11.5.1-canvas663.2",
+  "artifactPrivate": true,
+  "artifactSha256": "21a51e9d35c83e692dc6e07ba7c5ee3e54e6d04c3bc4bafdd7e83a2a91b8ad15",
+  "artifactBytes": 349555,
+  "androidNativeResolved": "13.6.1",
+  "iosChanged": false,
+  "published": false,
+  "jsTests": {
+    "suites": 26,
+    "tests": 274,
+    "snapshots": 9,
+    "status": "passed"
+  },
+  "nativeTests": {
+    "status": "passed",
+    "cases": 3,
+    "device": "Pixel 8a Android 16 API 36",
+    "log": "maplibre-device-tests.txt",
+    "scope": "Android setter scalar/array/expression and ARGB alpha; not app gesture acceptance"
+  },
+  "nativeBuild": "passed",
+  "apks": {
+    "app": {
+      "path": "packages/frontend/android/app/build/outputs/apk/debug/app-arm64-v8a-debug.apk",
+      "bytes": 136669865,
+      "sha256": "ebc9db567c978ef746e2441698b6a96640446a449d844a1adfedae28aa973989"
+    },
+    "bridgeTests": {
+      "path": "node_modules/@maplibre/maplibre-react-native/android/build/outputs/apk/androidTest/debug/maplibre_maplibre-react-native-debug-androidTest.apk",
+      "bytes": 147076519,
+      "sha256": "9969d818c99bf460179ad5bf5383ffae42a018d4ae22009309e154c48a2780e1"
+    }
+  },
+  "toolchain": {
+    "java": "openjdk version \"21.0.12.1\" 2026-08-18\nOpenJDK Runtime Environment (build 21.0.12.1+1-1-deb13u1-Debian)\nOpenJDK 64-Bit Server VM (build 21.0.12.1+1-1-deb13u1-Debian, mixed mode, sharing)",
+    "gradleWrapper": "distributionBase=GRADLE_USER_HOME\ndistributionPath=wrapper/dists\ndistributionUrl=https\\://services.gradle.org/distributions/gradle-9.4.1-bin.zip\nnetworkTimeout=10000\nvalidateDistributionUrl=true\nzipStoreBase=GRADLE_USER_HOME\nzipStorePath=wrapper/dists\n",
+    "source": "ef17e631bff9fee5616e539aac37ea741df5cd08",
+    "bloomValidationSource": "17ed628a",
+    "gowayBase": "2e9a65e",
+    "deviceSerial": "43221JEKB12200"
+  }
+}

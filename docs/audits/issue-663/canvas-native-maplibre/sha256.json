@@ -1,0 +1,16 @@
+{
+  "CanvasMapProbeTest.kt": "143584514052ae69a5ea6ff88ac0c8d9a2a2640f121da47569f1d9cc947fc389",
+  "audio-build-provenance.json": "3c906bae7b3a529670bdadff9eecba5bd92c045da8c2cec0e5853e6906852a3c",
+  "bridge2-map.png": "2d75d6ebdc55e04e5a601a726530a8b2d23c3fa12fe9d786aa9cdfc4a5bb1460",
+  "canvas-map-device-test.txt": "e6c5480f9834cf906763c31c227fa716509ba6ab2bc18cabdf5cfb4551c2b6b6",
+  "canvas-map-fast-device-test.txt": "b225cef328f0206977ff4fdf21651d1396a28a8beb635f3e13026b7208aaa414",
+  "canvas-map-probe-fast.jsonl": "ebace708ee2fa5e0623669e6fa315f4be2df4cbe7ccc26ea854e3d32643e38be",
+  "credit-expanded.png": "c98b10ddaeb44d211304786007bbddb5c2a6efcddd9d976843597ef748e03d3d",
+  "credit-expanded.xml": "9ed3d5c5dca0135db83581862407950fb83b00a688443cec3b1aa6d649a406f5",
+  "device-after-bridge.txt": "798304617c6c21d4bcc75406713cfe1fbec4c02f7b3ed3c30eeb099f7346edfa",
+  "maplibre-device-tests.txt": "cd28c32b1696f8fa2b6f2fd1c652d4964d30410ceac936173496151718838f83",
+  "maplibre-private-package.patch": "55b2f528f745514f71a27ac72ac12af7da55e69412aa61766f76e10d66f17055",
+  "maplibre-source-provenance.json": "42582c598fc3ee372c371b5c96a729964f222c431b1052f7d8c0e92f6cb52bbd",
+  "maplibre-source.patch": "2d3466b7b5c6cbe6e2aeef3d423a73ca2cec555a4a33c9d101408d34e1322450",
+  "no-canvas-crash.txt": "bf17a8f63bf920f25e4738393ee38982ed117dd45cc1edc1bc45ab9b4d46fd7d"
+}

@@ -1,0 +1,21 @@
+diff --git a/package/package.json b/package/package.json
+index 9b34921..03834d1 100644
+--- a/package/package.json
++++ b/package/package.json
+@@ -1,7 +1,7 @@
+ {
+   "name": "@maplibre/maplibre-react-native",
+   "description": "React Native library for creating maps with MapLibre Native for Android & iOS",
+-  "version": "11.5.1",
++  "version": "11.5.1-canvas663.2",
+   "publishConfig": {
+     "access": "public",
+     "provenance": true
+@@ -187,5 +187,6 @@
+     "test-renderer": "1.2.0",
+     "ts-node": "10.9.2",
+     "typescript": "5.9.3"
+-  }
++  },
++  "private": true
+ }

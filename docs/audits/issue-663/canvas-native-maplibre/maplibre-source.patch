@@ -1,0 +1,180 @@
+diff --git a/package/android/build.gradle b/package/android/build.gradle
+index 19e14a2..7b530df 100644
+--- a/package/android/build.gradle
++++ b/package/android/build.gradle
+@@ -50,6 +50,7 @@ android {
+     compileSdkVersion getExtOrIntegerDefault("compileSdkVersion")
+ 
+     defaultConfig {
++        testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
+         minSdkVersion getExtOrIntegerDefault("minSdkVersion")
+         targetSdkVersion getExtOrIntegerDefault("targetSdkVersion")
+     }
+@@ -101,6 +102,8 @@ repositories {
+ def kotlin_version = getExtOrDefault("kotlinVersion")
+ 
+ dependencies {
++    androidTestImplementation "androidx.test.ext:junit:1.2.1"
++    androidTestImplementation "androidx.test:runner:1.6.2"
+     implementation "com.facebook.react:react-android"
+     implementation "org.jetbrains.kotlin:kotlin-stdlib:$kotlin_version"
+ 
+diff --git a/package/android/src/androidTest/java/org/maplibre/reactnative/components/layer/style/MLRNHillshadeScalarTest.kt b/package/android/src/androidTest/java/org/maplibre/reactnative/components/layer/style/MLRNHillshadeScalarTest.kt
+new file mode 100644
+index 0000000..faaf057
+--- /dev/null
++++ b/package/android/src/androidTest/java/org/maplibre/reactnative/components/layer/style/MLRNHillshadeScalarTest.kt
+@@ -0,0 +1,55 @@
++package org.maplibre.reactnative.components.layer.style
++
++import androidx.test.ext.junit.runners.AndroidJUnit4
++import com.facebook.react.bridge.JavaOnlyArray
++import com.facebook.react.bridge.JavaOnlyMap
++import org.junit.Assert.assertArrayEquals
++import org.junit.Assert.assertEquals
++import org.junit.Assert.assertTrue
++import org.junit.Test
++import org.junit.runner.RunWith
++import org.maplibre.android.utils.ColorUtils
++
++@RunWith(AndroidJUnit4::class)
++class MLRNHillshadeScalarTest {
++    private fun scalar(kind: String, value: Any): MLRNStyleValue =
++        MLRNStyleValue(JavaOnlyMap.of(
++            "styletype", kind,
++            "stylevalue", JavaOnlyMap.of("type", "number", "value", value),
++        ))
++
++    @Test
++    fun directionAndAltitudeAcceptPublicScalarNumbers() {
++        for (number in listOf(315.0, 45.0)) {
++            assertArrayEquals(arrayOf(number.toFloat()), scalar("constant", number).getFloatArrayOrScalar("value"))
++        }
++    }
++
++    @Test
++    fun shadowAndHighlightRetainProcessedColorIncludingAlpha() {
++        for (color in listOf(0xff210504.toInt(), 0x80d66b62.toInt())) {
++            val colors = scalar("color", color).getColorArray("value")
++            assertEquals(1, colors.size)
++            assertEquals(color, ColorUtils.rgbaToColor(colors[0]!!))
++        }
++    }
++
++    @Test
++    fun numberArraysAndExpressionBranchesRemainAvailable() {
++        val numbers = JavaOnlyArray.of(
++            JavaOnlyMap.of("type", "number", "value", 315.0),
++            JavaOnlyMap.of("type", "number", "value", 90.0),
++        )
++        val value = MLRNStyleValue(JavaOnlyMap.of("styletype", "constant", "stylevalue",
++            JavaOnlyMap.of("type", "array", "value", numbers)))
++        assertArrayEquals(arrayOf(315f, 90f), value.getFloatArrayOrScalar("value"))
++        val expression = JavaOnlyArray.of(
++            JavaOnlyMap.of("type", "string", "value", "literal"),
++            JavaOnlyMap.of("type", "number", "value", 315.0),
++        )
++        val expr = MLRNStyleValue(JavaOnlyMap.of("styletype", "constant", "stylevalue",
++            JavaOnlyMap.of("type", "array", "value", expression)))
++        assertTrue(expr.isExpression())
++        assertEquals("literal", expr.getExpression()!!.toArray()[0])
++    }
++}
+diff --git a/package/android/src/main/java/org/maplibre/reactnative/components/layer/style/MLRNStyleFactory.kt b/package/android/src/main/java/org/maplibre/reactnative/components/layer/style/MLRNStyleFactory.kt
+index 63089a9..efdd386 100644
+--- a/package/android/src/main/java/org/maplibre/reactnative/components/layer/style/MLRNStyleFactory.kt
++++ b/package/android/src/main/java/org/maplibre/reactnative/components/layer/style/MLRNStyleFactory.kt
+@@ -3,8 +3,8 @@
+ package org.maplibre.reactnative.components.layer.style
+ 
+ import org.maplibre.android.style.layers.BackgroundLayer
+-import org.maplibre.android.style.layers.CircleLayer
+ import org.maplibre.android.style.layers.ColorReliefLayer
++import org.maplibre.android.style.layers.CircleLayer
+ import org.maplibre.android.style.layers.FillExtrusionLayer
+ import org.maplibre.android.style.layers.FillLayer
+ import org.maplibre.android.style.layers.HeatmapLayer
+@@ -2828,7 +2828,7 @@ object MLRNStyleFactory {
+         if (styleValue.isExpression()) {
+             layer.setProperties(PropertyFactory.hillshadeIlluminationDirection(styleValue.getExpression()))
+         } else {
+-            layer.setProperties(PropertyFactory.hillshadeIlluminationDirection(styleValue.getFloatArray(VALUE_KEY)))
++            layer.setProperties(PropertyFactory.hillshadeIlluminationDirection(styleValue.getFloatArrayOrScalar(VALUE_KEY)))
+         }
+     }
+ 
+@@ -2839,7 +2839,7 @@ object MLRNStyleFactory {
+         if (styleValue.isExpression()) {
+             layer.setProperties(PropertyFactory.hillshadeIlluminationAltitude(styleValue.getExpression()))
+         } else {
+-            layer.setProperties(PropertyFactory.hillshadeIlluminationAltitude(styleValue.getFloatArray(VALUE_KEY)))
++            layer.setProperties(PropertyFactory.hillshadeIlluminationAltitude(styleValue.getFloatArrayOrScalar(VALUE_KEY)))
+         }
+     }
+ 
+@@ -2882,7 +2882,7 @@ object MLRNStyleFactory {
+         if (styleValue.isExpression()) {
+             layer.setProperties(PropertyFactory.hillshadeShadowColor(styleValue.getExpression()))
+         } else {
+-            layer.setProperties(PropertyFactory.hillshadeShadowColor(styleValue.getStringArray(VALUE_KEY)))
++            layer.setProperties(PropertyFactory.hillshadeShadowColor(styleValue.getColorArray(VALUE_KEY)))
+         }
+     }
+ 
+@@ -2903,7 +2903,7 @@ object MLRNStyleFactory {
+         if (styleValue.isExpression()) {
+             layer.setProperties(PropertyFactory.hillshadeHighlightColor(styleValue.getExpression()))
+         } else {
+-            layer.setProperties(PropertyFactory.hillshadeHighlightColor(styleValue.getStringArray(VALUE_KEY)))
++            layer.setProperties(PropertyFactory.hillshadeHighlightColor(styleValue.getColorArray(VALUE_KEY)))
+         }
+     }
+ 
+diff --git a/package/android/src/main/java/org/maplibre/reactnative/components/layer/style/MLRNStyleValue.kt b/package/android/src/main/java/org/maplibre/reactnative/components/layer/style/MLRNStyleValue.kt
+index 33264cd..a5b433d 100644
+--- a/package/android/src/main/java/org/maplibre/reactnative/components/layer/style/MLRNStyleValue.kt
++++ b/package/android/src/main/java/org/maplibre/reactnative/components/layer/style/MLRNStyleValue.kt
+@@ -7,6 +7,7 @@ import com.facebook.react.bridge.ReadableType
+ import com.facebook.react.bridge.WritableNativeMap
+ import org.maplibre.android.style.expressions.Expression
+ import org.maplibre.android.style.layers.TransitionOptions
++import org.maplibre.android.utils.ColorUtils
+ import org.maplibre.reactnative.utils.ExpressionParser.fromTyped
+ import org.maplibre.reactnative.utils.ImageEntry
+ 
+@@ -80,6 +81,20 @@ class MLRNStyleValue(
+ 
+     fun getBoolean(key: String): Boolean = mPayload!!.getBoolean(key)
+ 
++    fun getFloatArrayOrScalar(key: String): Array<Float?> =
++        if (mPayload!!.getType(key) == ReadableType.Number) {
++            arrayOf(getFloat(key))
++        } else {
++            getFloatArray(key)
++        }
++
++    fun getColorArray(key: String): Array<String?> =
++        when (mPayload!!.getType(key)) {
++            ReadableType.Number -> arrayOf(ColorUtils.colorToRgbaString(getInt(key)))
++            ReadableType.String -> arrayOf(getString(key))
++            else -> getStringArray(key)
++        }
++
+     fun getFloatArray(key: String): Array<Float?> {
+         val arr = getArray(key)
+ 
+diff --git a/scripts/src/styles/android/renderMLRNStyleFactory.ts b/scripts/src/styles/android/renderMLRNStyleFactory.ts
+index 3bc6848..4552955 100644
+--- a/scripts/src/styles/android/renderMLRNStyleFactory.ts
++++ b/scripts/src/styles/android/renderMLRNStyleFactory.ts
+@@ -42,6 +42,10 @@ function androidInputType(type: string, value?: string): string {
+ }
+ 
+ function androidGetConfigType(androidType: string, prop: LayerProperty) {
++  if (prop.type === "colorArray") return "styleValue.getColorArray(VALUE_KEY)";
++  if (prop.type === "numberArray")
++    return "styleValue.getFloatArrayOrScalar(VALUE_KEY)";
++
+   switch (androidType) {
+     case "Integer":
+       return "styleValue.getInt(VALUE_KEY)";
