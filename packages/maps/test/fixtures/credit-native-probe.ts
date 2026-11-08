@@ -14,6 +14,7 @@ mock.module('react', () => ({
 mock.module('react/jsx-runtime', () => ({ jsx: element, jsxs: element, Fragment: 'Fragment' }));
 mock.module('react/jsx-dev-runtime', () => ({ jsxDEV: element, Fragment: 'Fragment' }));
 mock.module('react-native', () => ({
+  Platform: { select: (options: Record<string, unknown>) => options.android },
   View: 'View',
   Pressable: 'Pressable',
   Linking: { openURL: async () => {} },
