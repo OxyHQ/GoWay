@@ -50,3 +50,18 @@ The fixture uses Bloom validation source `17ed628a` and GoWay base `2e9a65e`.
 Its MapCanvas diagnostic logs mount identity and camera without changing camera
 policy. Device settings remained portrait, font scale 1.15, 1080×2400 at density
 420. The fixture was force-stopped and its tcp:8081 reverse removed before handoff.
+
+The private GoWay fixture delta is retained separately in
+`private-goway-fixture.patch`; apply it to base `2e9a65e` and copy
+`canvas-native-entry.js` into `packages/frontend/`. Its local artifact path must
+be replaced with the new checkout's packed source artifact path. This patch is
+an audit attachment, not a production dependency update. Install in an isolated
+worktree, mirror the built Bloom validation source with the existing mirror tool
+(`--into=packages/frontend`), and prebuild Android. Keep the generated private
+manifest's permission declarations separate from the production app manifest.
+The APK builds used `:app:assembleDebug`, architecture `arm64-v8a`,
+`-POXY_UPLOAD_SIGN_DEBUG=false`, and at most two Gradle workers. Instrumentation
+uses AndroidJUnitRunner, runner 1.6.2 and ext:junit 1.2.1; the app probe additionally
+requires the resolved `org.maplibre.gl:android-sdk-opengl:13.6.1` test dependency.
+The source/library instrumentation target is
+`org.maplibre.reactnative.test/androidx.test.runner.AndroidJUnitRunner`.
