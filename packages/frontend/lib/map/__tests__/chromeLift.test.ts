@@ -21,6 +21,17 @@ describe('measured control occupancy', () => {
       opacity: 0,
     });
   });
+  test('live footprint preserves keyboard clearance and suppresses controls without room', () => {
+    const bodyHeight = 260;
+    const excludedBottom = 342;
+    expect(
+      chromeLift({
+        sheetHeight: bodyHeight + excludedBottom,
+        claimed: 602,
+        maximumSheetHeight: 500,
+      }),
+    ).toEqual({ lift: 0, opacity: 0 });
+  });
   test('downward drag follows the panel and restores controls when room returns', () => {
     expect(chromeLift({ sheetHeight: 200, claimed: 380, maximumSheetHeight: 300 })).toEqual({
       lift: -180,
@@ -41,7 +52,7 @@ describe('wired', () => {
     const screen = read('features/explore/ExploreScreen.tsx');
     expect(screen).toContain('animatedHeight={sheetHeight}');
     expect(screen).toContain('<MapChromeLiftContext.Provider');
-    expect(screen).toMatch(/chromeLift\(\{\s*sheetHeight: sheetHeight\.value/);
+    expect(screen).toMatch(/chromeLift\(\{\s*sheetHeight: sheetFootprint\.value/);
   });
 
   test('the credit reads it, and falls back to its own spot without it', () => {

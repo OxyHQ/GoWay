@@ -17,3 +17,11 @@ export function canvasChromeInsets({
     left: Math.max(viewport.x, safeArea.left),
   };
 }
+
+/** Bottom distance excluded by this canvas's visible viewport, not its safe-area padding. */
+export function canvasBottomClearance({
+  bounds,
+  viewport,
+}: Pick<CanvasRegion, 'bounds' | 'viewport'>): number {
+  return Math.max(0, bounds.height - viewport.y - viewport.height);
+}

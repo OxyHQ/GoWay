@@ -81,7 +81,12 @@ import {
   useCanvasRegion,
   type CanvasPanelSnap,
 } from '@oxy.so/bloom/canvas';
-import { canvasChromeInsets, PANEL_WIDTH, PANEL_BREAKPOINT } from '@/lib/map/canvas-policy';
+import {
+  canvasBottomClearance,
+  canvasChromeInsets,
+  PANEL_WIDTH,
+  PANEL_BREAKPOINT,
+} from '@/lib/map/canvas-policy';
 import { useAuthGate } from '@/lib/authGate';
 import { chromeLift } from '@/lib/map/chromeLift';
 import { creditRise } from '@goway.to/maps';
@@ -551,9 +556,17 @@ function ExploreContent({ initialPlaceId = null, initialViewport = null }: Explo
     if (part === 'credit') setCreditLayout(height);
     else setScaleLayout(height);
   }, []);
+  // animatedHeight measures the visible panel body. Its bottom can sit above
+  // this canvas's lower edge (keyboard or ancestor clipping), so chrome needs
+  // the whole live edge footprint. An already resized host contributes zero.
+  const sheetBottomClearance = canvasBottomClearance(canvasRegion);
+  const sheetFootprint = useDerivedValue(
+    () => sheetHeight.value + sheetBottomClearance,
+    [sheetHeight, sheetBottomClearance],
+  );
   const creditLiftPx = useDerivedValue(
-    () => sheetHeight.value - bottomEdge,
-    [sheetHeight, bottomEdge],
+    () => sheetFootprint.value - bottomEdge,
+    [sheetFootprint, bottomEdge],
   );
   const creditOpacity = useSharedValue(1);
   const chromeLiftValue = useMemo<MapChromeLift>(
@@ -573,7 +586,7 @@ function ExploreContent({ initialPlaceId = null, initialViewport = null }: Explo
   const controlsGeometry = useDerivedValue(() => {
     const rise = creditRise(creditHeight.value);
     const lift = chromeLift({
-      sheetHeight: sheetHeight.value,
+      sheetHeight: sheetFootprint.value,
       claimed: bottomEdge,
       maximumSheetHeight:
         canvasRegion.bounds.height -
@@ -589,7 +602,7 @@ function ExploreContent({ initialPlaceId = null, initialViewport = null }: Explo
       fits: !sheetLayout || (controlsHeight > 0 && lift.opacity === 1),
     };
   }, [
-    sheetHeight,
+    sheetFootprint,
     creditHeight,
     sheetLayout,
     bottomEdge,
