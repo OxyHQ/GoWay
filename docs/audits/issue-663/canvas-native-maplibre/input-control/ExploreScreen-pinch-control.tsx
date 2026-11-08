@@ -1,0 +1,920 @@
+/**
+ * GoWay's map discovery screen: one map, four states, two layouts.
+ *
+ * The composition rules, all of which are load-bearing:
+ *
+ *  - **The map is the screen.** Browse, search, place details and DIRECTIONS
+ *    are states of the same mounted `MapCanvas`, never routes. Selecting a
+ *    result moves the camera; it does not navigate, so there is no back stack
+ *    and no moment when the map is gone — and leaving the directions planner
+ *    puts the user back where they were looking, not somewhere new.
+ *  - **Chrome composes through Bloom's edge registry, not through props.** The
+ *    top bar CLAIMS the top edge; the sheet CLAIMS the bottom; the controls
+ *    column and the "Search this area" pill READ both. None of them imports
+ *    another, so any of them can change height without the others knowing.
+ *  - **`useBottomEdgeInset()` already folds in the safe area of whatever is
+ *    parked there.** Adding `insets.bottom` on top of a claim is the classic
+ *    double-count that floats controls in mid-air, so the plain gap is added to
+ *    a claim and the safe-area-aware gap only when nothing has claimed.
+ *  - **Nothing asks for location to open.** `useUserLocation()` runs only from
+ *    "My location" and from the planner's own request for a starting point.
+ *  - **The canvas is fitted around the chrome, not inside it.** `useMapPadding`
+ *    below turns "the sheet covers the bottom 45%" into the asymmetric padding
+ *    a route is framed with; a uniform padding frames a route behind the sheet.
+ *
+ * The sheet's `animatedProgress` drives the floating controls on the UI thread,
+ * so they lift and fade WITH the finger rather than one to three frames behind
+ * it. The map CANVAS is deliberately not translated by that same value: a
+ * transformed WebGL canvas would leave `getBounds()` describing a rectangle
+ * that is no longer where it is drawn (which is precisely the number "Search
+ * this area" commits), and a permanent fractional translate is how a crisp
+ * canvas becomes a soft one. The camera's response to a selection is a discrete
+ * `moveTo` instead — spatial continuity where it is correct, lock-step motion
+ * where it is free.
+ */
+import {
+  type ComponentRef,
+  lazy,
+  Suspense,
+  useCallback,
+  useEffect,
+  useMemo,
+  useReducer,
+  useRef,
+  useState,
+} from 'react';
+import { View } from 'react-native';
+import { useFocusEffect, useRouter } from 'expo-router';
+import Animated, {
+  useAnimatedStyle,
+  useAnimatedReaction,
+  runOnJS,
+  useDerivedValue,
+  useSharedValue,
+} from 'react-native-reanimated';
+import { Button } from '@oxy.so/bloom/button';
+import { Text } from '@oxy.so/bloom/typography';
+import { MapSearchAreaButton } from '@oxy.so/bloom/map-marker';
+import { useBottomEdgeInset, useTopEdgeInset, windowEdgeGap } from '@oxy.so/bloom/layout';
+
+import { BrandedChromeProvider } from '@goway.to/maps';
+import { type MapChromeLift, MapChromeLiftContext } from '@goway.to/maps';
+import { MapCreditHeightContext, useUserFix } from '@goway.to/maps';
+import {
+  MAP_CREDIT_CLEARANCE,
+  MapCanvas,
+  type GeoBoundingBox,
+  type MapApi,
+  type MapError,
+  type MapFitOptions,
+  type MapLiveLayer,
+  type MapMarker,
+  type MapModel,
+  type MapPressEvent,
+  type MapViewport,
+  type MapCameraChange,
+} from '@/components/map';
+import {
+  Canvas,
+  CanvasBackground,
+  CanvasPanel,
+  useCanvasRegion,
+  type CanvasPanelSnap,
+} from '@oxy.so/bloom/canvas';
+import { canvasChromeInsets, PANEL_WIDTH, PANEL_BREAKPOINT } from '@/lib/map/canvas-policy';
+import { useAuthGate } from '@/lib/authGate';
+import { chromeLift } from '@/lib/map/chromeLift';
+import { creditRise } from '@goway.to/maps';
+import {
+  INITIAL_TIME_OF_DAY,
+  timeOfDayButtonShown,
+  timeOfDayReducer,
+} from '@/lib/map/timeOfDayControl';
+import { useMapFeature } from '@/lib/map/useMapFeatures';
+import { useTranslation } from '@/lib/i18n';
+import type { LocationErrorReason } from '@goway.to/maps';
+
+import { GuidanceBanner } from '@/features/directions/GuidanceBanner';
+import { slotName } from '@/features/directions/stops';
+import { useGuidance } from '@/features/directions/useGuidance';
+import { useCamerasLayer } from '@/features/cameras/useCamerasLayer';
+import { takeReturnBounds } from '@/features/street3d/handoff';
+import { useStreet3dLayer } from '@/features/street3d/useStreet3dLayer';
+
+import { ExploreBody, ExploreHeader, type RenderPlaceActions } from './ExploreContent';
+import { ExploreMarker } from './ExploreMarker';
+import { clampFitPadding } from './mapPadding';
+import { CameraReadout, ExploreMapControls } from './ExploreMapControls';
+import { MapSettingsButton } from './MapSettingsButton';
+import { MapStyleButton } from './MapStyleButton';
+import { MapTopBar } from './MapTopBar';
+import { focusTimeOfDayButton, TimeOfDayButton } from './TimeOfDayButton';
+import { useExplore } from './useExplore';
+
+/** Zoom the camera settles at when the user asks to be found. */
+const MY_LOCATION_ZOOM = 15;
+
+/** The settings modal's "3D": the steepest tilt the shipped map allows. */
+const TILTED_PITCH = 60;
+/** At or above this the camera reads as 3D in the settings modal. */
+const TILTED_EPSILON = 5;
+/** Horizontal room the location notice leaves for the controls column. */
+const CONTROLS_COLUMN_WIDTH = 72;
+/** Wait for the 3D → 2D transition before framing the scene's bounds. */
+const RETURN_FIT_DELAY_MS = 250;
+
+/**
+ * Breathing room between fitted content and the edge of the FREE canvas, in px.
+ *
+ * It is added to whatever the sheet or the panel is already covering, rather
+ * than being the whole padding: see {@link useMapPadding}.
+ */
+const FIT_GAP_PX = 24;
+
+/**
+ * The one-line notice beside the "My location" control.
+ *
+ * This control has exactly the shape the Directions bug had: `handleLocate`
+ * returns early on a `null` coordinate, so before this every reason but a
+ * decline was a button that visibly did nothing. `denied` keeps its translated
+ * sentence; the rest are stated here, beside the control they are about.
+ */
+function locationNoticeFor(
+  reason: LocationErrorReason | null,
+  canAskAgain: boolean,
+  t: (key: string) => string,
+): string | null {
+  switch (reason) {
+    case null:
+      return null;
+    case 'denied':
+      return canAskAgain
+        ? t('map.locationDenied')
+        : 'Location is blocked for GoWay. Turn it back on for goway.to in your browser or device settings.';
+    case 'insecureContext':
+      return "This page isn't on a secure connection, so the browser won't share location. Open GoWay at https://goway.to.";
+    case 'timeout':
+      return 'Finding you took too long. Tap again to try once more.';
+    default:
+      return "Your device couldn't get a location fix. You can still search and browse the map.";
+  }
+}
+
+/** Translate measured canvas occupancy into the engine's safe camera padding. */
+function useMapPadding(): MapFitOptions['padding'] {
+  const { bounds, viewport, occupied, safeArea: insets } = useCanvasRegion();
+  return useMemo(
+    () =>
+      clampFitPadding(
+        {
+          top: Math.max(occupied.top, viewport.y, insets.top) + FIT_GAP_PX,
+          right:
+            Math.max(occupied.right, bounds.width - viewport.x - viewport.width, insets.right) +
+            FIT_GAP_PX,
+          bottom:
+            Math.max(occupied.bottom, bounds.height - viewport.y - viewport.height, insets.bottom) +
+            FIT_GAP_PX,
+          left: Math.max(occupied.left, viewport.x, insets.left) + FIT_GAP_PX,
+        },
+        bounds,
+        FIT_GAP_PX,
+      ),
+    [bounds, viewport, occupied, insets],
+  );
+}
+
+export interface ExploreScreenProps {
+  /** Opened from `https://goway.to/place/<placeId>`. */
+  initialPlaceId?: string | null;
+  /**
+   * Camera on first render, from `https://goway.to/?lat=…&lng=…&zoom=…`.
+   *
+   * `null` — the normal case, and what an unreadable link resolves to — means
+   * the canvas opens on its own default. The route parses it (`app/index.tsx`);
+   * this screen only passes it on, because the canvas is the thing that owns
+   * "initial" and nothing here should be tempted to re-apply it later.
+   */
+  initialViewport?: MapViewport | null;
+}
+
+/**
+ * The route flyover (`docs/MAP_CAMERA_STUDIO.md`), loaded only through
+ * `features/flyover/lazy.ts`: with the feature off this screen gains an
+ * `import()` stub and nothing else. Whether it is on is the map-feature
+ * registry's `flyover`, read live below, so turning it on in the settings modal
+ * offers "Fly the route" at once.
+ */
+/**
+ * GoWay Live (`docs/MAP_LIVE.md`): real aircraft, transit, bike share and
+ * ships over the map, while the registry's `live` is on (web only). Off, its
+ * chunk (the socket client, the live protocol, the panel) is never requested.
+ */
+const LiveHost = lazy(() => import('@/features/live/LiveHost'));
+
+const RouteFlyover = lazy(() =>
+  import('@/features/flyover/lazy').then((chunk) => ({ default: chunk.RouteFlyover })),
+);
+const NO_MODELS: readonly MapModel[] = [];
+
+/**
+ * The 3D landmarks' tour (`docs/MAP_LANDMARKS.md`), loaded only through
+ * `features/landmarks/lazy.ts`: with the feature off this screen gains three
+ * `import()` stubs and nothing else. Whether it is on is the map-feature
+ * registry's `landmarks` (which needs the 3D city), read live below, so the
+ * "Landmarks" pill and "Landmark tour" come and go with the Labs switch.
+ */
+const LandmarkOverlay = lazy(() =>
+  import('@/features/landmarks/lazy').then((chunk) => ({ default: chunk.LandmarkOverlay })),
+);
+const LandmarkPlaceAction = lazy(() =>
+  import('@/features/landmarks/lazy').then((chunk) => ({ default: chunk.LandmarkPlaceAction })),
+);
+const LandmarksPillEntry = lazy(() =>
+  import('@/features/landmarks/lazy').then((chunk) => ({ default: chunk.LandmarksPillEntry })),
+);
+
+export default function ExploreScreen(props: ExploreScreenProps) {
+  return <View style={{flex: 1}}><MapCanvas /></View>;
+}
+
+function ExploreContent({ initialPlaceId = null, initialViewport = null }: ExploreScreenProps) {
+  const { t } = useTranslation();
+  const mapRef = useRef<MapApi>(null);
+  const canvasRegion = useCanvasRegion();
+  const insets = canvasChromeInsets(canvasRegion);
+  const layout = canvasRegion.viewport.width >= PANEL_BREAKPOINT ? 'panel' : 'sheet';
+
+  const [snap, setSnap] = useState<CanvasPanelSnap>('half');
+  // Computed BEFORE the hook that uses it: the screen is the only thing that
+  // knows how much of the canvas its own chrome is standing on.
+  const mapPadding = useMapPadding();
+
+  const explore = useExplore(mapRef, { initialPlaceId, mapPadding });
+  const { directions, location } = explore;
+  const router = useRouter();
+  const gate = useAuthGate();
+
+  // Street 3D coverage: off unless the feature flag is on, and out of the way
+  // while the directions planner owns the map.
+  const street3d = useStreet3dLayer({ enabled: !directions.active });
+  // Public cameras: the same, behind the `cameras` feature.
+  const cameras = useCamerasLayer({ enabled: !directions.active });
+
+  /**
+   * Coming back from a Street 3D scene: frame the map on the scene the user
+   * just left, so 3D → 2D lands where 2D → 3D took off.
+   *
+   * The fit waits for BOTH a focused screen and a ready canvas. On web the
+   * map may be remounted by the navigation (or unhidden by the same
+   * transition that focuses it), and a fit issued against a canvas that is
+   * not ready, or is zero-sized, is silently a no-op.
+   */
+  // The settled view centre, for the landmarks' "Landmarks" pill.
+  const [settledCentre, setSettledCentre] = useState<{
+    latitude: number;
+    longitude: number;
+  } | null>(null);
+
+  const pendingFit = useRef<GeoBoundingBox | null>(null);
+  const mapReady = useRef(false);
+  const applyPendingFit = useCallback(() => {
+    const bounds = pendingFit.current;
+    if (!bounds || !mapReady.current || !mapRef.current) return;
+    pendingFit.current = null;
+    mapRef.current.fitBounds(bounds, { padding: mapPadding, duration: 600, maxZoom: 18 });
+  }, [mapPadding]);
+
+  useFocusEffect(
+    useCallback(() => {
+      const bounds = takeReturnBounds();
+      if (bounds) pendingFit.current = bounds;
+      if (!pendingFit.current) return undefined;
+      const timer = setTimeout(applyPendingFit, RETURN_FIT_DELAY_MS);
+      return () => clearTimeout(timer);
+    }, [applyPendingFit]),
+  );
+
+  const handleMapReady = useCallback(() => {
+    mapReady.current = true;
+    setTimeout(applyPendingFit, RETURN_FIT_DELAY_MS);
+  }, [applyPendingFit]);
+
+  const overlays = useMemo(
+    () =>
+      street3d.overlays.length > 0 ? [...street3d.overlays, ...explore.overlays] : explore.overlays,
+    [explore.overlays, street3d.overlays],
+  );
+  const markers = useMemo(
+    () =>
+      street3d.markers.length > 0 || cameras.markers.length > 0
+        ? [...explore.markers, ...street3d.markers, ...cameras.markers]
+        : explore.markers,
+    [explore.markers, street3d.markers, cameras.markers],
+  );
+  const handleMarkerPress = useCallback(
+    (marker: MapMarker) => {
+      if (street3d.handleMarkerPress(marker) || cameras.handleMarkerPress(marker)) return;
+      explore.onMarkerPress(marker);
+    },
+    [explore, street3d, cameras],
+  );
+
+  // Only what the chrome shows: whether the map is turned (the compass) and
+  // tilted (Settings' 2D/3D). Booleans, not angles: a camera move reports at
+  // 10 Hz, and storing the angle re-rendered this whole screen on every report
+  // of an orbit (measured: ~11% of the main thread on a throttled laptop,
+  // `docs/MAP_PERFORMANCE.md`). React skips a set to the same value.
+  const [cameraReadout] = useState(() => new CameraReadout());
+  const [tilted, setTilted] = useState(false);
+  // The style picker (`MapStyleButton`), opened from its button or from
+  // Settings → Map → Style.
+  const [stylePickerOpen, setStylePickerOpen] = useState(false);
+  const openStylePicker = useCallback(() => setStylePickerOpen(true), []);
+  const flyover = useMapFeature('flyover');
+  const landmarks = useMapFeature('landmarks');
+  const live = useMapFeature('live');
+  const [mapError, setMapError] = useState<MapError | null>(null);
+  // While the flyover flies, the sheet, the panel and the floating controls
+  // step aside; the vehicle is a model on the canvas.
+  const [flying, setFlying] = useState(false);
+  const [flyoverModels, setFlyoverModels] = useState<readonly MapModel[]>(NO_MODELS);
+  // The landmark tour: which landmark it is on (`null`: not touring), the
+  // settled view centre for the "Landmarks" pill, and who to tell when the
+  // user moves the map (the tour pauses).
+  const [requestedTourId, setTourId] = useState<string | null>(null);
+  // Switching landmarks off in the settings modal ends a tour in progress.
+  const tourId = landmarks ? requestedTourId : null;
+  const userMoveListeners = useRef(new Set<() => void>());
+  const subscribeUserMove = useCallback((listener: () => void) => {
+    userMoveListeners.current.add(listener);
+    return () => {
+      userMoveListeners.current.delete(listener);
+    };
+  }, []);
+  const renderPlaceActions = useCallback<RenderPlaceActions>(
+    (place) => (
+      <Suspense fallback={null}>
+        <LandmarkPlaceAction place={place} onOpen={setTourId} />
+      </Suspense>
+    ),
+    [],
+  );
+  // While the flyover flies or the tour tours, the map is the whole screen.
+  const immersive = flying || tourId !== null;
+  // The time-of-day scrubber: hidden until asked for, from the sun in the
+  // top-right stack or from Settings, and only while the sky draws; closing it
+  // is going back to now (`lib/map/timeOfDayControl.ts`).
+  const [timeOfDay, dispatchTimeOfDay] = useReducer(timeOfDayReducer, INITIAL_TIME_OF_DAY);
+  const handleSkyActiveChange = useCallback(
+    (drawn: boolean) => dispatchTimeOfDay({ type: 'sky', drawn }),
+    [],
+  );
+  const toggleTimeOfDay = useCallback(() => dispatchTimeOfDay({ type: 'toggle' }), []);
+  const openTimeOfDay = useCallback(() => dispatchTimeOfDay({ type: 'open' }), []);
+  const closeTimeOfDay = useCallback(() => {
+    dispatchTimeOfDay({ type: 'close' });
+    // Back to the control that opened it.
+    focusTimeOfDayButton();
+  }, []);
+  // Set by `LiveHost` once it has a layer to draw; always `null` with live off.
+  const [liveLayer, setLiveLayer] = useState<MapLiveLayer | null>(null);
+  // Only ever armed by pressing "My location" or asking for directions. The
+  // canvas refuses to draw the dot without a granted permission anyway; not
+  // arming it until then keeps the two rules independent of each other.
+  const [followingLocation, setFollowingLocation] = useState(false);
+  // The position the map is drawing, for guided navigation: the SDK's one
+  // watcher, read only once the reader has asked to be found. Transient.
+  const userFix = useUserFix(followingLocation);
+  // The camera follows the traveller until they move the map themselves.
+  const [followGuide, setFollowGuide] = useState(true);
+  const guidance = useGuidance({
+    route: directions.route,
+    steps: directions.steps,
+    fix: userFix,
+    routeBusy: directions.routeBusy,
+    rerouteFrom: directions.rerouteFrom,
+  });
+  const guiding = guidance.guiding;
+  useEffect(() => subscribeUserMove(() => setFollowGuide(false)), [subscribeUserMove]);
+  useEffect(() => {
+    if (!guiding || !followGuide || !userFix) return;
+    mapRef.current?.moveTo(
+      { latitude: userFix.latitude, longitude: userFix.longitude },
+      { duration: 600 },
+    );
+  }, [guiding, followGuide, userFix]);
+
+  const sheetProgress = useSharedValue(0);
+  // The sheet's live on-screen height (`CanvasPanel`'s `animatedHeight`).
+  const sheetHeight = useSharedValue(0);
+
+  const topEdge = useTopEdgeInset();
+  const bottomEdge = useBottomEdgeInset();
+  const bottomBase = Math.max(bottomEdge, insets.bottom);
+  const bottomGap = windowEdgeGap(bottomBase);
+  const sideGap = windowEdgeGap(insets.right, 0);
+  // Above the map's credit, which owns the bottom-right corner (`MapAttribution`).
+  const controlsBottom =
+    (bottomEdge > 0 ? bottomBase + windowEdgeGap(0) : bottomGap) + MAP_CREDIT_CLEARANCE;
+  const areaTop =
+    topEdge > 0 ? Math.max(topEdge, insets.top) + windowEdgeGap(0) : windowEdgeGap(insets.top);
+
+  const handleViewportChange = useCallback(
+    (change: MapCameraChange) => {
+      cameraReadout.report(change.viewport.bearing);
+      setTilted(change.viewport.pitch >= TILTED_EPSILON);
+      if (change.source === 'user') for (const listener of userMoveListeners.current) listener();
+      if (change.isFinal) {
+        setSettledCentre({
+          latitude: change.viewport.latitude,
+          longitude: change.viewport.longitude,
+        });
+      }
+      explore.onViewportChange(change);
+      street3d.onViewportChange(change);
+      cameras.onViewportChange(change);
+    },
+    [cameraReadout, explore, street3d, cameras],
+  );
+
+  const handleLocate = useCallback(async () => {
+    if (location.isLocating) return null;
+    const coordinate = await location.locate();
+    // A `null` is not nothing: `location.error` now carries which of the four
+    // reasons it was, and the notice below says it out loud.
+    if (!coordinate) return null;
+    setFollowingLocation(true);
+    mapRef.current?.moveTo(coordinate, { zoom: MY_LOCATION_ZOOM });
+    return coordinate;
+  }, [location]);
+
+  /**
+   * Guided navigation. Starting is the user action that asks for the location
+   * (the only place a prompt can come from); a refusal leaves the route as it
+   * was, with the notice saying why.
+   */
+  const handleStartGuidance = useCallback(async () => {
+    const coordinate = await handleLocate();
+    if (!coordinate) return;
+    setFollowGuide(true);
+    guidance.start();
+  }, [handleLocate, guidance.start]);
+
+  /** The settings modal's 2D/3D: tilt or level the camera where it already is. */
+  const handleTiltChange = useCallback((tilted: boolean) => {
+    const map = mapRef.current;
+    if (!map) return;
+    void map.getViewport().then((viewport) => {
+      if (!viewport) return;
+      map.moveTo(viewport, { pitch: tilted ? TILTED_PITCH : 0 });
+    });
+  }, []);
+
+  /**
+   * Get out of the way while the user is choosing a point on the map.
+   *
+   * The sheet is over the bottom 45% of the canvas at rest, and "tap where you
+   * mean" with half the map unreachable is an instruction the screen is
+   * contradicting. It collapses once, when the mode starts — the user may drag
+   * it back up, and this must not fight them for it.
+   */
+  const picking = directions.picking;
+  useEffect(() => {
+    if (picking == null) return;
+    setSnap('peek');
+  }, [picking]);
+
+  /**
+   * Bloom's marker, plus the enriched state for a place asserting a live
+   * ecosystem capability. The renderer positions it; it is the same component
+   * on web and native.
+   */
+  const renderMarker = useCallback(
+    (marker: MapMarker) =>
+      street3d.renderMarker(marker) ??
+      cameras.renderMarker(marker) ?? (
+        <ExploreMarker
+          marker={marker}
+          capability={explore.ecosystem.get(marker.id)}
+          onPress={() => explore.onMarkerPress(marker)}
+        />
+      ),
+    [explore, street3d, cameras],
+  );
+
+  const locationNotice = locationNoticeFor(location.error, location.canAskAgain, t);
+
+  /**
+   * A tap on the map.
+   *
+   * The canvas has already decided WHICH of the three things was hit — a GoWay
+   * marker (in which case this does not fire at all), one of the basemap's own
+   * labels, or bare map. What that means for the product is `useExplore`'s
+   * call, not this component's; see `onMapPress` there.
+   */
+  const handleMapPress = useCallback(
+    (event: MapPressEvent) => {
+      explore.onMapPress(event);
+    },
+    [explore],
+  );
+
+  /**
+   * Keep the bottom chrome — "My location" and the map's data credit — above
+   * the sheet's CURRENT top edge, on the UI thread (`lib/map/chromeLift.ts`).
+   * They are laid out against the sheet's resting claim on the bottom edge;
+   * this lifts them the rest of the way, so at `half` the credit is visible
+   * from the first frame and while dragging they ride the sheet, the map controls fade as
+   * it takes the screen. Official credit and scale stay visible. In panel mode nothing writes `sheetHeight` and there
+   * is no provider, so the chrome sits where it always did.
+   */
+  const [controlsHeight, setControlsHeight] = useState(0);
+  const [controlsShown, setControlsShown] = useState(false);
+  const controlsFocused = useRef(false);
+  const panelHandle = useRef<ComponentRef<typeof View>>(null);
+  const updateControlVisibility = useCallback((fits: boolean) => {
+    // Opacity/pointer exclusion happen on UI first; leave the focused host
+    // mounted until this threshold callback can move focus before display:none.
+    if (!fits && controlsFocused.current) panelHandle.current?.focus();
+    setControlsShown(fits);
+  }, []);
+  const [creditLayout, setCreditLayout] = useState(0);
+  // Full stops below actual foreground chrome; credit must not rise beneath
+  // the settings stack. This is adapter policy, not a guessed sheet height.
+  const [topChromeHeight, setTopChromeHeight] = useState(0);
+  const [scaleLayout, setScaleLayout] = useState(0);
+  const onChromeLayout = useCallback((part: 'credit' | 'scale', height: number) => {
+    if (part === 'credit') setCreditLayout(height);
+    else setScaleLayout(height);
+  }, []);
+  const creditLiftPx = useDerivedValue(
+    () => sheetHeight.value - bottomEdge,
+    [sheetHeight, bottomEdge],
+  );
+  const creditOpacity = useSharedValue(1);
+  const chromeLiftValue = useMemo<MapChromeLift>(
+    () => ({
+      lift: creditLiftPx,
+      opacity: creditOpacity,
+      rightClearance: sideGap + CONTROLS_COLUMN_WIDTH,
+      onChromeLayout,
+    }),
+    [creditLiftPx, creditOpacity, sideGap, onChromeLayout],
+  );
+  // The credit's measured height (`MapAttribution`): spelled out on a phone it
+  // wraps, and "My location" and its notice stand above it rather than on it
+  // (`lib/map/creditRise.ts`).
+  const creditHeight = useSharedValue(0);
+  const sheetLayout = layout === 'sheet';
+  const controlsGeometry = useDerivedValue(() => {
+    const rise = creditRise(creditHeight.value);
+    const lift = chromeLift({
+      sheetHeight: sheetHeight.value,
+      claimed: bottomEdge,
+      maximumSheetHeight:
+        canvasRegion.bounds.height -
+        areaTop -
+        topChromeHeight -
+        FIT_GAP_PX -
+        controlsHeight -
+        (controlsBottom - bottomEdge) -
+        rise,
+    });
+    return {
+      translateY: -(sheetLayout ? lift.lift + rise : rise),
+      fits: !sheetLayout || (controlsHeight > 0 && lift.opacity === 1),
+    };
+  }, [
+    sheetHeight,
+    creditHeight,
+    sheetLayout,
+    bottomEdge,
+    canvasRegion.bounds.height,
+    areaTop,
+    topChromeHeight,
+    controlsHeight,
+    controlsBottom,
+  ]);
+  useAnimatedReaction(
+    () => controlsGeometry.value.fits,
+    (fits, previous) => {
+      if (fits !== previous) runOnJS(updateControlVisibility)(fits);
+    },
+    [controlsGeometry, updateControlVisibility],
+  );
+  const chromeStyle = useAnimatedStyle(
+    () => ({
+      transform: [{ translateY: controlsGeometry.value.translateY }],
+      opacity: controlsGeometry.value.fits ? 1 : 0,
+      display: controlsShown || controlsHeight === 0 ? 'flex' : 'none',
+      pointerEvents: controlsGeometry.value.fits ? 'auto' : 'none',
+    }),
+    [controlsGeometry, controlsShown, controlsHeight],
+  );
+  const noticeStyle = useAnimatedStyle(
+    () => ({
+      transform: [{ translateY: controlsGeometry.value.translateY }],
+      opacity: controlsGeometry.value.fits ? 1 : 0,
+      pointerEvents: 'none',
+    }),
+    [controlsGeometry],
+  );
+
+  const header = <ExploreHeader explore={explore} />;
+  const body = (
+    <ExploreBody
+      explore={explore}
+      renderPlaceActions={landmarks ? renderPlaceActions : undefined}
+      onStartGuidance={() => void handleStartGuidance()}
+    />
+  );
+
+  return (
+    // `MapTopBar` below carries the GoWay logo, so the badge `MapCanvas` draws
+    // on every other map stands down here: one brand per screen, and not the
+    // one sitting on the cartography. Declared HERE rather than at the route,
+    // because `app/place/[placeId].tsx` mounts this same screen and a third
+    // route would otherwise have to remember. Never in `app/_layout.tsx` — that
+    // also owns `app/frame.tsx`, which is the case the badge exists for.
+    <BrandedChromeProvider>
+      <MapCreditHeightContext.Provider value={creditHeight}>
+        <MapChromeLiftContext.Provider
+          value={layout === 'sheet' && !immersive ? chromeLiftValue : null}
+        >
+          <>
+            <MapCanvas
+              backgroundComponent={CanvasBackground}
+              ref={mapRef}
+              initialViewport={initialViewport ?? undefined}
+              markers={markers}
+              credits={cameras.credits}
+              renderMarker={renderMarker}
+              overlays={overlays}
+              onMarkerPress={handleMarkerPress}
+              onReady={handleMapReady}
+              onPress={handleMapPress}
+              // What the basemap is already labelling, so GoWay does not draw a
+              // second chip over it. See `lib/goway/basemapLabels.ts`.
+              onLabelsChange={explore.onLabelsChange}
+              showUserLocation={followingLocation}
+              onViewportChange={handleViewportChange}
+              onError={setMapError}
+              models={flyoverModels}
+              live={live ? liveLayer : null}
+              timeOfDayOpen={timeOfDay.open}
+              onTimeOfDayClose={closeTimeOfDay}
+              onSkyActiveChange={handleSkyActiveChange}
+              testID="goway-map"
+            />
+
+            <MapTopBar />
+
+            {/* "Search this area" is Bloom's own control, and it arms itself from the
+          `source`/`isFinal` signal on the viewport event rather than from every
+          camera frame — a camera the APP moved must never offer to re-run the
+          search that moved it. It is hidden while the canvas is degraded: there
+          is no visible area to search. */}
+            {explore.areaMoved && !mapError && !directions.active && !immersive ? (
+              <View
+                pointerEvents="box-none"
+                className="absolute left-0 right-0 items-center"
+                style={{ top: areaTop }}
+              >
+                <MapSearchAreaButton
+                  variant="button"
+                  label="Search this area"
+                  onPress={explore.searchThisArea}
+                  testID="search-this-area"
+                />
+              </View>
+            ) : null}
+
+            {/* Street 3D: an area in view needs more photos. A suggestion, never a
+          wall — it yields to "Search this area" and to the directions picker,
+          and contributing is auth-gated at the moment it is asked for. */}
+            {street3d.wantingCapture.length > 0 &&
+            !explore.areaMoved &&
+            !mapError &&
+            !directions.active &&
+            !immersive ? (
+              <View
+                pointerEvents="box-none"
+                className="absolute left-0 right-0 items-center px-space-16"
+                style={{ top: areaTop }}
+              >
+                <View className="flex-row items-center gap-space-8 rounded-radius-max bg-card py-space-4 pl-space-12 pr-space-4 shadow-m">
+                  <Text className="text-bodySmall text-foreground" numberOfLines={2}>
+                    {t('street3d.layer.contributeHint')}
+                  </Text>
+                  <Button size="xs" onPress={() => gate.run(() => router.push('/contribute'))}>
+                    {t('street3d.contribute.cta')}
+                  </Button>
+                </View>
+              </View>
+            ) : null}
+
+            {/* Choosing a stop on the map is a MODE, and a mode with no visible state
+          is a map that mysteriously starts answering taps differently. The
+          notice is an `alert` so it is announced, and it names the field it is
+          about. */}
+            {directions.picking != null && !mapError ? (
+              <View
+                pointerEvents="none"
+                accessibilityRole="alert"
+                className="absolute left-0 right-0 items-center px-space-16"
+                style={{ top: areaTop }}
+              >
+                <View className="rounded-radius-max bg-card px-space-16 py-space-8 shadow-m">
+                  <Text className="text-bodySmall text-foreground">
+                    {`Tap the map to set the ${slotName(directions.picking, directions.stops.length).toLowerCase()}`}
+                  </Text>
+                </View>
+              </View>
+            ) : null}
+
+            {guiding && guidance.guidance && !mapError && !immersive ? (
+              <View
+                pointerEvents="box-none"
+                className="absolute"
+                style={{
+                  top: areaTop,
+                  left:
+                    layout === 'panel'
+                      ? Math.max(canvasRegion.occupied.left, insets.left) + FIT_GAP_PX
+                      : windowEdgeGap(insets.left, 0),
+                  right: sideGap + CONTROLS_COLUMN_WIDTH,
+                }}
+              >
+                <GuidanceBanner
+                  guidance={guidance.guidance}
+                  state={guidance.state}
+                  onEnd={guidance.end}
+                  testID="guidance"
+                />
+              </View>
+            ) : null}
+
+            {landmarks && tourId && !mapError ? (
+              <Suspense fallback={null}>
+                <LandmarkOverlay
+                  mapRef={mapRef}
+                  top={areaTop}
+                  startId={tourId}
+                  onClose={() => setTourId(null)}
+                  subscribeUserMove={subscribeUserMove}
+                />
+              </Suspense>
+            ) : null}
+
+            {/* The top-right stack, under the account button: ONE column of
+              round controls, so its items never overlap — the settings button
+              (where Apple Maps parks its map options, a corner no sheet or
+              panel covers in either layout), the time of day while the sky
+              draws, the landmarks while one is near (an icon on a phone,
+              labelled on a wide window), and GoWay Live's panel. 40 px on a
+              phone, as the compass is, so this stack and the bottom-right
+              column stay clear of each other at 360×740 even with the credit
+              spelled out. The simulation's label is not here: it rides in the
+              data credit, bottom right (`MapAttribution`). */}
+            <View
+              pointerEvents="box-none"
+              className="absolute items-end gap-space-8"
+              style={{ top: areaTop, right: sideGap }}
+              onLayout={(event) => setTopChromeHeight(event.nativeEvent.layout.height)}
+              testID="map-top-right-stack"
+            >
+              {immersive ? null : (
+                <MapSettingsButton
+                  compact={layout === 'sheet'}
+                  tilted={tilted}
+                  onTiltChange={handleTiltChange}
+                  onChangeTime={
+                    timeOfDayButtonShown(timeOfDay) && !mapError ? openTimeOfDay : undefined
+                  }
+                  onChooseStyle={openStylePicker}
+                />
+              )}
+              {immersive ? null : (
+                <MapStyleButton
+                  open={stylePickerOpen}
+                  onOpenChange={setStylePickerOpen}
+                  compact={layout === 'sheet'}
+                />
+              )}
+              {timeOfDayButtonShown(timeOfDay) && !mapError && !immersive ? (
+                <TimeOfDayButton
+                  open={timeOfDay.open}
+                  onToggle={toggleTimeOfDay}
+                  compact={layout === 'sheet'}
+                />
+              ) : null}
+              {landmarks && !mapError && !immersive && !directions.active ? (
+                <Suspense fallback={null}>
+                  <LandmarksPillEntry
+                    centre={settledCentre}
+                    onOpen={setTourId}
+                    compact={layout === 'sheet'}
+                  />
+                </Suspense>
+              ) : null}
+              {live && !mapError ? (
+                <Suspense fallback={null}>
+                  <LiveHost onLayer={setLiveLayer} />
+                </Suspense>
+              ) : null}
+            </View>
+
+            {flyover && directions.active && directions.route && !mapError ? (
+              <Suspense fallback={null}>
+                <RouteFlyover
+                  route={directions.route}
+                  mapRef={mapRef}
+                  top={areaTop}
+                  onActiveChange={setFlying}
+                  onModelsChange={setFlyoverModels}
+                />
+              </Suspense>
+            ) : null}
+
+            {immersive ? null : (
+              <Animated.View
+                onFocus={() => {
+                  controlsFocused.current = true;
+                }}
+                onBlur={() => {
+                  controlsFocused.current = false;
+                }}
+                onLayout={(event) => {
+                  const height = event.nativeEvent.layout.height;
+                  if (height > 0) setControlsHeight(height);
+                }}
+                style={[
+                  {
+                    position: 'absolute',
+                    bottom: controlsBottom,
+                    right: sideGap,
+                    alignItems: 'flex-end',
+                    gap: 12,
+                  },
+                  chromeStyle,
+                ]}
+              >
+                <ExploreMapControls
+                  orientation={layout === 'sheet' ? 'horizontal' : 'vertical'}
+                  mapRef={mapRef}
+                  readout={cameraReadout}
+                  tilted={tilted}
+                  onTiltChange={handleTiltChange}
+                  onLocate={() => void handleLocate()}
+                  following={followingLocation}
+                />
+              </Animated.View>
+            )}
+
+            {/* A declined permission is a normal outcome, not an error screen: the
+          map stays fully usable without it, so this says what happened and gets
+          out of the way. Every reason gets its own sentence — the control looks
+          equally dead when the page is http:// or the device cannot fix, and
+          neither of those is the user's doing. */}
+            {locationNotice && !immersive ? (
+              <Animated.View
+                pointerEvents="none"
+                accessibilityRole="alert"
+                className="absolute items-start"
+                style={[
+                  {
+                    bottom: controlsBottom,
+                    left: layout === 'panel' ? undefined : windowEdgeGap(insets.left, 0),
+                    right: sideGap + CONTROLS_COLUMN_WIDTH,
+                  },
+                  // Beside "My location", so it rides the sheet (and the credit) with it.
+                  noticeStyle,
+                ]}
+              >
+                <View className="rounded-radius-12 bg-card px-space-12 py-space-8 shadow-s">
+                  <Text className="text-bodySmall text-muted-foreground">{locationNotice}</Text>
+                </View>
+              </Animated.View>
+            ) : null}
+
+            <CanvasPanel
+              visible={!immersive}
+              handleRef={panelHandle}
+              side={{ from: PANEL_BREAKPOINT, width: PANEL_WIDTH }}
+              topClearance={topChromeHeight + creditLayout + scaleLayout + 12}
+              snap={snap}
+              onSnapChange={setSnap}
+              animatedProgress={sheetProgress}
+              animatedHeight={sheetHeight}
+              header={header}
+              accessibilityLabel={t('search.panel')}
+              testID="explore-panel"
+            >
+              {body}
+            </CanvasPanel>
+          </>
+        </MapChromeLiftContext.Provider>
+      </MapCreditHeightContext.Provider>
+    </BrandedChromeProvider>
+  );
+}
