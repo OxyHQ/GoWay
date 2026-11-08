@@ -77,6 +77,7 @@ COARSE=1 ROOM_WIDTH=320 BASELINE_OUTPUT=packages/frontend/.local/issue-663/brows
 SAFE_AREA='{"top":24,"left":32,"right":20,"bottom":28}' BASELINE_OUTPUT=packages/frontend/.local/issue-663/browser-runs/safe-area node scripts/canvas-pilot/safe-area.mjs
 MODE=light BASELINE_OUTPUT=packages/frontend/.local/issue-663/browser-runs/contrast-light node scripts/canvas-pilot/contrast.mjs
 MODE=dark BASELINE_OUTPUT=packages/frontend/.local/issue-663/browser-runs/contrast-dark node scripts/canvas-pilot/contrast.mjs
+BASELINE_OUTPUT=packages/frontend/.local/issue-663/browser-runs/header-actions node scripts/canvas-pilot/header-actions.mjs
 node scripts/canvas-pilot/measure-contrast.mjs
 ```
 
@@ -86,14 +87,33 @@ override the corresponding local defaults. Restore the mirror before validating
 normal installed packages. The current published dependency cannot provide the
 new Canvas API and is not claimed to pass this candidate's typecheck.
 
+## Responsive map header actions
+
+On 2026-11-09, the GoWay `MapTopBar` action row was revalidated in Chromium
+156.0.8078.4 at 320, 390, 768 and 1440 px, then resized back to 320 px. At 320,
+Ask Alia and Lists remain visible as icon controls and Saved/Contribute stay
+reachable from the overflow menu. At 768 and 1440, all four actions are visible.
+No action wraps or escapes the measured row, and the page reports no browser
+errors. The screenshot and width-by-width measurements are in
+[`header-actions-2026-11-09.json`](./header-actions-2026-11-09.json) and
+[`header-actions-320.png`](./header-actions-320.png).
+
+This is candidate web evidence: the UI used Bloom 17.24.0's built consumer
+mirror and Services 14.14.0 at runtime. The GoWay frontend typecheck also passed
+against Bloom 17.24.0 and Services 14.18.1 candidate declarations through a
+temporary paths override; the normal manifest and lockfile were not changed.
+The complete frontend suite passed 1,880 tests and `expo export --platform
+web` passed on the candidate. This does not replace published-package,
+keyboard, RTL, native, map-camera or TalkBack acceptance.
+
 ## Still pending
 
-Published Bloom adoption and final package gates; header actions still wrap;
-shared placeholder contrast correction and neighbor measurements; actual GoWay
-Android renderer pan/pinch, camera, attribution and keyboard validation; TalkBack
-reading/focus. The separate offline Canvas APK is not a native-map substitute.
-iPhone is deferred by the user. No global visual or accessibility acceptance is
-claimed by this checkpoint.
+Published Bloom adoption and final package gates; shared placeholder contrast
+must be remeasured through the published artifact; actual GoWay Android renderer
+pan/pinch, camera, attribution and keyboard validation; TalkBack reading/focus.
+The separate offline Canvas APK is not a native-map substitute. iPhone is
+deferred by the user. No global visual or accessibility acceptance is claimed
+by this checkpoint.
 
 ## Checkpoint verification
 

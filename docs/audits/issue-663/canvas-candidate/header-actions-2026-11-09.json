@@ -1,0 +1,280 @@
+{
+  "verifiedAt": "2026-11-08T23:45:09.108Z",
+  "browserVersion": "156.0.8078.4",
+  "widths": [
+    {
+      "width": 320,
+      "header": {
+        "x": 0,
+        "width": 320,
+        "height": 60.2
+      },
+      "actions": {
+        "x": 98,
+        "width": 150,
+        "clientWidth": 150
+      },
+      "buttons": [
+        {
+          "label": "Ask Alia",
+          "x": 144,
+          "y": 21.1,
+          "right": 178,
+          "width": 34,
+          "height": 34
+        },
+        {
+          "label": "Organization lists",
+          "x": 178,
+          "y": 21.1,
+          "right": 212,
+          "width": 34,
+          "height": 34
+        },
+        {
+          "label": "More",
+          "x": 212,
+          "y": 21.1,
+          "right": 246,
+          "width": 34,
+          "height": 34
+        }
+      ]
+    },
+    {
+      "width": 390,
+      "header": {
+        "x": 0,
+        "width": 390,
+        "height": 60.2
+      },
+      "actions": {
+        "x": 98,
+        "width": 220,
+        "clientWidth": 220
+      },
+      "buttons": [
+        {
+          "label": "Ask Alia",
+          "x": 148.6,
+          "y": 21.1,
+          "right": 182.6,
+          "width": 34,
+          "height": 34
+        },
+        {
+          "label": "Organization lists",
+          "x": 182.6,
+          "y": 21.1,
+          "right": 216.6,
+          "width": 34,
+          "height": 34
+        },
+        {
+          "label": "Saved",
+          "x": 216.6,
+          "y": 21.1,
+          "right": 282,
+          "width": 65.4,
+          "height": 34
+        },
+        {
+          "label": "More",
+          "x": 282,
+          "y": 21.1,
+          "right": 316,
+          "width": 34,
+          "height": 34
+        }
+      ]
+    },
+    {
+      "width": 768,
+      "header": {
+        "x": 0,
+        "width": 768,
+        "height": 60.2
+      },
+      "actions": {
+        "x": 98,
+        "width": 598,
+        "clientWidth": 598
+      },
+      "buttons": [
+        {
+          "label": "Ask Alia",
+          "x": 397.8,
+          "y": 21.1,
+          "right": 499.7,
+          "width": 101.9,
+          "height": 34
+        },
+        {
+          "label": "Organization lists",
+          "x": 499.7,
+          "y": 21.1,
+          "right": 533.7,
+          "width": 34,
+          "height": 34
+        },
+        {
+          "label": "Saved",
+          "x": 533.7,
+          "y": 21.1,
+          "right": 599.1,
+          "width": 65.4,
+          "height": 34
+        },
+        {
+          "label": "Contribute",
+          "x": 599.1,
+          "y": 21.1,
+          "right": 694,
+          "width": 94.9,
+          "height": 34
+        }
+      ]
+    },
+    {
+      "width": 1440,
+      "header": {
+        "x": 0,
+        "width": 1440,
+        "height": 60.2
+      },
+      "actions": {
+        "x": 98,
+        "width": 1270,
+        "clientWidth": 1270
+      },
+      "buttons": [
+        {
+          "label": "Ask Alia",
+          "x": 1069.8,
+          "y": 21.1,
+          "right": 1171.7,
+          "width": 101.9,
+          "height": 34
+        },
+        {
+          "label": "Organization lists",
+          "x": 1171.7,
+          "y": 21.1,
+          "right": 1205.7,
+          "width": 34,
+          "height": 34
+        },
+        {
+          "label": "Saved",
+          "x": 1205.7,
+          "y": 21.1,
+          "right": 1271.1,
+          "width": 65.4,
+          "height": 34
+        },
+        {
+          "label": "Contribute",
+          "x": 1271.1,
+          "y": 21.1,
+          "right": 1366,
+          "width": 94.9,
+          "height": 34
+        }
+      ]
+    },
+    {
+      "width": 320,
+      "header": {
+        "x": 0,
+        "width": 320,
+        "height": 60.2
+      },
+      "actions": {
+        "x": 98,
+        "width": 150,
+        "clientWidth": 150
+      },
+      "buttons": [
+        {
+          "label": "Ask Alia",
+          "x": 144,
+          "y": 21.1,
+          "right": 178,
+          "width": 34,
+          "height": 34
+        },
+        {
+          "label": "Organization lists",
+          "x": 178,
+          "y": 21.1,
+          "right": 212,
+          "width": 34,
+          "height": 34
+        },
+        {
+          "label": "More",
+          "x": 212,
+          "y": 21.1,
+          "right": 246,
+          "width": 34,
+          "height": 34
+        }
+      ]
+    }
+  ],
+  "narrowOverflow": [
+    "Saved",
+    "Contribute"
+  ],
+  "pageErrors": [],
+  "screenshot": "header-actions-320.png",
+  "consumer": {
+    "repository": "OxyHQ/GoWay",
+    "branch": "feat/issue-663-canvas",
+    "baseCommit": "ef11499"
+  },
+  "subject": {
+    "path": "packages/frontend/features/explore/MapTopBar.tsx",
+    "sha256": "8c58a9ce3ec66c0a0e01373bb96c0dc710ba7bac8dde56992d495b1eecc286eb"
+  },
+  "candidates": {
+    "bloom": {
+      "version": "17.24.0",
+      "sourceCommit": "2d78fdb6e9705c4c991bbf2d8e6e258cd6b5171b",
+      "builtTarballSha256": "90fe8a710f57ecd27f96fa5e2a0e782f930f7264232e88fa42bad6f64c532b4f"
+    },
+    "services": {
+      "version": "14.18.1",
+      "sourceCommit": "244f869d79a968196ab9e6b0d7d3fbc68e87872c",
+      "tarballSha256": "a80b9953d780cdbc9e29d5b3ac2755c8a10f7cdedc936e159d666078beb12deb"
+    }
+  },
+  "runtime": {
+    "servicesVersion": "14.14.0",
+    "bloom": "built consumer mirror 17.24.0"
+  },
+  "checks": {
+    "frontendTests": {
+      "command": "bun run --cwd packages/frontend test",
+      "passed": 1880,
+      "failed": 0,
+      "files": 181
+    },
+    "candidateTypecheck": {
+      "command": "bun x tsc -p packages/frontend/tsconfig.issue663.json --noEmit",
+      "result": "passed",
+      "resolution": "Bloom 17.24.0 built mirror; Services 14.18.1 tarball declarations through a temporary paths override; package.json and bun.lock unchanged"
+    },
+    "webExport": {
+      "command": "bun run --cwd packages/frontend export:web",
+      "result": "passed",
+      "resolution": "Bloom 17.24.0 built consumer mirror; installed Services runtime 14.14.0"
+    }
+  },
+  "screenshotSha256": "6232533a9505a16bc2e8478c37d7e67f7b8511e21a03a65c377704da6ff7f05a",
+  "limitations": [
+    "Focused web action-row acceptance only; does not prove GoWay map camera/gesture/TalkBack acceptance.",
+    "The browser runtime used the Bloom candidate mirror and Services 14.14.0; candidate type declarations were checked separately.",
+    "Published-package installation and native-device acceptance remain pending."
+  ]
+}
