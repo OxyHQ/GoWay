@@ -215,6 +215,9 @@
       },
     },
   },
+  "patchedDependencies": {
+    "@maplibre/maplibre-react-native@11.4.1": "patches/@maplibre%2Fmaplibre-react-native@11.4.1.patch",
+  },
   "overrides": {
     "@oxy.so/bloom": "17.24.0",
     "@oxy.so/contracts": "6.24.0",

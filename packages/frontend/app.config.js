@@ -63,7 +63,7 @@ module.exports = {
     // native change, and the next push to main releases a new Android binary
     // (`.github/workflows/android-release.yml`). A JS-only change keeps it and
     // ships as an OTA update.
-    version: '0.2.0',
+    version: '0.2.1',
     orientation: 'portrait',
     userInterfaceStyle: 'automatic',
     icon: ICON,
