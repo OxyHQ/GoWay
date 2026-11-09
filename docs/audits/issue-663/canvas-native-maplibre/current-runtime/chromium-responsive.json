@@ -1,0 +1,153 @@
+{
+  "browserVersion": "149.0.7827.55",
+  "desktop": {
+    "viewport": {
+      "width": 1440,
+      "height": 900
+    },
+    "panel": {
+      "x": 16,
+      "y": 76,
+      "width": 384,
+      "height": 808,
+      "right": 400,
+      "bottom": 884
+    },
+    "map": {
+      "x": 0,
+      "y": 0,
+      "width": 1440,
+      "height": 900,
+      "right": 1440,
+      "bottom": 900
+    },
+    "handle": {
+      "x": 0,
+      "y": 0,
+      "width": 0,
+      "height": 0,
+      "right": 0,
+      "bottom": 0,
+      "role": "slider",
+      "value": "Half open"
+    },
+    "modalElements": 0,
+    "mapPresent": true,
+    "mapCenter": [
+      2.1686,
+      41.3874
+    ],
+    "mapIdentity": true,
+    "canvasIdentity": true
+  },
+  "desktopPan": {
+    "before": [
+      2.1686,
+      41.3874
+    ],
+    "after": [
+      2.113662179329708,
+      41.38739862523864
+    ],
+    "changed": true
+  },
+  "mobile": {
+    "viewport": {
+      "width": 390,
+      "height": 844
+    },
+    "panel": {
+      "x": 0,
+      "y": 464.20001220703125,
+      "width": 390,
+      "height": 600.9999389648438,
+      "right": 390,
+      "bottom": 1065.199951171875
+    },
+    "map": {
+      "x": 0,
+      "y": 0,
+      "width": 390,
+      "height": 844,
+      "right": 390,
+      "bottom": 844
+    },
+    "handle": {
+      "x": 0,
+      "y": 464.20001220703125,
+      "width": 390,
+      "height": 24,
+      "right": 390,
+      "bottom": 488.20001220703125,
+      "role": "slider",
+      "value": "Half open"
+    },
+    "modalElements": 0,
+    "mapPresent": true,
+    "mapCenter": [
+      2.113662179329708,
+      41.38739862523864
+    ],
+    "mapIdentity": true,
+    "canvasIdentity": true,
+    "visiblePanel": {
+      "top": 464.20001220703125,
+      "bottom": 844,
+      "height": 379.79998779296875
+    }
+  },
+  "mobilePan": {
+    "before": [
+      2.113662179329708,
+      41.38739862523864
+    ],
+    "after": [
+      2.0587270595393647,
+      41.38739808969086
+    ],
+    "changed": true
+  },
+  "afterMobilePan": {
+    "viewport": {
+      "width": 390,
+      "height": 844
+    },
+    "panel": {
+      "x": 0,
+      "y": 464.20001220703125,
+      "width": 390,
+      "height": 600.9999389648438,
+      "right": 390,
+      "bottom": 1065.199951171875
+    },
+    "map": {
+      "x": 0,
+      "y": 0,
+      "width": 390,
+      "height": 844,
+      "right": 390,
+      "bottom": 844
+    },
+    "handle": {
+      "x": 0,
+      "y": 464.20001220703125,
+      "width": 390,
+      "height": 24,
+      "right": 390,
+      "bottom": 488.20001220703125,
+      "role": "slider",
+      "value": "Half open"
+    },
+    "modalElements": 0,
+    "mapPresent": true,
+    "mapCenter": [
+      2.0587270595393647,
+      41.38739808969086
+    ],
+    "mapIdentity": true,
+    "canvasIdentity": true
+  },
+  "pageErrors": [],
+  "blockedRequests": [],
+  "passed": true
+}

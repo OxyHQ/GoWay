@@ -39,6 +39,34 @@ labels and framing.
 - After pan: `pixel8a-expanded-panel-map-pan.png`, SHA-256
   `268d3a7aed433ee181e08e07a0209238b79dfa56a96a8da6ef100a208a3b2247`.
 
-This verifies mobile panel movement and interaction in the released map area.
-It does not verify the desktop sidebar or two-finger pinch; the combined §5
-panel checklist remains incomplete.
+This mobile record verifies panel movement and interaction in the released map
+area; desktop behavior is measured separately below. It does not verify
+two-finger pinch.
+
+## Chromium desktop/mobile composition
+
+I ran the GoWay development web export built by CI run `42552012280` from
+source SHA `7c62521` (Bloom `17.24.0`) with Chromium `149.0.7827.55`:
+
+- At 1440×900, the lateral panel measured x=16, y=76, 384×808 px. The map
+  remained full viewport (1440×900). Dragging the exposed map changed its
+  center from `[2.1686,41.3874]` to `[2.1136621793,41.3873986252]`.
+- Resizing the same page to 390×844 changed the panel to a bottom sheet. Its
+  handle reported `Half open`; the visible sheet region measured y=464.2 to
+  844 px. The MapLibre object and canvas identities were unchanged and the
+  camera center remained at its desktop-pan value.
+- Dragging the map above the mobile sheet changed the center to
+  `[2.0587270595,41.3873980897]` while the panel stayed in place. Neither
+  viewport had an `aria-modal` element; the browser reported no uncaught errors.
+
+The Android captures above verify collapsed/intermediate/expanded handle
+movement on device; this Chromium run verifies the desktop sidebar and retained
+map through a responsive resize. Together they verify the §5 panel criterion.
+The machine-readable measurements are in `chromium-responsive.json`.
+
+- Desktop: `chromium-desktop-sidebar-1440x900.png`, SHA-256
+  `87809ad96cc6e35214543a120936a4fa86c6dc00ccc9f68d57570f1a3075ce3d`.
+- Mobile: `chromium-mobile-sheet-390x844.png`, SHA-256
+  `bf400a5cd97020cc5d9d58666a0e04be139525b06164cd2bd70df1242df0f2d1`.
+- Measurements: `chromium-responsive.json`, SHA-256
+  `d774b999a504e26781c063bba7c3c02c9f0c2123726a6e13856b0d71fcfcceed`.
