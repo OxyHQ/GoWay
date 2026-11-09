@@ -33,6 +33,10 @@ COPY packages/sdk/package.json packages/sdk/
 COPY packages/maps/package.json packages/maps/
 COPY packages/map-service/package.json packages/map-service/
 
+# Bun applies this locked dependency patch during install, so the file must be
+# present in the build context before either dependency installation.
+COPY patches/@maplibre%2Fmaplibre-react-native@11.4.1.patch patches/
+
 # --ignore-scripts skips the root postinstall (it builds the contracts before the
 # source is copied); contracts + backend are built explicitly below.
 RUN bun install --frozen-lockfile --ignore-scripts
@@ -56,6 +60,7 @@ COPY --from=builder /app/packages/frontend/package.json packages/frontend/
 COPY --from=builder /app/packages/sdk/package.json packages/sdk/
 COPY --from=builder /app/packages/maps/package.json packages/maps/
 COPY --from=builder /app/packages/map-service/package.json packages/map-service/
+COPY patches/@maplibre%2Fmaplibre-react-native@11.4.1.patch patches/
 
 # Production dependencies, from the manifests and lockfile alone. It runs
 # BEFORE the build output is copied, so a source-only change reuses this layer
