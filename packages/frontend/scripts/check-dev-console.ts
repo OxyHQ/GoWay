@@ -152,28 +152,28 @@ try {
   });
 
   await step(page, 'drag the sheet up by its body', async () => {
-    const start = (await box(page, 'explore-sheet-handle')).y;
+    const start = (await box(page, 'explore-panel-handle')).y;
     const row = await placeRow(page).boundingBox();
     if (!row) throw new Error('no place row to drag from');
     await drag(page, row.x + row.width / 2, row.y + row.height / 2, 120);
     await page.waitForTimeout(1_000);
-    const raised = (await box(page, 'explore-sheet-handle')).y;
+    const raised = (await box(page, 'explore-panel-handle')).y;
     if (!(raised < start - 100)) throw new Error(`the sheet did not rise (${start} → ${raised})`);
     // The mouse rode the row up with the sheet, so the press may have opened it.
     await backToList(page);
   });
 
   await step(page, 'drag the sheet down by its handle', async () => {
-    const handle = await box(page, 'explore-sheet-handle');
+    const handle = await box(page, 'explore-panel-handle');
     await drag(page, handle.x + handle.width / 2, handle.y + handle.height / 2, 640);
     await page.waitForTimeout(1_000);
-    const lowered = (await box(page, 'explore-sheet-handle')).y;
+    const lowered = (await box(page, 'explore-panel-handle')).y;
     if (!(lowered > handle.y + 100))
       throw new Error(`the sheet did not drop (${handle.y} → ${lowered})`);
   });
 
   await step(page, 'tap the sheet handle', async () => {
-    await page.getByTestId('explore-sheet-handle').click();
+    await page.getByTestId('explore-panel-handle').click();
   });
 
   await step(page, 'open a place and come back', async () => {

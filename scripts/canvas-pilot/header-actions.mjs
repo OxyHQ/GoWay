@@ -61,7 +61,9 @@ try {
     const rows = [...new Set(sample.buttons.map((button) => Math.round(button.y)))];
     assert.equal(rows.length, 1, `${width}px header actions wrapped into ${rows.length} rows`);
     assert(
-      sample.buttons.every((button) => button.right <= sample.actions.x + sample.actions.clientWidth + 1),
+      sample.buttons.every(
+        (button) => button.right <= sample.actions.x + sample.actions.clientWidth + 1,
+      ),
       `${width}px header action escaped its measured row`,
     );
     samples.push(sample);
@@ -70,10 +72,16 @@ try {
   const narrow = samples.at(-1);
   const wide = samples.find((sample) => sample.width === 1440);
   for (const label of ['Ask Alia', 'Organization lists', 'More']) {
-    assert(narrow.buttons.some((button) => button.label === label), `missing narrow action: ${label}`);
+    assert(
+      narrow.buttons.some((button) => button.label === label),
+      `missing narrow action: ${label}`,
+    );
   }
   for (const label of ['Ask Alia', 'Organization lists', 'Saved', 'Contribute']) {
-    assert(wide.buttons.some((button) => button.label === label), `missing wide action: ${label}`);
+    assert(
+      wide.buttons.some((button) => button.label === label),
+      `missing wide action: ${label}`,
+    );
   }
 
   const output = join(run.output, 'header-actions-320.png');
@@ -81,7 +89,10 @@ try {
   await run.page.getByTestId('map-top-bar-actions-overflow').click();
   const menuLabels = await run.page.getByRole('menuitem').allTextContents();
   assert(menuLabels.includes('Saved'), 'Saved action missing from the narrow overflow menu');
-  assert(menuLabels.includes('Contribute'), 'Contribute action missing from the narrow overflow menu');
+  assert(
+    menuLabels.includes('Contribute'),
+    'Contribute action missing from the narrow overflow menu',
+  );
   assert.deepEqual(run.errors, [], `browser errors: ${run.errors.join('; ')}`);
 
   const report = {
