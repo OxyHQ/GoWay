@@ -23,3 +23,22 @@ map chrome. This does not verify the full §5 positioning checklist.
   targets, overlays, TalkBack and iPhone remain separate checks.
 - Screenshot: `pixel8a-keyboard-search.png`, SHA-256
   `9dcd55344ee0493336f6ef3ce0c5d21e710c9d8827821305c0a5dff71c1bc25c`.
+
+## Expanded mobile panel and map input
+
+In the same app/device session, I dragged the live panel handle through three
+positions. The measured panel top was y=1981 px at the starting collapsed
+position, y=1321 px at an intermediate position, and y=756 px when expanded.
+The panel remained a sibling over the full-screen map. With it expanded, a
+single-finger swipe in the still-visible map region moved the map while the
+panel stayed at y=756 px. The before/after screenshots show the changed map
+labels and framing.
+
+- Before pan: `pixel8a-panel-expanded-before-pan.png`, SHA-256
+  `84baeb95ef10369c9b462e63393be73232529241804c65c7a24b74ce7c592647`.
+- After pan: `pixel8a-expanded-panel-map-pan.png`, SHA-256
+  `268d3a7aed433ee181e08e07a0209238b79dfa56a96a8da6ef100a208a3b2247`.
+
+This verifies mobile panel movement and interaction in the released map area.
+It does not verify the desktop sidebar or two-finger pinch; the combined §5
+panel checklist remains incomplete.
