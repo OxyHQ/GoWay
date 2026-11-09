@@ -1,0 +1,18 @@
+{
+  "beforeResize": 11,
+  "afterResize": 11,
+  "afterZoom": 12,
+  "traversal": [
+    "map-controls-tilt",
+    "map-controls-zoom-out",
+    "map-controls-zoom-in"
+  ],
+  "identity": {
+    "map": true,
+    "canvas": true,
+    "input": true
+  },
+  "errors": [],
+  "blocked": [],
+  "locationCalls": 0
+}

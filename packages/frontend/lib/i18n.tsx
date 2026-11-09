@@ -26,6 +26,8 @@ const en: Messages = {
   'map.locationDenied': 'Location is off for GoWay. You can still search and browse the map.',
   'map.resetNorth': 'Reset to north',
   'map.askAlia': 'Ask Alia',
+  'map.actions': 'Map actions',
+  'map.contribute': 'Contribute',
   'map.aliaClientContext':
     'The person is using GoWay, an open map and places app. They are looking at the map, where they can search places, get directions, and read reviews and details of businesses and landmarks.',
   'map.aliaSuggestion.nearby': 'What is worth visiting near me?',
@@ -49,6 +51,8 @@ const es: Messages = {
     'La ubicación está desactivada para GoWay. Puedes seguir buscando y explorando el mapa.',
   'map.resetNorth': 'Orientar al norte',
   'map.askAlia': 'Preguntar a Alia',
+  'map.actions': 'Acciones del mapa',
+  'map.contribute': 'Contribuir',
   'map.aliaClientContext':
     'La persona usa GoWay, una aplicación de mapa y lugares abierta. Está viendo el mapa, donde puede buscar lugares, obtener indicaciones y leer reseñas y detalles de negocios y puntos de interés.',
   'map.aliaSuggestion.nearby': '¿Qué merece la pena visitar cerca de mí?',

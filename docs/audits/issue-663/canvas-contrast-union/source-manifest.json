@@ -1,0 +1,32 @@
+{
+  "gowayBase": "2e9a65e",
+  "bloomSource": "17ed628a",
+  "bloomParts": {
+    "canvas": "9f1fe561",
+    "optics": "fdc3827c"
+  },
+  "bloomPackageVersion": "17.22.0",
+  "publishedAcceptance": false,
+  "declaredBloom": "17.19.3",
+  "lockSha256": "a6d196af70d70aa4d26a16284941a21319058bf7166a8658a049530855127425",
+  "mirrorFiles": {
+    "lib/module/canvas/CanvasPanelBase.js": "80d145f0c29a47b2a65a49b744d2a1a88e6f0220ed120e0bdceb1e9506efe6cd",
+    "lib/module/map-controls/MapControls.js": "c71e5b40189062a6ce9edbf8398f435733a18cd8a57d27e7bcccbc94646779e5",
+    "lib/module/text-field/shared.js": "f7845c01a647761c9d67307010d69427e63234e529c1c29c9b2a2bb94a123577",
+    "lib/module/text-field/TextField.js": "6d3f54edbb997cc09e97da336b6b6737816485108f5edb660ffaeed68c0212ab",
+    "lib/module/surface/body-backing.js": "239b840c53c2982b82408c953774b0a422c9f378ff038c4dc0c38268512c468d",
+    "lib/module/surface/optics.js": "91f7e3401fb8141caf500ccca26a30efd3ce8cef6695f7760ab6fac9eea99879",
+    "package.json": "f4d81327a8f87bef56fcca501801337fbd442704ecc68af32e692b40196c859b"
+  },
+  "comparatorSha256": "013443aab35264716517cfbfbd4b1b9bee4bff5dcfb427e0db585f672659a0e5",
+  "browser": "Chromium 1248",
+  "samples": 84,
+  "changedPlaceholders": 2,
+  "changedNeighbors": 0,
+  "worsened": 0,
+  "nativeStatus": "Separate APK bridge compatibility work; map interactions/TalkBack not accepted",
+  "mirrorRestoredBeforeCommit": true,
+  "comparisonBaseline": "../canvas-contrast/results.json",
+  "mirrorResolvedAtCapture": "/home/nate/Oxy/GoWay/.worktrees/issue-663-canvas/packages/frontend/bloom-local/bloom-local/node_modules/@oxy.so/bloom",
+  "installedAfterRestore": "17.19.3"
+}

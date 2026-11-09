@@ -47,3 +47,6 @@ yarn-error.*
 
 # Screenshots of the 3D city visibility gate (check:city3d-visible).
 .city3d-visible/
+
+# Local verification output (durable evidence lives in docs/audits).
+.local/

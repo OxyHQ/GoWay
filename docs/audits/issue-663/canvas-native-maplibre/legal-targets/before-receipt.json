@@ -1,0 +1,14 @@
+[
+  {
+    "file": "legal-targets-before-log.txt",
+    "sha256": "3fd4260b3a6b7a30c24cd4f4a44d494f6f07c2d518fd4192d5acca04146c20f3"
+  },
+  {
+    "file": "legal-targets-before-test.txt",
+    "sha256": "2996ffe02d49593843cada85ddf476c2b505cdda25ef41d055d2c71f21d377e7"
+  },
+  {
+    "file": "legal-expanded-before.png",
+    "sha256": "2ac2ec85a87833142335b165e4fce426898932fc2dcd4e8484ea0fa5541bca28"
+  }
+]

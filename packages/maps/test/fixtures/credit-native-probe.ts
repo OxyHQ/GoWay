@@ -7,11 +7,14 @@ let shared: { set: (value: unknown) => void } | null = null;
 const element = (type: unknown, props: unknown) => ({ type, props });
 mock.module('react', () => ({
   memo: (value: unknown) => value,
+  useRef: (value: unknown) => ({ current: value }),
+  useEffect: (effect: () => void) => effect(),
   useCallback: (value: unknown) => value,
 }));
 mock.module('react/jsx-runtime', () => ({ jsx: element, jsxs: element, Fragment: 'Fragment' }));
 mock.module('react/jsx-dev-runtime', () => ({ jsxDEV: element, Fragment: 'Fragment' }));
 mock.module('react-native', () => ({
+  Platform: { select: (options: Record<string, unknown>) => options.android },
   View: 'View',
   Pressable: 'Pressable',
   Linking: { openURL: async () => {} },
@@ -27,6 +30,7 @@ mock.module('@oxy.so/bloom/icons/RiInformationLine', () => ({ RiInformationLine:
 mock.module('@oxy.so/bloom/theme', () => ({
   useTheme: () => ({ colors: { text: 'black', textSecondary: 'gray', card: 'white' } }),
 }));
+mock.module('@oxy.so/bloom/button', () => ({ Button: 'Button' }));
 mock.module('@oxy.so/bloom/typography', () => ({ Text: 'Text' }));
 const src = resolve(import.meta.dir, '../../src');
 mock.module(resolve(src, 'brand/BrandedChrome.tsx'), () => ({ useBrandedChrome: () => false }));

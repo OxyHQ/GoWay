@@ -6,7 +6,7 @@
  *
  * It CLAIMS the bottom edge with its measured height, so the map's credit and
  * mark (`MapAttribution`, `MapBrand`) rise above it instead of being covered —
- * the same mechanism `MapSheet` uses, and the reason the attribution is never
+ * the same mechanism `CanvasPanel` uses, and the reason the attribution is never
  * something a new overlay can hide.
  */
 import { type ReactNode, useState } from 'react';

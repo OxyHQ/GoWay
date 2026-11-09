@@ -1,0 +1,304 @@
+{
+  "verifiedAt": "2026-11-08T22:38:34.017764+00:00",
+  "device": "Google Pixel 8a",
+  "androidVersion": "16",
+  "densityDpi": 420,
+  "screenResolution": "1080x2400",
+  "appId": "to.goway.app",
+  "mapSource": "openfreemap (runtime override to avoid the unrelated native hillshade failure)",
+  "bloomCandidate": "17.24.0",
+  "suite": "all four target edges and center of both legal links; fresh UI hierarchy after each browser return",
+  "results": [
+    {
+      "label": "© OpenMapTiles",
+      "point": "top",
+      "x": 284,
+      "y": 1043,
+      "bounds": [
+        133,
+        1042,
+        435,
+        1168
+      ],
+      "widthPx": 302,
+      "heightPx": 126,
+      "minTargetDpAtPixelDensity2_625": 48.0,
+      "containerBounds": [
+        21,
+        1037,
+        1059,
+        1310
+      ],
+      "openedExpectedBrowser": true,
+      "launchLog": "         1794177453.878  1450  2193 I ActivityTaskManager: START u0 {act=android.intent.action.VIEW dat=https://www.openmaptiles.org/... xflg=0x4 cmp=org.lineageos.jelly/.MainActivity (has extras)} with LAUNCH_SINGLE_TASK from uid 10245 (to.goway.app) (sr=20897754) (BAL_ALLOW_VISIBLE_WINDOW) result code=0",
+      "freshAfterReturnBounds": [
+        133,
+        1042,
+        435,
+        1168
+      ]
+    },
+    {
+      "label": "© OpenMapTiles",
+      "point": "center",
+      "x": 284,
+      "y": 1105,
+      "bounds": [
+        133,
+        1042,
+        435,
+        1168
+      ],
+      "widthPx": 302,
+      "heightPx": 126,
+      "minTargetDpAtPixelDensity2_625": 48.0,
+      "containerBounds": [
+        21,
+        1037,
+        1059,
+        1310
+      ],
+      "openedExpectedBrowser": true,
+      "launchLog": "         1794177460.002  1450  1491 I ActivityTaskManager: START u0 {act=android.intent.action.VIEW dat=https://www.openmaptiles.org/... xflg=0x4 cmp=org.lineageos.jelly/.MainActivity (has extras)} with LAUNCH_SINGLE_TASK from uid 10245 (to.goway.app) (sr=142805008) (BAL_ALLOW_VISIBLE_WINDOW) result code=0",
+      "freshAfterReturnBounds": [
+        133,
+        1042,
+        435,
+        1168
+      ]
+    },
+    {
+      "label": "© OpenMapTiles",
+      "point": "bottom",
+      "x": 284,
+      "y": 1166,
+      "bounds": [
+        133,
+        1042,
+        435,
+        1168
+      ],
+      "widthPx": 302,
+      "heightPx": 126,
+      "minTargetDpAtPixelDensity2_625": 48.0,
+      "containerBounds": [
+        21,
+        1037,
+        1059,
+        1310
+      ],
+      "openedExpectedBrowser": true,
+      "launchLog": "         1794177466.270  1450  1491 I ActivityTaskManager: START u0 {act=android.intent.action.VIEW dat=https://www.openmaptiles.org/... xflg=0x4 cmp=org.lineageos.jelly/.MainActivity (has extras)} with LAUNCH_SINGLE_TASK from uid 10245 (to.goway.app) (sr=226577035) (BAL_ALLOW_VISIBLE_WINDOW) result code=0",
+      "freshAfterReturnBounds": [
+        133,
+        1042,
+        435,
+        1168
+      ]
+    },
+    {
+      "label": "© OpenMapTiles",
+      "point": "left",
+      "x": 134,
+      "y": 1105,
+      "bounds": [
+        133,
+        1042,
+        435,
+        1168
+      ],
+      "widthPx": 302,
+      "heightPx": 126,
+      "minTargetDpAtPixelDensity2_625": 48.0,
+      "containerBounds": [
+        21,
+        1037,
+        1059,
+        1310
+      ],
+      "openedExpectedBrowser": true,
+      "launchLog": "         1794177472.800  1450  2335 I ActivityTaskManager: START u0 {act=android.intent.action.VIEW dat=https://www.openmaptiles.org/... xflg=0x4 cmp=org.lineageos.jelly/.MainActivity (has extras)} with LAUNCH_SINGLE_TASK from uid 10245 (to.goway.app) (sr=90746877) (BAL_ALLOW_VISIBLE_WINDOW) result code=0",
+      "freshAfterReturnBounds": [
+        133,
+        1042,
+        435,
+        1168
+      ]
+    },
+    {
+      "label": "© OpenMapTiles",
+      "point": "right",
+      "x": 433,
+      "y": 1105,
+      "bounds": [
+        133,
+        1042,
+        435,
+        1168
+      ],
+      "widthPx": 302,
+      "heightPx": 126,
+      "minTargetDpAtPixelDensity2_625": 48.0,
+      "containerBounds": [
+        21,
+        1037,
+        1059,
+        1310
+      ],
+      "openedExpectedBrowser": true,
+      "launchLog": "         1794177479.071  1450 17634 I ActivityTaskManager: START u0 {act=android.intent.action.VIEW dat=https://www.openmaptiles.org/... xflg=0x4 cmp=org.lineageos.jelly/.MainActivity (has extras)} with LAUNCH_SINGLE_TASK from uid 10245 (to.goway.app) (sr=139258619) (BAL_ALLOW_VISIBLE_WINDOW) result code=0",
+      "freshAfterReturnBounds": [
+        133,
+        1042,
+        435,
+        1168
+      ]
+    },
+    {
+      "label": "© OpenStreetMap",
+      "point": "top",
+      "x": 609,
+      "y": 1043,
+      "bounds": [
+        446,
+        1042,
+        773,
+        1168
+      ],
+      "widthPx": 327,
+      "heightPx": 126,
+      "minTargetDpAtPixelDensity2_625": 48.0,
+      "containerBounds": [
+        21,
+        1037,
+        1059,
+        1310
+      ],
+      "openedExpectedBrowser": true,
+      "launchLog": "         1794177485.326  1450  5086 I ActivityTaskManager: START u0 {act=android.intent.action.VIEW dat=https://www.openstreetmap.org/... xflg=0x4 cmp=org.lineageos.jelly/.MainActivity (has extras)} with LAUNCH_SINGLE_TASK from uid 10245 (to.goway.app) (sr=244303537) (BAL_ALLOW_VISIBLE_WINDOW) result code=0",
+      "freshAfterReturnBounds": [
+        446,
+        1042,
+        773,
+        1168
+      ]
+    },
+    {
+      "label": "© OpenStreetMap",
+      "point": "center",
+      "x": 609,
+      "y": 1105,
+      "bounds": [
+        446,
+        1042,
+        773,
+        1168
+      ],
+      "widthPx": 327,
+      "heightPx": 126,
+      "minTargetDpAtPixelDensity2_625": 48.0,
+      "containerBounds": [
+        21,
+        1037,
+        1059,
+        1310
+      ],
+      "openedExpectedBrowser": true,
+      "launchLog": "         1794177491.858  1450 18342 I ActivityTaskManager: START u0 {act=android.intent.action.VIEW dat=https://www.openstreetmap.org/... xflg=0x4 cmp=org.lineageos.jelly/.MainActivity (has extras)} with LAUNCH_SINGLE_TASK from uid 10245 (to.goway.app) (sr=264242396) (BAL_ALLOW_VISIBLE_WINDOW) result code=0",
+      "freshAfterReturnBounds": [
+        446,
+        1042,
+        773,
+        1168
+      ]
+    },
+    {
+      "label": "© OpenStreetMap",
+      "point": "bottom",
+      "x": 609,
+      "y": 1166,
+      "bounds": [
+        446,
+        1042,
+        773,
+        1168
+      ],
+      "widthPx": 327,
+      "heightPx": 126,
+      "minTargetDpAtPixelDensity2_625": 48.0,
+      "containerBounds": [
+        21,
+        1037,
+        1059,
+        1310
+      ],
+      "openedExpectedBrowser": true,
+      "launchLog": "         1794177498.082  1450  1492 I ActivityTaskManager: START u0 {act=android.intent.action.VIEW dat=https://www.openstreetmap.org/... xflg=0x4 cmp=org.lineageos.jelly/.MainActivity (has extras)} with LAUNCH_SINGLE_TASK from uid 10245 (to.goway.app) (sr=157664132) (BAL_ALLOW_VISIBLE_WINDOW) result code=0",
+      "freshAfterReturnBounds": [
+        446,
+        1042,
+        773,
+        1168
+      ]
+    },
+    {
+      "label": "© OpenStreetMap",
+      "point": "left",
+      "x": 447,
+      "y": 1105,
+      "bounds": [
+        446,
+        1042,
+        773,
+        1168
+      ],
+      "widthPx": 327,
+      "heightPx": 126,
+      "minTargetDpAtPixelDensity2_625": 48.0,
+      "containerBounds": [
+        21,
+        1037,
+        1059,
+        1310
+      ],
+      "openedExpectedBrowser": true,
+      "launchLog": "         1794177504.627  1450  5086 I ActivityTaskManager: START u0 {act=android.intent.action.VIEW dat=https://www.openstreetmap.org/... xflg=0x4 cmp=org.lineageos.jelly/.MainActivity (has extras)} with LAUNCH_SINGLE_TASK from uid 10245 (to.goway.app) (sr=135559965) (BAL_ALLOW_VISIBLE_WINDOW) result code=0",
+      "freshAfterReturnBounds": [
+        446,
+        1042,
+        773,
+        1168
+      ]
+    },
+    {
+      "label": "© OpenStreetMap",
+      "point": "right",
+      "x": 771,
+      "y": 1105,
+      "bounds": [
+        446,
+        1042,
+        773,
+        1168
+      ],
+      "widthPx": 327,
+      "heightPx": 126,
+      "minTargetDpAtPixelDensity2_625": 48.0,
+      "containerBounds": [
+        21,
+        1037,
+        1059,
+        1310
+      ],
+      "openedExpectedBrowser": true,
+      "launchLog": "         1794177511.484  1450 17634 I ActivityTaskManager: START u0 {act=android.intent.action.VIEW dat=https://www.openstreetmap.org/... xflg=0x4 cmp=org.lineageos.jelly/.MainActivity (has extras)} with LAUNCH_SINGLE_TASK from uid 10245 (to.goway.app) (sr=169081095) (BAL_ALLOW_VISIBLE_WINDOW) result code=0",
+      "freshAfterReturnBounds": [
+        446,
+        1042,
+        773,
+        1168
+      ]
+    }
+  ],
+  "result": "passed"
+}

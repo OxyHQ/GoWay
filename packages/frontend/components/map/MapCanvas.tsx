@@ -59,6 +59,7 @@ import { useSunLight } from './useSunLight';
 export const MapCanvas = forwardRef<MapApi, MapCanvasProps>(function MapCanvas(
   {
     initialViewport = DEFAULT_VIEWPORT,
+    backgroundComponent,
     appearance,
     mapStyle,
     lightPreset,
@@ -225,6 +226,7 @@ export const MapCanvas = forwardRef<MapApi, MapCanvasProps>(function MapCanvas(
   return (
     <View style={[styles.root, style]} testID={testID}>
       <MapView
+        backgroundComponent={backgroundComponent}
         ref={mapRef}
         style={StyleSheet.absoluteFill}
         mapStyle={styleUrl}

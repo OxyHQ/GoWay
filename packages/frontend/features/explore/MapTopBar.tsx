@@ -14,10 +14,11 @@
  */
 import { useCallback, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'expo-router';
-import { Button, GlyphButton } from '@oxy.so/bloom/button';
 import { RiListUnordered } from '@oxy.so/bloom/icons/RiListUnordered';
 import { Pressable, View } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useCanvasRegion } from '@oxy.so/bloom/canvas';
+import { HeaderActions, type HeaderAction } from '@oxy.so/bloom/page-header';
+import { canvasChromeInsets } from '@/lib/map/canvas-policy';
 import { useOxy } from '@oxy.so/services/ui/client';
 import { getNormalizedUserHandle } from '@oxy.so/core';
 import { Avatar } from '@oxy.so/bloom/avatar';
@@ -44,7 +45,7 @@ export function MapTopBar() {
   const router = useRouter();
   const { t } = useTranslation();
   const theme = useTheme();
-  const insets = useSafeAreaInsets();
+  const insets = canvasChromeInsets(useCanvasRegion());
   const gate = useAuthGate();
   const { user, openAccountDialog } = useOxy();
 
@@ -62,7 +63,8 @@ export function MapTopBar() {
   useClaimTopEdge(height);
 
   const topGap = windowEdgeGap(insets.top);
-  const sideGap = windowEdgeGap(Math.max(insets.left, insets.right), 0);
+  const leftGap = windowEdgeGap(insets.left, 0);
+  const rightGap = windowEdgeGap(insets.right, 0);
 
   const handle = (user && getNormalizedUserHandle(user)) || '';
   const displayName = user?.name?.displayName?.trim() || handle;
@@ -76,13 +78,55 @@ export function MapTopBar() {
     gate.run(() => aliaChatRef.current?.present());
   }, [gate]);
 
+  const actions = useMemo<readonly HeaderAction[]>(
+    () => [
+      {
+        id: 'ask-alia',
+        label: t('map.askAlia'),
+        icon: AliaAvatarIcon,
+        onPress: handleAskAlia,
+        group: 'discovery',
+        priority: 30,
+      },
+      {
+        id: 'lists',
+        label: t('lists.title'),
+        icon: RiListUnordered,
+        onPress: () => router.push('/lists'),
+        group: 'browse',
+        priority: 20,
+        labelVisibility: 'hidden',
+      },
+      {
+        id: 'saved',
+        label: t('saved.title'),
+        onPress: () => router.push('/saved'),
+        group: 'browse',
+        priority: 10,
+      },
+      {
+        id: 'contribute',
+        label: t('map.contribute'),
+        onPress: () => router.push('/contribute'),
+        group: 'browse',
+      },
+    ],
+    [handleAskAlia, router, t],
+  );
+
   return (
     <>
       <View
+        testID="map-top-bar"
         pointerEvents="box-none"
         onLayout={(event) => setHeight(event.nativeEvent.layout.height)}
         className="absolute left-0 right-0 top-0 flex-row items-center justify-between gap-space-12"
-        style={{ paddingTop: topGap, paddingHorizontal: sideGap, paddingBottom: 0 }}
+        style={{
+          paddingTop: topGap,
+          paddingLeft: leftGap,
+          paddingRight: rightGap,
+          paddingBottom: 0,
+        }}
       >
         {/* The logo, not the word, and standing on the map rather than on a
           plate. Both follow from the artwork: it is a sticker whose heavy
@@ -93,28 +137,12 @@ export function MapTopBar() {
           `t('map.title')` stays as the accessible label — the logo is the app's
           name drawn rather than typed, and a screen reader should hear a name. */}
         <GowayLogo width={BRAND_WIDTH} label={t('map.title')} />
-        <View className="flex-1 flex-row flex-wrap items-center justify-end gap-space-8">
-          <Button
-            size="sm"
-            appearance="outline"
-            leadingIcon={AliaAvatarIcon}
-            onPress={handleAskAlia}
-          >
-            {t('map.askAlia')}
-          </Button>
-          <GlyphButton
-            icon={RiListUnordered}
-            accessibilityLabel={t('lists.title')}
-            size={36}
-            onPress={() => router.push('/lists')}
-          />
-          <Button size="sm" appearance="outline" onPress={() => router.push('/saved')}>
-            {t('saved.title')}
-          </Button>
-          <Button size="sm" appearance="outline" onPress={() => router.push('/contribute')}>
-            Contribute
-          </Button>
-        </View>
+        <HeaderActions
+          actions={actions}
+          accessibilityLabel={t('map.actions')}
+          style={{ flex: 1, minWidth: 0, flexDirection: 'row', justifyContent: 'flex-end' }}
+          testID="map-top-bar-actions"
+        />
 
         <Pressable
           accessibilityRole="button"

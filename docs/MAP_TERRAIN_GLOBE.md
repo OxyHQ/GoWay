@@ -500,8 +500,16 @@ and nothing in its Android or iOS sources sets one. So:
   and a `hillshade` layer exist in 11.4, so `MapCanvas.native.tsx` draws the
   same `hillshadeLayer()` under `water` — on by default like the web, switched
   off with the `terrain` map feature. Its style-spec `paint` reaches native through
-  the wrapper's own kebab→camel conversion (`nativeHillshade.test.ts`).
-  Type-checked; **not yet verified on a device**.
+  the wrapper's own kebab→camel conversion (`nativeHillshade.test.ts`). The
+  wrapper's 11.4.1 Android bridge treated scalar hillshade direction/colour
+  values as arrays and crashed; GoWay patches that bridge at the package level
+  to normalize scalar direction/altitude and scalar colours while preserving
+  expressions. Verified on a Google Pixel 8a (Android 16) with the native debug
+  build on 2026-11-09: hillshade rendered over Barcelona, the map panned, and
+  the non-modal sheet expanded and scrolled without unmounting the map. No
+  hillshade bridge exception or MapLibre native crash appeared in logcat.
+  [Pixel 8a capture](./evidence/issue-663-pixel8a-android-2026-11-09.png).
+  iOS remains unverified.
 
 ## What it costs
 

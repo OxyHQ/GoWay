@@ -7,7 +7,8 @@
  * one. It re-renders on its own value alone (`cameraStore.ts`), never with the
  * screen around the map.
  */
-import { memo } from 'react';
+import { memo, useEffect, useRef } from 'react';
+import { View } from 'react-native';
 import { useBottomEdgeInset } from '@oxy.so/bloom/layout';
 import { useBloomLocale } from '@oxy.so/bloom/locale';
 import { MapScaleBar } from '@oxy.so/bloom/map-attribution';
@@ -35,6 +36,10 @@ function MapScaleComponent({ creditHeight }: { creditHeight: number }) {
   );
   const bottomEdge = useBottomEdgeInset();
   const chromeLift = useMapChromeLift();
+  const measuredHeight = useRef(0);
+  useEffect(() => {
+    chromeLift?.onChromeLayout?.('scale', measuredHeight.current);
+  }, [chromeLift?.onChromeLayout]);
   // Above the mark where it is drawn; the corner is free where the app's own
   // chrome carries the logo instead.
   const brandDrawn = !useBrandedChrome();
@@ -49,10 +54,17 @@ function MapScaleComponent({ creditHeight }: { creditHeight: number }) {
       lift={chromeLift}
       style={{ bottom: clearance > 0 ? base + clearance + CREDIT_GAP : base }}
     >
-      <MapScaleBar
-        scales={[{ width: reading.width, label: formatScale(reading, locale) }]}
-        testID="map-scale"
-      />
+      <View
+        onLayout={(event) => {
+          measuredHeight.current = event.nativeEvent.layout.height;
+          chromeLift?.onChromeLayout?.('scale', measuredHeight.current);
+        }}
+      >
+        <MapScaleBar
+          scales={[{ width: reading.width, label: formatScale(reading, locale) }]}
+          testID="map-scale"
+        />
+      </View>
     </LiftedBox>
   );
 }

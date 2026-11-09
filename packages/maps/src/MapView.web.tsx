@@ -19,6 +19,7 @@
  * main thread can never be different releases.
  */
 import {
+  Fragment,
   type ComponentRef,
   forwardRef,
   type ReactNode,
@@ -106,6 +107,7 @@ export const MapView = forwardRef<MapViewRef, MapViewProps>(function MapView(pro
     style,
     testID,
     children,
+    backgroundComponent: Background = Fragment,
   } = props;
   const theme = useTheme();
 
@@ -380,23 +382,25 @@ export const MapView = forwardRef<MapViewRef, MapViewProps>(function MapView(pro
   return (
     <MapCameraContext.Provider value={cameraStore}>
       <View style={[styles.root, style]} testID={testID}>
-        {/* `flex: 1`, not an absolute fill: maplibre-gl's own stylesheet makes its
+        <Background>
+          {/* `flex: 1`, not an absolute fill: maplibre-gl's own stylesheet makes its
           container `position: relative`, which would collapse an absolute box
           with no height of its own to nothing. */}
-        <View key={engineKey} ref={attachEngine} style={styles.engine} />
-        <MapRefContext.Provider value={api}>
-          <EngineChildren
-            engine={engine}
-            zoomLevel={zoomLevel}
-            camera={camera}
-            appliedCamera={appliedCamera}
-            light={light}
-            interaction={interaction}
-            maxPitch={maxPitch}
-          >
-            {children}
-          </EngineChildren>
-        </MapRefContext.Provider>
+          <View key={engineKey} ref={attachEngine} style={styles.engine} />
+          <MapRefContext.Provider value={api}>
+            <EngineChildren
+              engine={engine}
+              zoomLevel={zoomLevel}
+              camera={camera}
+              appliedCamera={appliedCamera}
+              light={light}
+              interaction={interaction}
+              maxPitch={maxPitch}
+            >
+              {children}
+            </EngineChildren>
+          </MapRefContext.Provider>
+        </Background>
         {/* Both unconditional, with no prop to turn either off: the mark and the
           credit are on every map (`MapBrand.tsx`, `MapAttribution.tsx`). */}
         <MapBrand />

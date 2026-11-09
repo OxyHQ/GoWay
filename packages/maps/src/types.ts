@@ -7,7 +7,7 @@
  * hemisphere rather than an error, so the one place it becomes an engine's
  * order is inside this package (`shared.ts`).
  */
-import type { ReactNode } from 'react';
+import type { ComponentType, ReactNode } from 'react';
 import type { StyleProp, ViewStyle } from 'react-native';
 import type { MapLightPreset } from '@goway.to/sdk/map';
 import type { GeoBoundingBox, GeoCoordinate } from '@goway.to/sdk/geo';
@@ -208,6 +208,8 @@ export interface MapViewRef {
 }
 
 export interface MapViewProps {
+  /** Wrap only the stable renderer/layers; credit and controls remain sibling chrome. */
+  backgroundComponent?: ComponentType<{ children: ReactNode }>;
   /**
    * The style: a `goway://styles/<id>` name (default `goway://styles/standard`),
    * any MapLibre style URL, or a style document. A GoWay style follows the

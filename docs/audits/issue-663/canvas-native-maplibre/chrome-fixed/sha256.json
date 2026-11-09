@@ -1,0 +1,14 @@
+{
+  "CanvasMapProbeTest.kt": "926deda28ef535a04a161a91ed46d73f877ea9c672ed154f9473235c933a9277",
+  "README.md": "1d73ee4d5cdeb11f83b114a3fd1a8f19f2bfc96b7b1042bc006df81b1c6942c0",
+  "back.png": "fe67b1a81ccd48776876fbc1472391daf660d0d0f1ec257d9f1f8dab612cc9ff",
+  "detent-0.png": "afc43f8baf2b3efa5ebd19d51adf1e62b504d4f5c9e710fbedbb969dabcfe4db",
+  "device-after-chrome-fix.txt": "798304617c6c21d4bcc75406713cfe1fbec4c02f7b3ed3c30eeb099f7346edfa",
+  "ime.png": "bb4f35ea476052a39ce426d969f815eafbb4915785653b856b13efbd9d5fd385",
+  "initial.png": "7bf8f539e9a9dffe25037762576e5bec1d3099b4e82a7f73efdf7bdfa7e73408",
+  "manifest.json": "3b80effe60189de9a1cd58fd6e8f7f1a1811c739297261c5ab100931e9932e28",
+  "packaged-chrome-fixed-log.txt": "09689adafa10e0ee6f1589a4211266e0387a86f91092ea8e21e54cc2dbc09905",
+  "packaged-chrome-fixed-test.txt": "8a4a6d398fa5b880a037ddc430650b10dddddc07ba87ec80324636a003edfbe6",
+  "pinch.png": "189a6269eebf135e69185e06054c562db3599b1e0419847774dde576b14321c2",
+  "source.patch": "25c6bc5606c031b551fd472ee82e658779c3927019162c2ba8d2f7a0f9e966ef"
+}

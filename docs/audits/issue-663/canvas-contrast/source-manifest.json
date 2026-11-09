@@ -1,0 +1,42 @@
+{
+  "gowayBase": "58dd79e",
+  "bloomSource": "ddd2b048",
+  "bloomParts": {
+    "canvas": "b0b27845",
+    "surfacePrototype": "a14ddf22",
+    "fieldCorrection": "0d21ec4c"
+  },
+  "bloomPackageVersion": "17.22.0",
+  "publishedAcceptance": false,
+  "declaredBloom": "17.19.3",
+  "lockSha256": "a6d196af70d70aa4d26a16284941a21319058bf7166a8658a049530855127425",
+  "mirrorFiles": {
+    "lib/module/canvas/CanvasPanelBase.js": "80d145f0c29a47b2a65a49b744d2a1a88e6f0220ed120e0bdceb1e9506efe6cd",
+    "lib/module/map-controls/MapControls.js": "c71e5b40189062a6ce9edbf8398f435733a18cd8a57d27e7bcccbc94646779e5",
+    "lib/module/text-field/shared.js": "f7845c01a647761c9d67307010d69427e63234e529c1c29c9b2a2bb94a123577",
+    "lib/module/text-field/TextField.js": "6d3f54edbb997cc09e97da336b6b6737816485108f5edb660ffaeed68c0212ab",
+    "lib/module/surface/body-backing.js": "6279444726672c913f1a3b685f4b74a6ada9497a7ce5958ff289a7dd11db237e",
+    "lib/module/surface/optics.js": "91f7e3401fb8141caf500ccca26a30efd3ce8cef6695f7760ab6fac9eea99879",
+    "package.json": "a5a48bcec80e3527ee0cdb29eb3a837438fba14f78ede4d48db4a007ca7f4e2b"
+  },
+  "comparatorSha256": "013443aab35264716517cfbfbd4b1b9bee4bff5dcfb427e0db585f672659a0e5",
+  "browser": "Chromium 1248",
+  "samples": 84,
+  "changedPlaceholders": 4,
+  "changedNeighbors": 0,
+  "worsened": 0,
+  "nativeStatus": "Android bundle only; APK/device/TalkBack not run",
+  "androidBundle": {
+    "httpStatus": 200,
+    "modules": 5027,
+    "sizeBytes": 86880648,
+    "sha256": "9a2ee2dc0ee2af6f1e98ccf8193ce496be7f561c2093b601497c3b5e3763e7d6",
+    "reactCompilerOptIn": true,
+    "presetResolved": "6.5.0"
+  },
+  "mirrorRestoredBeforeCommit": true,
+  "installedAfterRestore": {
+    "frontend": "17.19.3",
+    "maps": "17.19.3"
+  }
+}

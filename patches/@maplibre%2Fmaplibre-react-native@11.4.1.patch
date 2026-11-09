@@ -1,0 +1,83 @@
+diff --git a/android/src/main/java/org/maplibre/reactnative/components/layer/style/MLRNStyleFactory.kt b/android/src/main/java/org/maplibre/reactnative/components/layer/style/MLRNStyleFactory.kt
+index 63089a9bc9a6f78c813a1fa7c9afd1ca67f8507a..f044e1f4a1aa9d7966bab4f220549f992ef2a4b1 100644
+--- a/android/src/main/java/org/maplibre/reactnative/components/layer/style/MLRNStyleFactory.kt
++++ b/android/src/main/java/org/maplibre/reactnative/components/layer/style/MLRNStyleFactory.kt
+@@ -2828,7 +2828,7 @@ object MLRNStyleFactory {
+         if (styleValue.isExpression()) {
+             layer.setProperties(PropertyFactory.hillshadeIlluminationDirection(styleValue.getExpression()))
+         } else {
+-            layer.setProperties(PropertyFactory.hillshadeIlluminationDirection(styleValue.getFloatArray(VALUE_KEY)))
++            layer.setProperties(PropertyFactory.hillshadeIlluminationDirection(styleValue.getFloatArrayOrScalar(VALUE_KEY)))
+         }
+     }
+ 
+@@ -2839,7 +2839,7 @@ object MLRNStyleFactory {
+         if (styleValue.isExpression()) {
+             layer.setProperties(PropertyFactory.hillshadeIlluminationAltitude(styleValue.getExpression()))
+         } else {
+-            layer.setProperties(PropertyFactory.hillshadeIlluminationAltitude(styleValue.getFloatArray(VALUE_KEY)))
++            layer.setProperties(PropertyFactory.hillshadeIlluminationAltitude(styleValue.getFloatArrayOrScalar(VALUE_KEY)))
+         }
+     }
+ 
+@@ -2882,7 +2882,7 @@ object MLRNStyleFactory {
+         if (styleValue.isExpression()) {
+             layer.setProperties(PropertyFactory.hillshadeShadowColor(styleValue.getExpression()))
+         } else {
+-            layer.setProperties(PropertyFactory.hillshadeShadowColor(styleValue.getStringArray(VALUE_KEY)))
++            layer.setProperties(PropertyFactory.hillshadeShadowColor(styleValue.getColorArray(VALUE_KEY)))
+         }
+     }
+ 
+@@ -2903,7 +2903,7 @@ object MLRNStyleFactory {
+         if (styleValue.isExpression()) {
+             layer.setProperties(PropertyFactory.hillshadeHighlightColor(styleValue.getExpression()))
+         } else {
+-            layer.setProperties(PropertyFactory.hillshadeHighlightColor(styleValue.getStringArray(VALUE_KEY)))
++            layer.setProperties(PropertyFactory.hillshadeHighlightColor(styleValue.getColorArray(VALUE_KEY)))
+         }
+     }
+ 
+diff --git a/android/src/main/java/org/maplibre/reactnative/components/layer/style/MLRNStyleValue.kt b/android/src/main/java/org/maplibre/reactnative/components/layer/style/MLRNStyleValue.kt
+index 33264cd381f6d0447aac9e50bd85492b17685555..233a7092690c9365abae14880962c9c8041a5f20 100644
+--- a/android/src/main/java/org/maplibre/reactnative/components/layer/style/MLRNStyleValue.kt
++++ b/android/src/main/java/org/maplibre/reactnative/components/layer/style/MLRNStyleValue.kt
+@@ -7,6 +7,7 @@ import com.facebook.react.bridge.ReadableType
+ import com.facebook.react.bridge.WritableNativeMap
+ import org.maplibre.android.style.expressions.Expression
+ import org.maplibre.android.style.layers.TransitionOptions
++import org.maplibre.android.utils.ColorUtils
+ import org.maplibre.reactnative.utils.ExpressionParser.fromTyped
+ import org.maplibre.reactnative.utils.ImageEntry
+ 
+@@ -92,6 +93,14 @@ class MLRNStyleValue(
+         return floatArr
+     }
+ 
++    fun getFloatArrayOrScalar(key: String): Array<Float?> {
++        return if (mPayload!!.getString("type") == "array") {
++            getFloatArray(key)
++        } else {
++            arrayOf(getFloat(key))
++        }
++    }
++
+     fun getStringArray(key: String): Array<String?> {
+         val arr = getArray(key)
+ 
+@@ -104,6 +113,15 @@ class MLRNStyleValue(
+         return stringArr
+     }
+ 
++    fun getColorArray(key: String): Array<String?> {
++        return when (mPayload!!.getString("type")) {
++            "array" -> getStringArray(key)
++            "number" -> arrayOf(ColorUtils.colorToRgbaString(getInt(key)))
++            "string" -> arrayOf(getString(key))
++            else -> throw IllegalArgumentException("Expected a color array or scalar for $key")
++        }
++    }
++
+     val map: ReadableMap
+         get() {
+             val result = WritableNativeMap()

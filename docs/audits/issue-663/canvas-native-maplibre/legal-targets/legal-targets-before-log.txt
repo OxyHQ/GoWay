@@ -1,0 +1,11 @@
+11-08 15:47:15.892 23736 23749 I TestRunner: started: legalTargets(to.goway.canvas663.CanvasMapProbeTest)
+11-08 15:47:26.132 23736 23749 I CanvasLegal: {"kind":"toggle","edge":"top","x":991,"y":1195,"opened":false}
+11-08 15:47:27.736 23736 23749 I CanvasLegal: {"kind":"toggle","edge":"center","x":991,"y":1257,"opened":true}
+11-08 15:47:29.338 23736 23749 I CanvasLegal: {"kind":"link","label":"© OpenMapTiles","edge":"top","x":284,"y":1113,"activated":false,"destinations":[]}
+11-08 15:47:30.937 23736 23749 I CanvasLegal: {"kind":"link","label":"© OpenMapTiles","edge":"center","x":284,"y":1175,"activated":true,"destinations":["https:\/\/www.openmaptiles.org\/"]}
+11-08 15:47:32.540 23736 23749 I CanvasLegal: {"kind":"link","label":"© OpenStreetMap","edge":"top","x":609.5,"y":1113,"activated":false,"destinations":[]}
+11-08 15:47:34.139 23736 23749 I CanvasLegal: {"kind":"link","label":"© OpenStreetMap","edge":"center","x":163.5,"y":24,"activated":false,"destinations":[]}
+11-08 15:47:35.734 23736 23749 I CanvasLegal: {"kind":"link","label":"© Mapterhorn","edge":"top","x":127.5,"y":-38,"activated":false,"destinations":[]}
+11-08 15:47:37.332 23736 23749 I CanvasLegal: {"kind":"link","label":"© Mapterhorn","edge":"center","x":127.5,"y":24,"activated":false,"destinations":[]}
+11-08 15:47:37.336 23736 23736 I CanvasMapProbe: {"step":"legal-expanded","viewIdentity":136618823,"mapIdentity":21190516,"latitude":41.38739999999997,"longitude":2.1685999999999694,"zoom":11,"zoomGesturesEnabled":true,"width":1080,"height":2400,"hillshade":[{"id":"goway:relief:hillshade","shadow":["rgba(6.000000476837158,11,22,1)"],"highlight":["rgba(93,115.00000762939453,144,1)"]}],"handleY":1321,"handleHeight":126,"handleValue":"{\"text\":\"Half open\",\"min\":0,\"now\":1,\"max\":2}","chrome":[{"id":"map-credit","x":923,"y":1205,"width":136,"height":105,"visibleRect":"[923,1205][1059,1310]","globalVisible":true,"shown":true},{"id":"map-credit-toggle","x":944,"y":1210,"width":94,"height":94,"visibleRect":"[944,1210][1038,1304]","globalVisible":true,"shown":true},{"id":"map-scale","x":21,"y":1117,"width":288,"height":77,"visibleRect":"[21,1117][309,1194]","globalVisible":true,"shown":true}],"imeVisible":false}
+11-08 15:47:37.756 23736 23749 I TestRunner: finished: legalTargets(to.goway.canvas663.CanvasMapProbeTest)

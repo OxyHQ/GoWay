@@ -1,0 +1,3390 @@
+{
+  "frames": [
+    {
+      "snap": "half",
+      "value": "1",
+      "before": "false",
+      "after": "true",
+      "targets": [
+        {
+          "name": "© OpenMapTiles",
+          "role": "link",
+          "href": "https://www.openmaptiles.org/",
+          "rect": {
+            "x": 96.0625,
+            "y": 366.203125,
+            "width": 97.9375,
+            "height": 44,
+            "top": 366.203125,
+            "right": 194,
+            "bottom": 410.203125,
+            "left": 96.0625
+          },
+          "hit": true
+        },
+        {
+          "name": "© OpenStreetMap",
+          "role": "link",
+          "href": "https://www.openstreetmap.org/copyright",
+          "rect": {
+            "x": 198,
+            "y": 366.203125,
+            "width": 106,
+            "height": 44,
+            "top": 366.203125,
+            "right": 304,
+            "bottom": 410.203125,
+            "left": 198
+          },
+          "hit": true
+        },
+        {
+          "name": "© Mapterhorn",
+          "role": "link",
+          "href": "https://goway.to/attribution#elevation",
+          "rect": {
+            "x": 173.328125,
+            "y": 414.203125,
+            "width": 82.671875,
+            "height": 44,
+            "top": 414.203125,
+            "right": 256,
+            "bottom": 458.203125,
+            "left": 173.328125
+          },
+          "hit": true
+        },
+        {
+          "name": "Hide map credits",
+          "role": "button",
+          "href": null,
+          "rect": {
+            "x": 260,
+            "y": 414.203125,
+            "width": 44,
+            "height": 44,
+            "top": 414.203125,
+            "right": 304,
+            "bottom": 458.203125,
+            "left": 260
+          },
+          "hit": true
+        },
+        {
+          "name": null,
+          "role": "button",
+          "href": null,
+          "rect": {
+            "x": 100.09375,
+            "y": 16,
+            "width": 95.90625,
+            "height": 44,
+            "top": 16,
+            "right": 196,
+            "bottom": 60,
+            "left": 100.09375
+          },
+          "hit": true
+        },
+        {
+          "name": "Organization lists",
+          "role": "button",
+          "href": null,
+          "rect": {
+            "x": 204,
+            "y": 16,
+            "width": 44,
+            "height": 44,
+            "top": 16,
+            "right": 248,
+            "bottom": 60,
+            "left": 204
+          },
+          "hit": true
+        },
+        {
+          "name": null,
+          "role": "button",
+          "href": null,
+          "rect": {
+            "x": 184.5625,
+            "y": 68,
+            "width": 63.4375,
+            "height": 44,
+            "top": 68,
+            "right": 248,
+            "bottom": 112,
+            "left": 184.5625
+          },
+          "hit": true
+        },
+        {
+          "name": null,
+          "role": "button",
+          "href": null,
+          "rect": {
+            "x": 155.09375,
+            "y": 120,
+            "width": 92.90625,
+            "height": 44,
+            "top": 120,
+            "right": 248,
+            "bottom": 164,
+            "left": 155.09375
+          },
+          "hit": true
+        },
+        {
+          "name": "Sign in",
+          "role": "button",
+          "href": null,
+          "rect": {
+            "x": 260,
+            "y": 68,
+            "width": 44,
+            "height": 44,
+            "top": 68,
+            "right": 304,
+            "bottom": 112,
+            "left": 260
+          },
+          "hit": true
+        },
+        {
+          "name": "Map settings",
+          "role": "button",
+          "href": null,
+          "rect": {
+            "x": 260,
+            "y": 180,
+            "width": 44,
+            "height": 44,
+            "top": 180,
+            "right": 304,
+            "bottom": 224,
+            "left": 260
+          },
+          "hit": true
+        },
+        {
+          "name": "Map style",
+          "role": "button",
+          "href": null,
+          "rect": {
+            "x": 260,
+            "y": 232,
+            "width": 44,
+            "height": 44,
+            "top": 232,
+            "right": 304,
+            "bottom": 276,
+            "left": 260
+          },
+          "hit": true
+        },
+        {
+          "name": "My location",
+          "role": "button",
+          "href": null,
+          "rect": {
+            "x": 0,
+            "y": 0,
+            "width": 0,
+            "height": 0,
+            "top": 0,
+            "right": 0,
+            "bottom": 0,
+            "left": 0
+          },
+          "hit": false
+        },
+        {
+          "name": "Zoom in",
+          "role": "button",
+          "href": null,
+          "rect": {
+            "x": 0,
+            "y": 0,
+            "width": 0,
+            "height": 0,
+            "top": 0,
+            "right": 0,
+            "bottom": 0,
+            "left": 0
+          },
+          "hit": false
+        },
+        {
+          "name": "Zoom out",
+          "role": "button",
+          "href": null,
+          "rect": {
+            "x": 0,
+            "y": 0,
+            "width": 0,
+            "height": 0,
+            "top": 0,
+            "right": 0,
+            "bottom": 0,
+            "left": 0
+          },
+          "hit": false
+        },
+        {
+          "name": "Tilt the map",
+          "role": "button",
+          "href": null,
+          "rect": {
+            "x": 0,
+            "y": 0,
+            "width": 0,
+            "height": 0,
+            "top": 0,
+            "right": 0,
+            "bottom": 0,
+            "left": 0
+          },
+          "hit": false
+        },
+        {
+          "name": "Places",
+          "role": "slider",
+          "href": null,
+          "rect": {
+            "x": 0,
+            "y": 464.20001220703125,
+            "width": 320,
+            "height": 44,
+            "top": 464.20001220703125,
+            "right": 320,
+            "bottom": 508.20001220703125,
+            "left": 0
+          },
+          "hit": true
+        },
+        {
+          "name": "Font de Canaletes, Place, 170 m away",
+          "role": "button",
+          "href": null,
+          "rect": {
+            "x": 0,
+            "y": 596.2000122070312,
+            "width": 320,
+            "height": 112,
+            "top": 596.2000122070312,
+            "right": 320,
+            "bottom": 708.2000122070312,
+            "left": 0
+          },
+          "hit": true
+        },
+        {
+          "name": "Save this place",
+          "role": "button",
+          "href": null,
+          "rect": {
+            "x": 78,
+            "y": 598.2000122070312,
+            "width": 44,
+            "height": 44,
+            "top": 598.2000122070312,
+            "right": 122,
+            "bottom": 642.2000122070312,
+            "left": 78
+          },
+          "hit": true
+        },
+        {
+          "name": "Nømad Coffee Lab, Café · Sant Pere, Closed, Closed · opens tomorrow 09:00, Passatge Sert 12, Sant Pere, Barcelona, 310 m away, Accepts FairCoin",
+          "role": "button",
+          "href": null,
+          "rect": {
+            "x": 0,
+            "y": 708.2000122070312,
+            "width": 320,
+            "height": 112,
+            "top": 708.2000122070312,
+            "right": 320,
+            "bottom": 820.2000122070312,
+            "left": 0
+          },
+          "hit": true
+        },
+        {
+          "name": "Save this place",
+          "role": "button",
+          "href": null,
+          "rect": {
+            "x": 78,
+            "y": 710.2000122070312,
+            "width": 44,
+            "height": 44,
+            "top": 710.2000122070312,
+            "right": 122,
+            "bottom": 754.2000122070312,
+            "left": 78
+          },
+          "hit": true
+        },
+        {
+          "name": "Betahaus Barcelona, Verified by Oxy, Coworking · Gràcia, Closed, Closed · opens tomorrow 08:30, Carrer de Vilafranca 7, Gràcia, Barcelona, 410 m away, Accepts FairCoin, Homiio listings",
+          "role": "button",
+          "href": null,
+          "rect": {
+            "x": 0,
+            "y": 820.2000122070312,
+            "width": 320,
+            "height": 130,
+            "top": 820.2000122070312,
+            "right": 320,
+            "bottom": 950.2000122070312,
+            "left": 0
+          },
+          "hit": false
+        },
+        {
+          "name": "Save this place",
+          "role": "button",
+          "href": null,
+          "rect": {
+            "x": 78,
+            "y": 822.2000122070312,
+            "width": 44,
+            "height": 44,
+            "top": 822.2000122070312,
+            "right": 122,
+            "bottom": 866.2000122070312,
+            "left": 78
+          },
+          "hit": false
+        },
+        {
+          "name": "La Boqueria Market, Verified by Oxy, Market · El Raval, Rated 4.0 out of 5, 3 reviews, Closed, Closed · opens tomorrow 08:00, La Rambla 91, El Raval, Barcelona, 680 m away, Accepts FairCoin, Mercaria store",
+          "role": "button",
+          "href": null,
+          "rect": {
+            "x": 0,
+            "y": 950.2000122070312,
+            "width": 320,
+            "height": 129.99993896484375,
+            "top": 950.2000122070312,
+            "right": 320,
+            "bottom": 1080.199951171875,
+            "left": 0
+          },
+          "hit": false
+        },
+        {
+          "name": "Save this place",
+          "role": "button",
+          "href": null,
+          "rect": {
+            "x": 78,
+            "y": 952.2000122070312,
+            "width": 44,
+            "height": 44,
+            "top": 952.2000122070312,
+            "right": 122,
+            "bottom": 996.2000122070312,
+            "left": 78
+          },
+          "hit": false
+        },
+        {
+          "name": "Mercat de Santa Caterina, Market · Sant Pere, Closed, Closed · opens tomorrow 07:30, Avinguda de Francesc Cambó 16, Sant Pere, Barcelona, 690 m away, Accepts FairCoin",
+          "role": "button",
+          "href": null,
+          "rect": {
+            "x": 0,
+            "y": 1080.199951171875,
+            "width": 320,
+            "height": 112,
+            "top": 1080.199951171875,
+            "right": 320,
+            "bottom": 1192.199951171875,
+            "left": 0
+          },
+          "hit": false
+        },
+        {
+          "name": "Save this place",
+          "role": "button",
+          "href": null,
+          "rect": {
+            "x": 78,
+            "y": 1082.199951171875,
+            "width": 44,
+            "height": 44,
+            "top": 1082.199951171875,
+            "right": 122,
+            "bottom": 1126.199951171875,
+            "left": 78
+          },
+          "hit": false
+        },
+        {
+          "name": "Hotel Neri, Hotel · Barri Gòtic, Carrer de Sant Sever 5, Barri Gòtic, Barcelona, 730 m away, Homiio listings",
+          "role": "button",
+          "href": null,
+          "rect": {
+            "x": 0,
+            "y": 1192.199951171875,
+            "width": 320,
+            "height": 112,
+            "top": 1192.199951171875,
+            "right": 320,
+            "bottom": 1304.199951171875,
+            "left": 0
+          },
+          "hit": false
+        },
+        {
+          "name": "Save this place",
+          "role": "button",
+          "href": null,
+          "rect": {
+            "x": 78,
+            "y": 1194.199951171875,
+            "width": 44,
+            "height": 44,
+            "top": 1194.199951171875,
+            "right": 122,
+            "bottom": 1238.199951171875,
+            "left": 78
+          },
+          "hit": false
+        },
+        {
+          "name": "Escola Massana, School · El Raval, Carrer de l'Hospital 56, El Raval, Barcelona, 730 m away",
+          "role": "button",
+          "href": null,
+          "rect": {
+            "x": 0,
+            "y": 1304.199951171875,
+            "width": 320,
+            "height": 112,
+            "top": 1304.199951171875,
+            "right": 320,
+            "bottom": 1416.199951171875,
+            "left": 0
+          },
+          "hit": false
+        },
+        {
+          "name": "Save this place",
+          "role": "button",
+          "href": null,
+          "rect": {
+            "x": 78,
+            "y": 1306.199951171875,
+            "width": 44,
+            "height": 44,
+            "top": 1306.199951171875,
+            "right": 122,
+            "bottom": 1350.199951171875,
+            "left": 78
+          },
+          "hit": false
+        },
+        {
+          "name": "La Botiga del Raval, Clothes · El Raval, Permanently closed, Carrer del Carme 41, El Raval, Barcelona, 820 m away",
+          "role": "button",
+          "href": null,
+          "rect": {
+            "x": 0,
+            "y": 1416.199951171875,
+            "width": 320,
+            "height": 112,
+            "top": 1416.199951171875,
+            "right": 320,
+            "bottom": 1528.199951171875,
+            "left": 0
+          },
+          "hit": false
+        },
+        {
+          "name": "Save this place",
+          "role": "button",
+          "href": null,
+          "rect": {
+            "x": 78,
+            "y": 1418.199951171875,
+            "width": 44,
+            "height": 44,
+            "top": 1418.199951171875,
+            "right": 122,
+            "bottom": 1462.199951171875,
+            "left": 78
+          },
+          "hit": false
+        },
+        {
+          "name": "Liceu, Train station · Ciutat Vella, Ciutat Vella, Barcelona, 890 m away",
+          "role": "button",
+          "href": null,
+          "rect": {
+            "x": 0,
+            "y": 1528.199951171875,
+            "width": 320,
+            "height": 112,
+            "top": 1528.199951171875,
+            "right": 320,
+            "bottom": 1640.199951171875,
+            "left": 0
+          },
+          "hit": false
+        },
+        {
+          "name": "Save this place",
+          "role": "button",
+          "href": null,
+          "rect": {
+            "x": 78,
+            "y": 1530.199951171875,
+            "width": 44,
+            "height": 44,
+            "top": 1530.199951171875,
+            "right": 122,
+            "bottom": 1574.199951171875,
+            "left": 78
+          },
+          "hit": false
+        },
+        {
+          "name": "Jaume I, Train station · Ciutat Vella, Ciutat Vella, Barcelona, 890 m away",
+          "role": "button",
+          "href": null,
+          "rect": {
+            "x": 0,
+            "y": 1640.199951171875,
+            "width": 320,
+            "height": 112,
+            "top": 1640.199951171875,
+            "right": 320,
+            "bottom": 1752.199951171875,
+            "left": 0
+          },
+          "hit": false
+        },
+        {
+          "name": "Save this place",
+          "role": "button",
+          "href": null,
+          "rect": {
+            "x": 78,
+            "y": 1642.199951171875,
+            "width": 44,
+            "height": 44,
+            "top": 1642.199951171875,
+            "right": 122,
+            "bottom": 1686.199951171875,
+            "left": 78
+          },
+          "hit": false
+        },
+        {
+          "name": "Banc Sabadell — Gòtic, Bank · Barri Gòtic, Closed, Closed · opens tomorrow 08:15, Carrer de Ferran 28, Barri Gòtic, Barcelona, 920 m away",
+          "role": "button",
+          "href": null,
+          "rect": {
+            "x": 0,
+            "y": 1752.199951171875,
+            "width": 320,
+            "height": 112,
+            "top": 1752.199951171875,
+            "right": 320,
+            "bottom": 1864.199951171875,
+            "left": 0
+          },
+          "hit": false
+        },
+        {
+          "name": "Save this place",
+          "role": "button",
+          "href": null,
+          "rect": {
+            "x": 78,
+            "y": 1754.199951171875,
+            "width": 44,
+            "height": 44,
+            "top": 1754.199951171875,
+            "right": 122,
+            "bottom": 1798.199951171875,
+            "left": 78
+          },
+          "hit": false
+        },
+        {
+          "name": "Bar Marsella, Bar · El Raval, Closed, Closed · opens Thu 22:00, Carrer de Sant Pau 65, El Raval, Barcelona, 940 m away, Accepts FairCoin",
+          "role": "button",
+          "href": null,
+          "rect": {
+            "x": 0,
+            "y": 1864.199951171875,
+            "width": 320,
+            "height": 112,
+            "top": 1864.199951171875,
+            "right": 320,
+            "bottom": 1976.199951171875,
+            "left": 0
+          },
+          "hit": false
+        },
+        {
+          "name": "Save this place",
+          "role": "button",
+          "href": null,
+          "rect": {
+            "x": 78,
+            "y": 1866.199951171875,
+            "width": 44,
+            "height": 44,
+            "top": 1866.199951171875,
+            "right": 122,
+            "bottom": 1910.199951171875,
+            "left": 78
+          },
+          "hit": false
+        },
+        {
+          "name": "Picasso Museum, Verified by Oxy, Museum · El Born, Rated 5.0 out of 5, 1 review, Open, Special hours · closes 15:00, Carrer de Montcada 15-23, El Born, Barcelona, 1.0 km away",
+          "role": "button",
+          "href": null,
+          "rect": {
+            "x": 0,
+            "y": 1976.199951171875,
+            "width": 320,
+            "height": 130,
+            "top": 1976.199951171875,
+            "right": 320,
+            "bottom": 2106.199951171875,
+            "left": 0
+          },
+          "hit": false
+        },
+        {
+          "name": "Save this place",
+          "role": "button",
+          "href": null,
+          "rect": {
+            "x": 78,
+            "y": 1978.199951171875,
+            "width": 44,
+            "height": 44,
+            "top": 1978.199951171875,
+            "right": 122,
+            "bottom": 2022.199951171875,
+            "left": 78
+          },
+          "hit": false
+        },
+        {
+          "name": "Llibreria Calders, Bookshop · Sant Antoni, Closed, Closed · opens tomorrow 10:00, Passatge de Pere Calders 9, Sant Antoni, Barcelona, 1.0 km away",
+          "role": "button",
+          "href": null,
+          "rect": {
+            "x": 0,
+            "y": 2106.199951171875,
+            "width": 320,
+            "height": 112,
+            "top": 2106.199951171875,
+            "right": 320,
+            "bottom": 2218.199951171875,
+            "left": 0
+          },
+          "hit": false
+        },
+        {
+          "name": "Save this place",
+          "role": "button",
+          "href": null,
+          "rect": {
+            "x": 78,
+            "y": 2108.199951171875,
+            "width": 44,
+            "height": 44,
+            "top": 2108.199951171875,
+            "right": 122,
+            "bottom": 2152.199951171875,
+            "left": 78
+          },
+          "hit": false
+        },
+        {
+          "name": "Cafès El Magnífico, Verified by Oxy, Café · El Born, Closed, Closed · opens tomorrow 09:00, Carrer de l'Argenteria 64, El Born, Barcelona, 1.1 km away, Mention location, Accepts FairCoin",
+          "role": "button",
+          "href": null,
+          "rect": {
+            "x": 0,
+            "y": 2218.199951171875,
+            "width": 320,
+            "height": 130,
+            "top": 2218.199951171875,
+            "right": 320,
+            "bottom": 2348.199951171875,
+            "left": 0
+          },
+          "hit": false
+        },
+        {
+          "name": "Save this place",
+          "role": "button",
+          "href": null,
+          "rect": {
+            "x": 78,
+            "y": 2220.199951171875,
+            "width": 44,
+            "height": 44,
+            "top": 2220.199951171875,
+            "right": 122,
+            "bottom": 2264.199951171875,
+            "left": 78
+          },
+          "hit": false
+        },
+        {
+          "name": "Bicing — Passeig del Born, Bike hire · El Born, El Born, Barcelona, 1.2 km away, Moovo pickup point",
+          "role": "button",
+          "href": null,
+          "rect": {
+            "x": 0,
+            "y": 2348.199951171875,
+            "width": 320,
+            "height": 112,
+            "top": 2348.199951171875,
+            "right": 320,
+            "bottom": 2460.199951171875,
+            "left": 0
+          },
+          "hit": false
+        },
+        {
+          "name": "Save this place",
+          "role": "button",
+          "href": null,
+          "rect": {
+            "x": 78,
+            "y": 2350.199951171875,
+            "width": 44,
+            "height": 44,
+            "top": 2350.199951171875,
+            "right": 122,
+            "bottom": 2394.199951171875,
+            "left": 78
+          },
+          "hit": false
+        },
+        {
+          "name": "Hospital Clinic, Verified by Oxy, Hospital · L'Eixample, Carrer de Villarroel 170, L'Eixample, Barcelona, 1.4 km away",
+          "role": "button",
+          "href": null,
+          "rect": {
+            "x": 0,
+            "y": 2460.199951171875,
+            "width": 320,
+            "height": 112,
+            "top": 2460.199951171875,
+            "right": 320,
+            "bottom": 2572.199951171875,
+            "left": 0
+          },
+          "hit": false
+        },
+        {
+          "name": "Save this place",
+          "role": "button",
+          "href": null,
+          "rect": {
+            "x": 78,
+            "y": 2462.199951171875,
+            "width": 44,
+            "height": 44,
+            "top": 2462.199951171875,
+            "right": 122,
+            "bottom": 2506.199951171875,
+            "left": 78
+          },
+          "hit": false
+        },
+        {
+          "name": "Ciutadella Park, Park · Sant Pere, Passeig de Picasso, Sant Pere, Barcelona, 1.5 km away",
+          "role": "button",
+          "href": null,
+          "rect": {
+            "x": 0,
+            "y": 2572.199951171875,
+            "width": 320,
+            "height": 112,
+            "top": 2572.199951171875,
+            "right": 320,
+            "bottom": 2684.199951171875,
+            "left": 0
+          },
+          "hit": false
+        },
+        {
+          "name": "Save this place",
+          "role": "button",
+          "href": null,
+          "rect": {
+            "x": 78,
+            "y": 2574.199951171875,
+            "width": 44,
+            "height": 44,
+            "top": 2574.199951171875,
+            "right": 122,
+            "bottom": 2618.199951171875,
+            "left": 78
+          },
+          "hit": false
+        },
+        {
+          "name": "Plaça del Sol, Public services, 1.8 km away",
+          "role": "button",
+          "href": null,
+          "rect": {
+            "x": 0,
+            "y": 2684.199951171875,
+            "width": 320,
+            "height": 112,
+            "top": 2684.199951171875,
+            "right": 320,
+            "bottom": 2796.199951171875,
+            "left": 0
+          },
+          "hit": false
+        },
+        {
+          "name": "Save this place",
+          "role": "button",
+          "href": null,
+          "rect": {
+            "x": 78,
+            "y": 2686.199951171875,
+            "width": 44,
+            "height": 44,
+            "top": 2686.199951171875,
+            "right": 122,
+            "bottom": 2730.199951171875,
+            "left": 78
+          },
+          "hit": false
+        },
+        {
+          "name": "Can Solé, Restaurant · La Barceloneta, Closed, Closed · opens Tue 13:00, Carrer de Sant Carles 4, La Barceloneta, Barcelona, 1.9 km away",
+          "role": "button",
+          "href": null,
+          "rect": {
+            "x": 0,
+            "y": 2796.199951171875,
+            "width": 320,
+            "height": 112,
+            "top": 2796.199951171875,
+            "right": 320,
+            "bottom": 2908.199951171875,
+            "left": 0
+          },
+          "hit": false
+        },
+        {
+          "name": "Save this place",
+          "role": "button",
+          "href": null,
+          "rect": {
+            "x": 78,
+            "y": 2798.199951171875,
+            "width": 44,
+            "height": 44,
+            "top": 2798.199951171875,
+            "right": 122,
+            "bottom": 2842.199951171875,
+            "left": 78
+          },
+          "hit": false
+        },
+        {
+          "name": "Baluard Barceloneta, Bakery · La Barceloneta, Closed, Closed · opens tomorrow 08:00, Carrer del Baluard 38, La Barceloneta, Barcelona, 2.0 km away, Mercaria store",
+          "role": "button",
+          "href": null,
+          "rect": {
+            "x": 0,
+            "y": 2908.199951171875,
+            "width": 320,
+            "height": 112,
+            "top": 2908.199951171875,
+            "right": 320,
+            "bottom": 3020.199951171875,
+            "left": 0
+          },
+          "hit": false
+        },
+        {
+          "name": "Save this place",
+          "role": "button",
+          "href": null,
+          "rect": {
+            "x": 78,
+            "y": 2910.199951171875,
+            "width": 44,
+            "height": 44,
+            "top": 2910.199951171875,
+            "right": 122,
+            "bottom": 2954.199951171875,
+            "left": 78
+          },
+          "hit": false
+        },
+        {
+          "name": "Farmàcia Gran de Gràcia, Pharmacy · Gràcia, Closed, Closed · opens tomorrow 09:00, Gran de Gràcia 130, Gràcia, Barcelona, 2.0 km away",
+          "role": "button",
+          "href": null,
+          "rect": {
+            "x": 0,
+            "y": 3020.199951171875,
+            "width": 320,
+            "height": 112,
+            "top": 3020.199951171875,
+            "right": 320,
+            "bottom": 3132.199951171875,
+            "left": 0
+          },
+          "hit": false
+        },
+        {
+          "name": "Save this place",
+          "role": "button",
+          "href": null,
+          "rect": {
+            "x": 78,
+            "y": 3022.199951171875,
+            "width": 44,
+            "height": 44,
+            "top": 3022.199951171875,
+            "right": 122,
+            "bottom": 3066.199951171875,
+            "left": 78
+          },
+          "hit": false
+        },
+        {
+          "name": "Parc de Joan Miró, Park · L'Eixample, L'Eixample, Barcelona, 2.1 km away",
+          "role": "button",
+          "href": null,
+          "rect": {
+            "x": 0,
+            "y": 3132.199951171875,
+            "width": 320,
+            "height": 112,
+            "top": 3132.199951171875,
+            "right": 320,
+            "bottom": 3244.199951171875,
+            "left": 0
+          },
+          "hit": false
+        },
+        {
+          "name": "Save this place",
+          "role": "button",
+          "href": null,
+          "rect": {
+            "x": 78,
+            "y": 3134.199951171875,
+            "width": 44,
+            "height": 44,
+            "top": 3134.199951171875,
+            "right": 122,
+            "bottom": 3178.199951171875,
+            "left": 78
+          },
+          "hit": false
+        },
+        {
+          "name": "Moovo — Sants Estació, Bike hire · Sants, Sants, Barcelona, 2.6 km away, Moovo pickup point",
+          "role": "button",
+          "href": null,
+          "rect": {
+            "x": 0,
+            "y": 3244.199951171875,
+            "width": 320,
+            "height": 112,
+            "top": 3244.199951171875,
+            "right": 320,
+            "bottom": 3356.199951171875,
+            "left": 0
+          },
+          "hit": false
+        },
+        {
+          "name": "Save this place",
+          "role": "button",
+          "href": null,
+          "rect": {
+            "x": 78,
+            "y": 3246.199951171875,
+            "width": 44,
+            "height": 44,
+            "top": 3246.199951171875,
+            "right": 122,
+            "bottom": 3290.199951171875,
+            "left": 78
+          },
+          "hit": false
+        }
+      ],
+      "keyboard": [
+        {
+          "href": "https://www.openmaptiles.org/",
+          "focused": true
+        },
+        {
+          "href": "https://www.openstreetmap.org/copyright",
+          "focused": true
+        },
+        {
+          "href": "https://goway.to/attribution#elevation",
+          "focused": true
+        }
+      ],
+      "topTargets": [
+        {
+          "name": "Sign in",
+          "rect": {
+            "x": 260,
+            "y": 68,
+            "width": 44,
+            "height": 44,
+            "top": 68,
+            "right": 304,
+            "bottom": 112,
+            "left": 260
+          },
+          "hit": true
+        },
+        {
+          "name": "Organization lists",
+          "rect": {
+            "x": 204,
+            "y": 16,
+            "width": 44,
+            "height": 44,
+            "top": 16,
+            "right": 248,
+            "bottom": 60,
+            "left": 204
+          },
+          "hit": true
+        },
+        {
+          "name": "Map style",
+          "rect": {
+            "x": 260,
+            "y": 232,
+            "width": 44,
+            "height": 44,
+            "top": 232,
+            "right": 304,
+            "bottom": 276,
+            "left": 260
+          },
+          "hit": true
+        },
+        {
+          "name": "Map settings",
+          "rect": {
+            "x": 260,
+            "y": 180,
+            "width": 44,
+            "height": 44,
+            "top": 180,
+            "right": 304,
+            "bottom": 224,
+            "left": 260
+          },
+          "hit": true
+        }
+      ],
+      "traversal": [
+        "https://www.openmaptiles.org/",
+        "https://www.openstreetmap.org/copyright",
+        "https://goway.to/attribution#elevation"
+      ]
+    },
+    {
+      "snap": "full",
+      "value": "2",
+      "before": "false",
+      "after": "true",
+      "targets": [
+        {
+          "name": "© OpenMapTiles",
+          "role": "link",
+          "href": "https://www.openmaptiles.org/",
+          "rect": {
+            "x": 96.0625,
+            "y": 313,
+            "width": 97.9375,
+            "height": 44,
+            "top": 313,
+            "right": 194,
+            "bottom": 357,
+            "left": 96.0625
+          },
+          "hit": true
+        },
+        {
+          "name": "© OpenStreetMap",
+          "role": "link",
+          "href": "https://www.openstreetmap.org/copyright",
+          "rect": {
+            "x": 198,
+            "y": 313,
+            "width": 106,
+            "height": 44,
+            "top": 313,
+            "right": 304,
+            "bottom": 357,
+            "left": 198
+          },
+          "hit": true
+        },
+        {
+          "name": "© Mapterhorn",
+          "role": "link",
+          "href": "https://goway.to/attribution#elevation",
+          "rect": {
+            "x": 173.328125,
+            "y": 361,
+            "width": 82.671875,
+            "height": 44,
+            "top": 361,
+            "right": 256,
+            "bottom": 405,
+            "left": 173.328125
+          },
+          "hit": true
+        },
+        {
+          "name": "Hide map credits",
+          "role": "button",
+          "href": null,
+          "rect": {
+            "x": 260,
+            "y": 361,
+            "width": 44,
+            "height": 44,
+            "top": 361,
+            "right": 304,
+            "bottom": 405,
+            "left": 260
+          },
+          "hit": true
+        },
+        {
+          "name": null,
+          "role": "button",
+          "href": null,
+          "rect": {
+            "x": 100.09375,
+            "y": 16,
+            "width": 95.90625,
+            "height": 44,
+            "top": 16,
+            "right": 196,
+            "bottom": 60,
+            "left": 100.09375
+          },
+          "hit": true
+        },
+        {
+          "name": "Organization lists",
+          "role": "button",
+          "href": null,
+          "rect": {
+            "x": 204,
+            "y": 16,
+            "width": 44,
+            "height": 44,
+            "top": 16,
+            "right": 248,
+            "bottom": 60,
+            "left": 204
+          },
+          "hit": true
+        },
+        {
+          "name": null,
+          "role": "button",
+          "href": null,
+          "rect": {
+            "x": 184.5625,
+            "y": 68,
+            "width": 63.4375,
+            "height": 44,
+            "top": 68,
+            "right": 248,
+            "bottom": 112,
+            "left": 184.5625
+          },
+          "hit": true
+        },
+        {
+          "name": null,
+          "role": "button",
+          "href": null,
+          "rect": {
+            "x": 155.09375,
+            "y": 120,
+            "width": 92.90625,
+            "height": 44,
+            "top": 120,
+            "right": 248,
+            "bottom": 164,
+            "left": 155.09375
+          },
+          "hit": true
+        },
+        {
+          "name": "Sign in",
+          "role": "button",
+          "href": null,
+          "rect": {
+            "x": 260,
+            "y": 68,
+            "width": 44,
+            "height": 44,
+            "top": 68,
+            "right": 304,
+            "bottom": 112,
+            "left": 260
+          },
+          "hit": true
+        },
+        {
+          "name": "Map settings",
+          "role": "button",
+          "href": null,
+          "rect": {
+            "x": 260,
+            "y": 180,
+            "width": 44,
+            "height": 44,
+            "top": 180,
+            "right": 304,
+            "bottom": 224,
+            "left": 260
+          },
+          "hit": true
+        },
+        {
+          "name": "Map style",
+          "role": "button",
+          "href": null,
+          "rect": {
+            "x": 260,
+            "y": 232,
+            "width": 44,
+            "height": 44,
+            "top": 232,
+            "right": 304,
+            "bottom": 276,
+            "left": 260
+          },
+          "hit": true
+        },
+        {
+          "name": "My location",
+          "role": "button",
+          "href": null,
+          "rect": {
+            "x": 0,
+            "y": 0,
+            "width": 0,
+            "height": 0,
+            "top": 0,
+            "right": 0,
+            "bottom": 0,
+            "left": 0
+          },
+          "hit": false
+        },
+        {
+          "name": "Zoom in",
+          "role": "button",
+          "href": null,
+          "rect": {
+            "x": 0,
+            "y": 0,
+            "width": 0,
+            "height": 0,
+            "top": 0,
+            "right": 0,
+            "bottom": 0,
+            "left": 0
+          },
+          "hit": false
+        },
+        {
+          "name": "Zoom out",
+          "role": "button",
+          "href": null,
+          "rect": {
+            "x": 0,
+            "y": 0,
+            "width": 0,
+            "height": 0,
+            "top": 0,
+            "right": 0,
+            "bottom": 0,
+            "left": 0
+          },
+          "hit": false
+        },
+        {
+          "name": "Tilt the map",
+          "role": "button",
+          "href": null,
+          "rect": {
+            "x": 0,
+            "y": 0,
+            "width": 0,
+            "height": 0,
+            "top": 0,
+            "right": 0,
+            "bottom": 0,
+            "left": 0
+          },
+          "hit": false
+        },
+        {
+          "name": "Places",
+          "role": "slider",
+          "href": null,
+          "rect": {
+            "x": 0,
+            "y": 411,
+            "width": 320,
+            "height": 44,
+            "top": 411,
+            "right": 320,
+            "bottom": 455,
+            "left": 0
+          },
+          "hit": true
+        },
+        {
+          "name": "Font de Canaletes, Place, 170 m away",
+          "role": "button",
+          "href": null,
+          "rect": {
+            "x": 0,
+            "y": 543,
+            "width": 320,
+            "height": 112,
+            "top": 543,
+            "right": 320,
+            "bottom": 655,
+            "left": 0
+          },
+          "hit": true
+        },
+        {
+          "name": "Save this place",
+          "role": "button",
+          "href": null,
+          "rect": {
+            "x": 78,
+            "y": 545,
+            "width": 44,
+            "height": 44,
+            "top": 545,
+            "right": 122,
+            "bottom": 589,
+            "left": 78
+          },
+          "hit": true
+        },
+        {
+          "name": "Nømad Coffee Lab, Café · Sant Pere, Closed, Closed · opens tomorrow 09:00, Passatge Sert 12, Sant Pere, Barcelona, 310 m away, Accepts FairCoin",
+          "role": "button",
+          "href": null,
+          "rect": {
+            "x": 0,
+            "y": 655,
+            "width": 320,
+            "height": 112,
+            "top": 655,
+            "right": 320,
+            "bottom": 767,
+            "left": 0
+          },
+          "hit": true
+        },
+        {
+          "name": "Save this place",
+          "role": "button",
+          "href": null,
+          "rect": {
+            "x": 78,
+            "y": 657,
+            "width": 44,
+            "height": 44,
+            "top": 657,
+            "right": 122,
+            "bottom": 701,
+            "left": 78
+          },
+          "hit": true
+        },
+        {
+          "name": "Betahaus Barcelona, Verified by Oxy, Coworking · Gràcia, Closed, Closed · opens tomorrow 08:30, Carrer de Vilafranca 7, Gràcia, Barcelona, 410 m away, Accepts FairCoin, Homiio listings",
+          "role": "button",
+          "href": null,
+          "rect": {
+            "x": 0,
+            "y": 767,
+            "width": 320,
+            "height": 130,
+            "top": 767,
+            "right": 320,
+            "bottom": 897,
+            "left": 0
+          },
+          "hit": true
+        },
+        {
+          "name": "Save this place",
+          "role": "button",
+          "href": null,
+          "rect": {
+            "x": 78,
+            "y": 769,
+            "width": 44,
+            "height": 44,
+            "top": 769,
+            "right": 122,
+            "bottom": 813,
+            "left": 78
+          },
+          "hit": true
+        },
+        {
+          "name": "La Boqueria Market, Verified by Oxy, Market · El Raval, Rated 4.0 out of 5, 3 reviews, Closed, Closed · opens tomorrow 08:00, La Rambla 91, El Raval, Barcelona, 680 m away, Accepts FairCoin, Mercaria store",
+          "role": "button",
+          "href": null,
+          "rect": {
+            "x": 0,
+            "y": 897,
+            "width": 320,
+            "height": 130,
+            "top": 897,
+            "right": 320,
+            "bottom": 1027,
+            "left": 0
+          },
+          "hit": false
+        },
+        {
+          "name": "Save this place",
+          "role": "button",
+          "href": null,
+          "rect": {
+            "x": 78,
+            "y": 899,
+            "width": 44,
+            "height": 44,
+            "top": 899,
+            "right": 122,
+            "bottom": 943,
+            "left": 78
+          },
+          "hit": false
+        },
+        {
+          "name": "Mercat de Santa Caterina, Market · Sant Pere, Closed, Closed · opens tomorrow 07:30, Avinguda de Francesc Cambó 16, Sant Pere, Barcelona, 690 m away, Accepts FairCoin",
+          "role": "button",
+          "href": null,
+          "rect": {
+            "x": 0,
+            "y": 1027,
+            "width": 320,
+            "height": 112,
+            "top": 1027,
+            "right": 320,
+            "bottom": 1139,
+            "left": 0
+          },
+          "hit": false
+        },
+        {
+          "name": "Save this place",
+          "role": "button",
+          "href": null,
+          "rect": {
+            "x": 78,
+            "y": 1029,
+            "width": 44,
+            "height": 44,
+            "top": 1029,
+            "right": 122,
+            "bottom": 1073,
+            "left": 78
+          },
+          "hit": false
+        },
+        {
+          "name": "Hotel Neri, Hotel · Barri Gòtic, Carrer de Sant Sever 5, Barri Gòtic, Barcelona, 730 m away, Homiio listings",
+          "role": "button",
+          "href": null,
+          "rect": {
+            "x": 0,
+            "y": 1139,
+            "width": 320,
+            "height": 112,
+            "top": 1139,
+            "right": 320,
+            "bottom": 1251,
+            "left": 0
+          },
+          "hit": false
+        },
+        {
+          "name": "Save this place",
+          "role": "button",
+          "href": null,
+          "rect": {
+            "x": 78,
+            "y": 1141,
+            "width": 44,
+            "height": 44,
+            "top": 1141,
+            "right": 122,
+            "bottom": 1185,
+            "left": 78
+          },
+          "hit": false
+        },
+        {
+          "name": "Escola Massana, School · El Raval, Carrer de l'Hospital 56, El Raval, Barcelona, 730 m away",
+          "role": "button",
+          "href": null,
+          "rect": {
+            "x": 0,
+            "y": 1251,
+            "width": 320,
+            "height": 112,
+            "top": 1251,
+            "right": 320,
+            "bottom": 1363,
+            "left": 0
+          },
+          "hit": false
+        },
+        {
+          "name": "Save this place",
+          "role": "button",
+          "href": null,
+          "rect": {
+            "x": 78,
+            "y": 1253,
+            "width": 44,
+            "height": 44,
+            "top": 1253,
+            "right": 122,
+            "bottom": 1297,
+            "left": 78
+          },
+          "hit": false
+        },
+        {
+          "name": "La Botiga del Raval, Clothes · El Raval, Permanently closed, Carrer del Carme 41, El Raval, Barcelona, 820 m away",
+          "role": "button",
+          "href": null,
+          "rect": {
+            "x": 0,
+            "y": 1363,
+            "width": 320,
+            "height": 112,
+            "top": 1363,
+            "right": 320,
+            "bottom": 1475,
+            "left": 0
+          },
+          "hit": false
+        },
+        {
+          "name": "Save this place",
+          "role": "button",
+          "href": null,
+          "rect": {
+            "x": 78,
+            "y": 1365,
+            "width": 44,
+            "height": 44,
+            "top": 1365,
+            "right": 122,
+            "bottom": 1409,
+            "left": 78
+          },
+          "hit": false
+        },
+        {
+          "name": "Liceu, Train station · Ciutat Vella, Ciutat Vella, Barcelona, 890 m away",
+          "role": "button",
+          "href": null,
+          "rect": {
+            "x": 0,
+            "y": 1475,
+            "width": 320,
+            "height": 112,
+            "top": 1475,
+            "right": 320,
+            "bottom": 1587,
+            "left": 0
+          },
+          "hit": false
+        },
+        {
+          "name": "Save this place",
+          "role": "button",
+          "href": null,
+          "rect": {
+            "x": 78,
+            "y": 1477,
+            "width": 44,
+            "height": 44,
+            "top": 1477,
+            "right": 122,
+            "bottom": 1521,
+            "left": 78
+          },
+          "hit": false
+        },
+        {
+          "name": "Jaume I, Train station · Ciutat Vella, Ciutat Vella, Barcelona, 890 m away",
+          "role": "button",
+          "href": null,
+          "rect": {
+            "x": 0,
+            "y": 1587,
+            "width": 320,
+            "height": 112,
+            "top": 1587,
+            "right": 320,
+            "bottom": 1699,
+            "left": 0
+          },
+          "hit": false
+        },
+        {
+          "name": "Save this place",
+          "role": "button",
+          "href": null,
+          "rect": {
+            "x": 78,
+            "y": 1589,
+            "width": 44,
+            "height": 44,
+            "top": 1589,
+            "right": 122,
+            "bottom": 1633,
+            "left": 78
+          },
+          "hit": false
+        },
+        {
+          "name": "Banc Sabadell — Gòtic, Bank · Barri Gòtic, Closed, Closed · opens tomorrow 08:15, Carrer de Ferran 28, Barri Gòtic, Barcelona, 920 m away",
+          "role": "button",
+          "href": null,
+          "rect": {
+            "x": 0,
+            "y": 1699,
+            "width": 320,
+            "height": 112,
+            "top": 1699,
+            "right": 320,
+            "bottom": 1811,
+            "left": 0
+          },
+          "hit": false
+        },
+        {
+          "name": "Save this place",
+          "role": "button",
+          "href": null,
+          "rect": {
+            "x": 78,
+            "y": 1701,
+            "width": 44,
+            "height": 44,
+            "top": 1701,
+            "right": 122,
+            "bottom": 1745,
+            "left": 78
+          },
+          "hit": false
+        },
+        {
+          "name": "Bar Marsella, Bar · El Raval, Closed, Closed · opens Thu 22:00, Carrer de Sant Pau 65, El Raval, Barcelona, 940 m away, Accepts FairCoin",
+          "role": "button",
+          "href": null,
+          "rect": {
+            "x": 0,
+            "y": 1811,
+            "width": 320,
+            "height": 112,
+            "top": 1811,
+            "right": 320,
+            "bottom": 1923,
+            "left": 0
+          },
+          "hit": false
+        },
+        {
+          "name": "Save this place",
+          "role": "button",
+          "href": null,
+          "rect": {
+            "x": 78,
+            "y": 1813,
+            "width": 44,
+            "height": 44,
+            "top": 1813,
+            "right": 122,
+            "bottom": 1857,
+            "left": 78
+          },
+          "hit": false
+        },
+        {
+          "name": "Picasso Museum, Verified by Oxy, Museum · El Born, Rated 5.0 out of 5, 1 review, Open, Special hours · closes 15:00, Carrer de Montcada 15-23, El Born, Barcelona, 1.0 km away",
+          "role": "button",
+          "href": null,
+          "rect": {
+            "x": 0,
+            "y": 1923,
+            "width": 320,
+            "height": 130,
+            "top": 1923,
+            "right": 320,
+            "bottom": 2053,
+            "left": 0
+          },
+          "hit": false
+        },
+        {
+          "name": "Save this place",
+          "role": "button",
+          "href": null,
+          "rect": {
+            "x": 78,
+            "y": 1925,
+            "width": 44,
+            "height": 44,
+            "top": 1925,
+            "right": 122,
+            "bottom": 1969,
+            "left": 78
+          },
+          "hit": false
+        },
+        {
+          "name": "Llibreria Calders, Bookshop · Sant Antoni, Closed, Closed · opens tomorrow 10:00, Passatge de Pere Calders 9, Sant Antoni, Barcelona, 1.0 km away",
+          "role": "button",
+          "href": null,
+          "rect": {
+            "x": 0,
+            "y": 2053,
+            "width": 320,
+            "height": 112,
+            "top": 2053,
+            "right": 320,
+            "bottom": 2165,
+            "left": 0
+          },
+          "hit": false
+        },
+        {
+          "name": "Save this place",
+          "role": "button",
+          "href": null,
+          "rect": {
+            "x": 78,
+            "y": 2055,
+            "width": 44,
+            "height": 44,
+            "top": 2055,
+            "right": 122,
+            "bottom": 2099,
+            "left": 78
+          },
+          "hit": false
+        },
+        {
+          "name": "Cafès El Magnífico, Verified by Oxy, Café · El Born, Closed, Closed · opens tomorrow 09:00, Carrer de l'Argenteria 64, El Born, Barcelona, 1.1 km away, Mention location, Accepts FairCoin",
+          "role": "button",
+          "href": null,
+          "rect": {
+            "x": 0,
+            "y": 2165,
+            "width": 320,
+            "height": 130,
+            "top": 2165,
+            "right": 320,
+            "bottom": 2295,
+            "left": 0
+          },
+          "hit": false
+        },
+        {
+          "name": "Save this place",
+          "role": "button",
+          "href": null,
+          "rect": {
+            "x": 78,
+            "y": 2167,
+            "width": 44,
+            "height": 44,
+            "top": 2167,
+            "right": 122,
+            "bottom": 2211,
+            "left": 78
+          },
+          "hit": false
+        },
+        {
+          "name": "Bicing — Passeig del Born, Bike hire · El Born, El Born, Barcelona, 1.2 km away, Moovo pickup point",
+          "role": "button",
+          "href": null,
+          "rect": {
+            "x": 0,
+            "y": 2295,
+            "width": 320,
+            "height": 112,
+            "top": 2295,
+            "right": 320,
+            "bottom": 2407,
+            "left": 0
+          },
+          "hit": false
+        },
+        {
+          "name": "Save this place",
+          "role": "button",
+          "href": null,
+          "rect": {
+            "x": 78,
+            "y": 2297,
+            "width": 44,
+            "height": 44,
+            "top": 2297,
+            "right": 122,
+            "bottom": 2341,
+            "left": 78
+          },
+          "hit": false
+        },
+        {
+          "name": "Hospital Clinic, Verified by Oxy, Hospital · L'Eixample, Carrer de Villarroel 170, L'Eixample, Barcelona, 1.4 km away",
+          "role": "button",
+          "href": null,
+          "rect": {
+            "x": 0,
+            "y": 2407,
+            "width": 320,
+            "height": 112,
+            "top": 2407,
+            "right": 320,
+            "bottom": 2519,
+            "left": 0
+          },
+          "hit": false
+        },
+        {
+          "name": "Save this place",
+          "role": "button",
+          "href": null,
+          "rect": {
+            "x": 78,
+            "y": 2409,
+            "width": 44,
+            "height": 44,
+            "top": 2409,
+            "right": 122,
+            "bottom": 2453,
+            "left": 78
+          },
+          "hit": false
+        },
+        {
+          "name": "Ciutadella Park, Park · Sant Pere, Passeig de Picasso, Sant Pere, Barcelona, 1.5 km away",
+          "role": "button",
+          "href": null,
+          "rect": {
+            "x": 0,
+            "y": 2519,
+            "width": 320,
+            "height": 112,
+            "top": 2519,
+            "right": 320,
+            "bottom": 2631,
+            "left": 0
+          },
+          "hit": false
+        },
+        {
+          "name": "Save this place",
+          "role": "button",
+          "href": null,
+          "rect": {
+            "x": 78,
+            "y": 2521,
+            "width": 44,
+            "height": 44,
+            "top": 2521,
+            "right": 122,
+            "bottom": 2565,
+            "left": 78
+          },
+          "hit": false
+        },
+        {
+          "name": "Plaça del Sol, Public services, 1.8 km away",
+          "role": "button",
+          "href": null,
+          "rect": {
+            "x": 0,
+            "y": 2631,
+            "width": 320,
+            "height": 112,
+            "top": 2631,
+            "right": 320,
+            "bottom": 2743,
+            "left": 0
+          },
+          "hit": false
+        },
+        {
+          "name": "Save this place",
+          "role": "button",
+          "href": null,
+          "rect": {
+            "x": 78,
+            "y": 2633,
+            "width": 44,
+            "height": 44,
+            "top": 2633,
+            "right": 122,
+            "bottom": 2677,
+            "left": 78
+          },
+          "hit": false
+        },
+        {
+          "name": "Can Solé, Restaurant · La Barceloneta, Closed, Closed · opens Tue 13:00, Carrer de Sant Carles 4, La Barceloneta, Barcelona, 1.9 km away",
+          "role": "button",
+          "href": null,
+          "rect": {
+            "x": 0,
+            "y": 2743,
+            "width": 320,
+            "height": 112,
+            "top": 2743,
+            "right": 320,
+            "bottom": 2855,
+            "left": 0
+          },
+          "hit": false
+        },
+        {
+          "name": "Save this place",
+          "role": "button",
+          "href": null,
+          "rect": {
+            "x": 78,
+            "y": 2745,
+            "width": 44,
+            "height": 44,
+            "top": 2745,
+            "right": 122,
+            "bottom": 2789,
+            "left": 78
+          },
+          "hit": false
+        },
+        {
+          "name": "Baluard Barceloneta, Bakery · La Barceloneta, Closed, Closed · opens tomorrow 08:00, Carrer del Baluard 38, La Barceloneta, Barcelona, 2.0 km away, Mercaria store",
+          "role": "button",
+          "href": null,
+          "rect": {
+            "x": 0,
+            "y": 2855,
+            "width": 320,
+            "height": 112,
+            "top": 2855,
+            "right": 320,
+            "bottom": 2967,
+            "left": 0
+          },
+          "hit": false
+        },
+        {
+          "name": "Save this place",
+          "role": "button",
+          "href": null,
+          "rect": {
+            "x": 78,
+            "y": 2857,
+            "width": 44,
+            "height": 44,
+            "top": 2857,
+            "right": 122,
+            "bottom": 2901,
+            "left": 78
+          },
+          "hit": false
+        },
+        {
+          "name": "Farmàcia Gran de Gràcia, Pharmacy · Gràcia, Closed, Closed · opens tomorrow 09:00, Gran de Gràcia 130, Gràcia, Barcelona, 2.0 km away",
+          "role": "button",
+          "href": null,
+          "rect": {
+            "x": 0,
+            "y": 2967,
+            "width": 320,
+            "height": 112,
+            "top": 2967,
+            "right": 320,
+            "bottom": 3079,
+            "left": 0
+          },
+          "hit": false
+        },
+        {
+          "name": "Save this place",
+          "role": "button",
+          "href": null,
+          "rect": {
+            "x": 78,
+            "y": 2969,
+            "width": 44,
+            "height": 44,
+            "top": 2969,
+            "right": 122,
+            "bottom": 3013,
+            "left": 78
+          },
+          "hit": false
+        },
+        {
+          "name": "Parc de Joan Miró, Park · L'Eixample, L'Eixample, Barcelona, 2.1 km away",
+          "role": "button",
+          "href": null,
+          "rect": {
+            "x": 0,
+            "y": 3079,
+            "width": 320,
+            "height": 112,
+            "top": 3079,
+            "right": 320,
+            "bottom": 3191,
+            "left": 0
+          },
+          "hit": false
+        },
+        {
+          "name": "Save this place",
+          "role": "button",
+          "href": null,
+          "rect": {
+            "x": 78,
+            "y": 3081,
+            "width": 44,
+            "height": 44,
+            "top": 3081,
+            "right": 122,
+            "bottom": 3125,
+            "left": 78
+          },
+          "hit": false
+        },
+        {
+          "name": "Moovo — Sants Estació, Bike hire · Sants, Sants, Barcelona, 2.6 km away, Moovo pickup point",
+          "role": "button",
+          "href": null,
+          "rect": {
+            "x": 0,
+            "y": 3191,
+            "width": 320,
+            "height": 112,
+            "top": 3191,
+            "right": 320,
+            "bottom": 3303,
+            "left": 0
+          },
+          "hit": false
+        },
+        {
+          "name": "Save this place",
+          "role": "button",
+          "href": null,
+          "rect": {
+            "x": 78,
+            "y": 3193,
+            "width": 44,
+            "height": 44,
+            "top": 3193,
+            "right": 122,
+            "bottom": 3237,
+            "left": 78
+          },
+          "hit": false
+        }
+      ],
+      "keyboard": [
+        {
+          "href": "https://www.openmaptiles.org/",
+          "focused": true
+        },
+        {
+          "href": "https://www.openstreetmap.org/copyright",
+          "focused": true
+        },
+        {
+          "href": "https://goway.to/attribution#elevation",
+          "focused": true
+        }
+      ],
+      "topTargets": [
+        {
+          "name": "Sign in",
+          "rect": {
+            "x": 260,
+            "y": 68,
+            "width": 44,
+            "height": 44,
+            "top": 68,
+            "right": 304,
+            "bottom": 112,
+            "left": 260
+          },
+          "hit": true
+        },
+        {
+          "name": "Organization lists",
+          "rect": {
+            "x": 204,
+            "y": 16,
+            "width": 44,
+            "height": 44,
+            "top": 16,
+            "right": 248,
+            "bottom": 60,
+            "left": 204
+          },
+          "hit": true
+        },
+        {
+          "name": "Map style",
+          "rect": {
+            "x": 260,
+            "y": 232,
+            "width": 44,
+            "height": 44,
+            "top": 232,
+            "right": 304,
+            "bottom": 276,
+            "left": 260
+          },
+          "hit": true
+        },
+        {
+          "name": "Map settings",
+          "rect": {
+            "x": 260,
+            "y": 180,
+            "width": 44,
+            "height": 44,
+            "top": 180,
+            "right": 304,
+            "bottom": 224,
+            "left": 260
+          },
+          "hit": true
+        }
+      ],
+      "traversal": [
+        "https://www.openmaptiles.org/",
+        "https://www.openstreetmap.org/copyright",
+        "https://goway.to/attribution#elevation"
+      ]
+    },
+    {
+      "snap": "peek",
+      "value": "0",
+      "before": "false",
+      "after": "true",
+      "targets": [
+        {
+          "name": "© OpenMapTiles",
+          "role": "link",
+          "href": "https://www.openmaptiles.org/",
+          "rect": {
+            "x": 96.0625,
+            "y": 614,
+            "width": 97.9375,
+            "height": 44,
+            "top": 614,
+            "right": 194,
+            "bottom": 658,
+            "left": 96.0625
+          },
+          "hit": true
+        },
+        {
+          "name": "© OpenStreetMap",
+          "role": "link",
+          "href": "https://www.openstreetmap.org/copyright",
+          "rect": {
+            "x": 198,
+            "y": 614,
+            "width": 106,
+            "height": 44,
+            "top": 614,
+            "right": 304,
+            "bottom": 658,
+            "left": 198
+          },
+          "hit": true
+        },
+        {
+          "name": "© Mapterhorn",
+          "role": "link",
+          "href": "https://goway.to/attribution#elevation",
+          "rect": {
+            "x": 173.328125,
+            "y": 662,
+            "width": 82.671875,
+            "height": 44,
+            "top": 662,
+            "right": 256,
+            "bottom": 706,
+            "left": 173.328125
+          },
+          "hit": true
+        },
+        {
+          "name": "Hide map credits",
+          "role": "button",
+          "href": null,
+          "rect": {
+            "x": 260,
+            "y": 662,
+            "width": 44,
+            "height": 44,
+            "top": 662,
+            "right": 304,
+            "bottom": 706,
+            "left": 260
+          },
+          "hit": true
+        },
+        {
+          "name": null,
+          "role": "button",
+          "href": null,
+          "rect": {
+            "x": 100.09375,
+            "y": 16,
+            "width": 95.90625,
+            "height": 44,
+            "top": 16,
+            "right": 196,
+            "bottom": 60,
+            "left": 100.09375
+          },
+          "hit": true
+        },
+        {
+          "name": "Organization lists",
+          "role": "button",
+          "href": null,
+          "rect": {
+            "x": 204,
+            "y": 16,
+            "width": 44,
+            "height": 44,
+            "top": 16,
+            "right": 248,
+            "bottom": 60,
+            "left": 204
+          },
+          "hit": true
+        },
+        {
+          "name": null,
+          "role": "button",
+          "href": null,
+          "rect": {
+            "x": 184.5625,
+            "y": 68,
+            "width": 63.4375,
+            "height": 44,
+            "top": 68,
+            "right": 248,
+            "bottom": 112,
+            "left": 184.5625
+          },
+          "hit": true
+        },
+        {
+          "name": null,
+          "role": "button",
+          "href": null,
+          "rect": {
+            "x": 155.09375,
+            "y": 120,
+            "width": 92.90625,
+            "height": 44,
+            "top": 120,
+            "right": 248,
+            "bottom": 164,
+            "left": 155.09375
+          },
+          "hit": true
+        },
+        {
+          "name": "Sign in",
+          "role": "button",
+          "href": null,
+          "rect": {
+            "x": 260,
+            "y": 68,
+            "width": 44,
+            "height": 44,
+            "top": 68,
+            "right": 304,
+            "bottom": 112,
+            "left": 260
+          },
+          "hit": true
+        },
+        {
+          "name": "Map settings",
+          "role": "button",
+          "href": null,
+          "rect": {
+            "x": 260,
+            "y": 180,
+            "width": 44,
+            "height": 44,
+            "top": 180,
+            "right": 304,
+            "bottom": 224,
+            "left": 260
+          },
+          "hit": true
+        },
+        {
+          "name": "Map style",
+          "role": "button",
+          "href": null,
+          "rect": {
+            "x": 260,
+            "y": 232,
+            "width": 44,
+            "height": 44,
+            "top": 232,
+            "right": 304,
+            "bottom": 276,
+            "left": 260
+          },
+          "hit": true
+        },
+        {
+          "name": "My location",
+          "role": "button",
+          "href": null,
+          "rect": {
+            "x": 112,
+            "y": 544,
+            "width": 44,
+            "height": 44,
+            "top": 544,
+            "right": 156,
+            "bottom": 588,
+            "left": 112
+          },
+          "hit": true
+        },
+        {
+          "name": "Zoom in",
+          "role": "button",
+          "href": null,
+          "rect": {
+            "x": 164,
+            "y": 544,
+            "width": 44,
+            "height": 44,
+            "top": 544,
+            "right": 208,
+            "bottom": 588,
+            "left": 164
+          },
+          "hit": true
+        },
+        {
+          "name": "Zoom out",
+          "role": "button",
+          "href": null,
+          "rect": {
+            "x": 208,
+            "y": 544,
+            "width": 44,
+            "height": 44,
+            "top": 544,
+            "right": 252,
+            "bottom": 588,
+            "left": 208
+          },
+          "hit": true
+        },
+        {
+          "name": "Tilt the map",
+          "role": "button",
+          "href": null,
+          "rect": {
+            "x": 260,
+            "y": 544,
+            "width": 44,
+            "height": 44,
+            "top": 544,
+            "right": 304,
+            "bottom": 588,
+            "left": 260
+          },
+          "hit": true
+        },
+        {
+          "name": "Places",
+          "role": "slider",
+          "href": null,
+          "rect": {
+            "x": 0,
+            "y": 712,
+            "width": 320,
+            "height": 44,
+            "top": 712,
+            "right": 320,
+            "bottom": 756,
+            "left": 0
+          },
+          "hit": true
+        },
+        {
+          "name": "Font de Canaletes, Place, 170 m away",
+          "role": "button",
+          "href": null,
+          "rect": {
+            "x": 0,
+            "y": 844,
+            "width": 320,
+            "height": 112,
+            "top": 844,
+            "right": 320,
+            "bottom": 956,
+            "left": 0
+          },
+          "hit": false
+        },
+        {
+          "name": "Save this place",
+          "role": "button",
+          "href": null,
+          "rect": {
+            "x": 78,
+            "y": 846,
+            "width": 44,
+            "height": 44,
+            "top": 846,
+            "right": 122,
+            "bottom": 890,
+            "left": 78
+          },
+          "hit": false
+        },
+        {
+          "name": "Nømad Coffee Lab, Café · Sant Pere, Closed, Closed · opens tomorrow 09:00, Passatge Sert 12, Sant Pere, Barcelona, 310 m away, Accepts FairCoin",
+          "role": "button",
+          "href": null,
+          "rect": {
+            "x": 0,
+            "y": 956,
+            "width": 320,
+            "height": 112,
+            "top": 956,
+            "right": 320,
+            "bottom": 1068,
+            "left": 0
+          },
+          "hit": false
+        },
+        {
+          "name": "Save this place",
+          "role": "button",
+          "href": null,
+          "rect": {
+            "x": 78,
+            "y": 958,
+            "width": 44,
+            "height": 44,
+            "top": 958,
+            "right": 122,
+            "bottom": 1002,
+            "left": 78
+          },
+          "hit": false
+        },
+        {
+          "name": "Betahaus Barcelona, Verified by Oxy, Coworking · Gràcia, Closed, Closed · opens tomorrow 08:30, Carrer de Vilafranca 7, Gràcia, Barcelona, 410 m away, Accepts FairCoin, Homiio listings",
+          "role": "button",
+          "href": null,
+          "rect": {
+            "x": 0,
+            "y": 1068,
+            "width": 320,
+            "height": 130,
+            "top": 1068,
+            "right": 320,
+            "bottom": 1198,
+            "left": 0
+          },
+          "hit": false
+        },
+        {
+          "name": "Save this place",
+          "role": "button",
+          "href": null,
+          "rect": {
+            "x": 78,
+            "y": 1070,
+            "width": 44,
+            "height": 44,
+            "top": 1070,
+            "right": 122,
+            "bottom": 1114,
+            "left": 78
+          },
+          "hit": false
+        },
+        {
+          "name": "La Boqueria Market, Verified by Oxy, Market · El Raval, Rated 4.0 out of 5, 3 reviews, Closed, Closed · opens tomorrow 08:00, La Rambla 91, El Raval, Barcelona, 680 m away, Accepts FairCoin, Mercaria store",
+          "role": "button",
+          "href": null,
+          "rect": {
+            "x": 0,
+            "y": 1198,
+            "width": 320,
+            "height": 130,
+            "top": 1198,
+            "right": 320,
+            "bottom": 1328,
+            "left": 0
+          },
+          "hit": false
+        },
+        {
+          "name": "Save this place",
+          "role": "button",
+          "href": null,
+          "rect": {
+            "x": 78,
+            "y": 1200,
+            "width": 44,
+            "height": 44,
+            "top": 1200,
+            "right": 122,
+            "bottom": 1244,
+            "left": 78
+          },
+          "hit": false
+        },
+        {
+          "name": "Mercat de Santa Caterina, Market · Sant Pere, Closed, Closed · opens tomorrow 07:30, Avinguda de Francesc Cambó 16, Sant Pere, Barcelona, 690 m away, Accepts FairCoin",
+          "role": "button",
+          "href": null,
+          "rect": {
+            "x": 0,
+            "y": 1328,
+            "width": 320,
+            "height": 112,
+            "top": 1328,
+            "right": 320,
+            "bottom": 1440,
+            "left": 0
+          },
+          "hit": false
+        },
+        {
+          "name": "Save this place",
+          "role": "button",
+          "href": null,
+          "rect": {
+            "x": 78,
+            "y": 1330,
+            "width": 44,
+            "height": 44,
+            "top": 1330,
+            "right": 122,
+            "bottom": 1374,
+            "left": 78
+          },
+          "hit": false
+        },
+        {
+          "name": "Hotel Neri, Hotel · Barri Gòtic, Carrer de Sant Sever 5, Barri Gòtic, Barcelona, 730 m away, Homiio listings",
+          "role": "button",
+          "href": null,
+          "rect": {
+            "x": 0,
+            "y": 1440,
+            "width": 320,
+            "height": 112,
+            "top": 1440,
+            "right": 320,
+            "bottom": 1552,
+            "left": 0
+          },
+          "hit": false
+        },
+        {
+          "name": "Save this place",
+          "role": "button",
+          "href": null,
+          "rect": {
+            "x": 78,
+            "y": 1442,
+            "width": 44,
+            "height": 44,
+            "top": 1442,
+            "right": 122,
+            "bottom": 1486,
+            "left": 78
+          },
+          "hit": false
+        },
+        {
+          "name": "Escola Massana, School · El Raval, Carrer de l'Hospital 56, El Raval, Barcelona, 730 m away",
+          "role": "button",
+          "href": null,
+          "rect": {
+            "x": 0,
+            "y": 1552,
+            "width": 320,
+            "height": 112,
+            "top": 1552,
+            "right": 320,
+            "bottom": 1664,
+            "left": 0
+          },
+          "hit": false
+        },
+        {
+          "name": "Save this place",
+          "role": "button",
+          "href": null,
+          "rect": {
+            "x": 78,
+            "y": 1554,
+            "width": 44,
+            "height": 44,
+            "top": 1554,
+            "right": 122,
+            "bottom": 1598,
+            "left": 78
+          },
+          "hit": false
+        },
+        {
+          "name": "La Botiga del Raval, Clothes · El Raval, Permanently closed, Carrer del Carme 41, El Raval, Barcelona, 820 m away",
+          "role": "button",
+          "href": null,
+          "rect": {
+            "x": 0,
+            "y": 1664,
+            "width": 320,
+            "height": 112,
+            "top": 1664,
+            "right": 320,
+            "bottom": 1776,
+            "left": 0
+          },
+          "hit": false
+        },
+        {
+          "name": "Save this place",
+          "role": "button",
+          "href": null,
+          "rect": {
+            "x": 78,
+            "y": 1666,
+            "width": 44,
+            "height": 44,
+            "top": 1666,
+            "right": 122,
+            "bottom": 1710,
+            "left": 78
+          },
+          "hit": false
+        },
+        {
+          "name": "Liceu, Train station · Ciutat Vella, Ciutat Vella, Barcelona, 890 m away",
+          "role": "button",
+          "href": null,
+          "rect": {
+            "x": 0,
+            "y": 1776,
+            "width": 320,
+            "height": 112,
+            "top": 1776,
+            "right": 320,
+            "bottom": 1888,
+            "left": 0
+          },
+          "hit": false
+        },
+        {
+          "name": "Save this place",
+          "role": "button",
+          "href": null,
+          "rect": {
+            "x": 78,
+            "y": 1778,
+            "width": 44,
+            "height": 44,
+            "top": 1778,
+            "right": 122,
+            "bottom": 1822,
+            "left": 78
+          },
+          "hit": false
+        },
+        {
+          "name": "Jaume I, Train station · Ciutat Vella, Ciutat Vella, Barcelona, 890 m away",
+          "role": "button",
+          "href": null,
+          "rect": {
+            "x": 0,
+            "y": 1888,
+            "width": 320,
+            "height": 112,
+            "top": 1888,
+            "right": 320,
+            "bottom": 2000,
+            "left": 0
+          },
+          "hit": false
+        },
+        {
+          "name": "Save this place",
+          "role": "button",
+          "href": null,
+          "rect": {
+            "x": 78,
+            "y": 1890,
+            "width": 44,
+            "height": 44,
+            "top": 1890,
+            "right": 122,
+            "bottom": 1934,
+            "left": 78
+          },
+          "hit": false
+        },
+        {
+          "name": "Banc Sabadell — Gòtic, Bank · Barri Gòtic, Closed, Closed · opens tomorrow 08:15, Carrer de Ferran 28, Barri Gòtic, Barcelona, 920 m away",
+          "role": "button",
+          "href": null,
+          "rect": {
+            "x": 0,
+            "y": 2000,
+            "width": 320,
+            "height": 112,
+            "top": 2000,
+            "right": 320,
+            "bottom": 2112,
+            "left": 0
+          },
+          "hit": false
+        },
+        {
+          "name": "Save this place",
+          "role": "button",
+          "href": null,
+          "rect": {
+            "x": 78,
+            "y": 2002,
+            "width": 44,
+            "height": 44,
+            "top": 2002,
+            "right": 122,
+            "bottom": 2046,
+            "left": 78
+          },
+          "hit": false
+        },
+        {
+          "name": "Bar Marsella, Bar · El Raval, Closed, Closed · opens Thu 22:00, Carrer de Sant Pau 65, El Raval, Barcelona, 940 m away, Accepts FairCoin",
+          "role": "button",
+          "href": null,
+          "rect": {
+            "x": 0,
+            "y": 2112,
+            "width": 320,
+            "height": 112,
+            "top": 2112,
+            "right": 320,
+            "bottom": 2224,
+            "left": 0
+          },
+          "hit": false
+        },
+        {
+          "name": "Save this place",
+          "role": "button",
+          "href": null,
+          "rect": {
+            "x": 78,
+            "y": 2114,
+            "width": 44,
+            "height": 44,
+            "top": 2114,
+            "right": 122,
+            "bottom": 2158,
+            "left": 78
+          },
+          "hit": false
+        },
+        {
+          "name": "Picasso Museum, Verified by Oxy, Museum · El Born, Rated 5.0 out of 5, 1 review, Open, Special hours · closes 15:00, Carrer de Montcada 15-23, El Born, Barcelona, 1.0 km away",
+          "role": "button",
+          "href": null,
+          "rect": {
+            "x": 0,
+            "y": 2224,
+            "width": 320,
+            "height": 130,
+            "top": 2224,
+            "right": 320,
+            "bottom": 2354,
+            "left": 0
+          },
+          "hit": false
+        },
+        {
+          "name": "Save this place",
+          "role": "button",
+          "href": null,
+          "rect": {
+            "x": 78,
+            "y": 2226,
+            "width": 44,
+            "height": 44,
+            "top": 2226,
+            "right": 122,
+            "bottom": 2270,
+            "left": 78
+          },
+          "hit": false
+        },
+        {
+          "name": "Llibreria Calders, Bookshop · Sant Antoni, Closed, Closed · opens tomorrow 10:00, Passatge de Pere Calders 9, Sant Antoni, Barcelona, 1.0 km away",
+          "role": "button",
+          "href": null,
+          "rect": {
+            "x": 0,
+            "y": 2354,
+            "width": 320,
+            "height": 112,
+            "top": 2354,
+            "right": 320,
+            "bottom": 2466,
+            "left": 0
+          },
+          "hit": false
+        },
+        {
+          "name": "Save this place",
+          "role": "button",
+          "href": null,
+          "rect": {
+            "x": 78,
+            "y": 2356,
+            "width": 44,
+            "height": 44,
+            "top": 2356,
+            "right": 122,
+            "bottom": 2400,
+            "left": 78
+          },
+          "hit": false
+        },
+        {
+          "name": "Cafès El Magnífico, Verified by Oxy, Café · El Born, Closed, Closed · opens tomorrow 09:00, Carrer de l'Argenteria 64, El Born, Barcelona, 1.1 km away, Mention location, Accepts FairCoin",
+          "role": "button",
+          "href": null,
+          "rect": {
+            "x": 0,
+            "y": 2466,
+            "width": 320,
+            "height": 130,
+            "top": 2466,
+            "right": 320,
+            "bottom": 2596,
+            "left": 0
+          },
+          "hit": false
+        },
+        {
+          "name": "Save this place",
+          "role": "button",
+          "href": null,
+          "rect": {
+            "x": 78,
+            "y": 2468,
+            "width": 44,
+            "height": 44,
+            "top": 2468,
+            "right": 122,
+            "bottom": 2512,
+            "left": 78
+          },
+          "hit": false
+        },
+        {
+          "name": "Bicing — Passeig del Born, Bike hire · El Born, El Born, Barcelona, 1.2 km away, Moovo pickup point",
+          "role": "button",
+          "href": null,
+          "rect": {
+            "x": 0,
+            "y": 2596,
+            "width": 320,
+            "height": 112,
+            "top": 2596,
+            "right": 320,
+            "bottom": 2708,
+            "left": 0
+          },
+          "hit": false
+        },
+        {
+          "name": "Save this place",
+          "role": "button",
+          "href": null,
+          "rect": {
+            "x": 78,
+            "y": 2598,
+            "width": 44,
+            "height": 44,
+            "top": 2598,
+            "right": 122,
+            "bottom": 2642,
+            "left": 78
+          },
+          "hit": false
+        },
+        {
+          "name": "Hospital Clinic, Verified by Oxy, Hospital · L'Eixample, Carrer de Villarroel 170, L'Eixample, Barcelona, 1.4 km away",
+          "role": "button",
+          "href": null,
+          "rect": {
+            "x": 0,
+            "y": 2708,
+            "width": 320,
+            "height": 112,
+            "top": 2708,
+            "right": 320,
+            "bottom": 2820,
+            "left": 0
+          },
+          "hit": false
+        },
+        {
+          "name": "Save this place",
+          "role": "button",
+          "href": null,
+          "rect": {
+            "x": 78,
+            "y": 2710,
+            "width": 44,
+            "height": 44,
+            "top": 2710,
+            "right": 122,
+            "bottom": 2754,
+            "left": 78
+          },
+          "hit": false
+        },
+        {
+          "name": "Ciutadella Park, Park · Sant Pere, Passeig de Picasso, Sant Pere, Barcelona, 1.5 km away",
+          "role": "button",
+          "href": null,
+          "rect": {
+            "x": 0,
+            "y": 2820,
+            "width": 320,
+            "height": 112,
+            "top": 2820,
+            "right": 320,
+            "bottom": 2932,
+            "left": 0
+          },
+          "hit": false
+        },
+        {
+          "name": "Save this place",
+          "role": "button",
+          "href": null,
+          "rect": {
+            "x": 78,
+            "y": 2822,
+            "width": 44,
+            "height": 44,
+            "top": 2822,
+            "right": 122,
+            "bottom": 2866,
+            "left": 78
+          },
+          "hit": false
+        },
+        {
+          "name": "Plaça del Sol, Public services, 1.8 km away",
+          "role": "button",
+          "href": null,
+          "rect": {
+            "x": 0,
+            "y": 2932,
+            "width": 320,
+            "height": 112,
+            "top": 2932,
+            "right": 320,
+            "bottom": 3044,
+            "left": 0
+          },
+          "hit": false
+        },
+        {
+          "name": "Save this place",
+          "role": "button",
+          "href": null,
+          "rect": {
+            "x": 78,
+            "y": 2934,
+            "width": 44,
+            "height": 44,
+            "top": 2934,
+            "right": 122,
+            "bottom": 2978,
+            "left": 78
+          },
+          "hit": false
+        },
+        {
+          "name": "Can Solé, Restaurant · La Barceloneta, Closed, Closed · opens Tue 13:00, Carrer de Sant Carles 4, La Barceloneta, Barcelona, 1.9 km away",
+          "role": "button",
+          "href": null,
+          "rect": {
+            "x": 0,
+            "y": 3044,
+            "width": 320,
+            "height": 112,
+            "top": 3044,
+            "right": 320,
+            "bottom": 3156,
+            "left": 0
+          },
+          "hit": false
+        },
+        {
+          "name": "Save this place",
+          "role": "button",
+          "href": null,
+          "rect": {
+            "x": 78,
+            "y": 3046,
+            "width": 44,
+            "height": 44,
+            "top": 3046,
+            "right": 122,
+            "bottom": 3090,
+            "left": 78
+          },
+          "hit": false
+        },
+        {
+          "name": "Baluard Barceloneta, Bakery · La Barceloneta, Closed, Closed · opens tomorrow 08:00, Carrer del Baluard 38, La Barceloneta, Barcelona, 2.0 km away, Mercaria store",
+          "role": "button",
+          "href": null,
+          "rect": {
+            "x": 0,
+            "y": 3156,
+            "width": 320,
+            "height": 112,
+            "top": 3156,
+            "right": 320,
+            "bottom": 3268,
+            "left": 0
+          },
+          "hit": false
+        },
+        {
+          "name": "Save this place",
+          "role": "button",
+          "href": null,
+          "rect": {
+            "x": 78,
+            "y": 3158,
+            "width": 44,
+            "height": 44,
+            "top": 3158,
+            "right": 122,
+            "bottom": 3202,
+            "left": 78
+          },
+          "hit": false
+        },
+        {
+          "name": "Farmàcia Gran de Gràcia, Pharmacy · Gràcia, Closed, Closed · opens tomorrow 09:00, Gran de Gràcia 130, Gràcia, Barcelona, 2.0 km away",
+          "role": "button",
+          "href": null,
+          "rect": {
+            "x": 0,
+            "y": 3268,
+            "width": 320,
+            "height": 112,
+            "top": 3268,
+            "right": 320,
+            "bottom": 3380,
+            "left": 0
+          },
+          "hit": false
+        },
+        {
+          "name": "Save this place",
+          "role": "button",
+          "href": null,
+          "rect": {
+            "x": 78,
+            "y": 3270,
+            "width": 44,
+            "height": 44,
+            "top": 3270,
+            "right": 122,
+            "bottom": 3314,
+            "left": 78
+          },
+          "hit": false
+        },
+        {
+          "name": "Parc de Joan Miró, Park · L'Eixample, L'Eixample, Barcelona, 2.1 km away",
+          "role": "button",
+          "href": null,
+          "rect": {
+            "x": 0,
+            "y": 3380,
+            "width": 320,
+            "height": 112,
+            "top": 3380,
+            "right": 320,
+            "bottom": 3492,
+            "left": 0
+          },
+          "hit": false
+        },
+        {
+          "name": "Save this place",
+          "role": "button",
+          "href": null,
+          "rect": {
+            "x": 78,
+            "y": 3382,
+            "width": 44,
+            "height": 44,
+            "top": 3382,
+            "right": 122,
+            "bottom": 3426,
+            "left": 78
+          },
+          "hit": false
+        },
+        {
+          "name": "Moovo — Sants Estació, Bike hire · Sants, Sants, Barcelona, 2.6 km away, Moovo pickup point",
+          "role": "button",
+          "href": null,
+          "rect": {
+            "x": 0,
+            "y": 3492,
+            "width": 320,
+            "height": 112,
+            "top": 3492,
+            "right": 320,
+            "bottom": 3604,
+            "left": 0
+          },
+          "hit": false
+        },
+        {
+          "name": "Save this place",
+          "role": "button",
+          "href": null,
+          "rect": {
+            "x": 78,
+            "y": 3494,
+            "width": 44,
+            "height": 44,
+            "top": 3494,
+            "right": 122,
+            "bottom": 3538,
+            "left": 78
+          },
+          "hit": false
+        }
+      ],
+      "keyboard": [
+        {
+          "href": "https://www.openmaptiles.org/",
+          "focused": true
+        },
+        {
+          "href": "https://www.openstreetmap.org/copyright",
+          "focused": true
+        },
+        {
+          "href": "https://goway.to/attribution#elevation",
+          "focused": true
+        }
+      ],
+      "topTargets": [
+        {
+          "name": "Sign in",
+          "rect": {
+            "x": 260,
+            "y": 68,
+            "width": 44,
+            "height": 44,
+            "top": 68,
+            "right": 304,
+            "bottom": 112,
+            "left": 260
+          },
+          "hit": true
+        },
+        {
+          "name": "Organization lists",
+          "rect": {
+            "x": 204,
+            "y": 16,
+            "width": 44,
+            "height": 44,
+            "top": 16,
+            "right": 248,
+            "bottom": 60,
+            "left": 204
+          },
+          "hit": true
+        },
+        {
+          "name": "Map style",
+          "rect": {
+            "x": 260,
+            "y": 232,
+            "width": 44,
+            "height": 44,
+            "top": 232,
+            "right": 304,
+            "bottom": 276,
+            "left": 260
+          },
+          "hit": true
+        },
+        {
+          "name": "Map settings",
+          "rect": {
+            "x": 260,
+            "y": 180,
+            "width": 44,
+            "height": 44,
+            "top": 180,
+            "right": 304,
+            "bottom": 224,
+            "left": 260
+          },
+          "hit": true
+        },
+        {
+          "name": "My location",
+          "rect": {
+            "x": 112,
+            "y": 544,
+            "width": 44,
+            "height": 44,
+            "top": 544,
+            "right": 156,
+            "bottom": 588,
+            "left": 112
+          },
+          "hit": true
+        },
+        {
+          "name": "Zoom in",
+          "rect": {
+            "x": 164,
+            "y": 544,
+            "width": 44,
+            "height": 44,
+            "top": 544,
+            "right": 208,
+            "bottom": 588,
+            "left": 164
+          },
+          "hit": true
+        },
+        {
+          "name": "Zoom out",
+          "rect": {
+            "x": 208,
+            "y": 544,
+            "width": 44,
+            "height": 44,
+            "top": 544,
+            "right": 252,
+            "bottom": 588,
+            "left": 208
+          },
+          "hit": true
+        },
+        {
+          "name": "Tilt the map",
+          "rect": {
+            "x": 260,
+            "y": 544,
+            "width": 44,
+            "height": 44,
+            "top": 544,
+            "right": 304,
+            "bottom": 588,
+            "left": 260
+          },
+          "hit": true
+        }
+      ],
+      "traversal": [
+        "https://www.openmaptiles.org/",
+        "https://www.openstreetmap.org/copyright",
+        "https://goway.to/attribution#elevation"
+      ]
+    }
+  ],
+  "errors": [],
+  "blocked": [],
+  "locationCalls": 0
+}

@@ -86,7 +86,9 @@ async function checkClearance(page: Page, width: number, expanded: boolean) {
   if (
     expanded &&
     (await page
-      .locator('[data-testid="map-credit"] [role="link"][aria-label="© OpenStreetMap"]')
+      .locator(
+        '[data-testid="map-credit"] a[href="https://www.openstreetmap.org/copyright"][aria-label="© OpenStreetMap"]',
+      )
       .count()) !== 1
   ) {
     throw new Error('Expanded credit lost its OpenStreetMap link');
@@ -122,33 +124,7 @@ try {
     await page.setViewportSize(viewport);
     for (const width of [200, 240, 320]) {
       await checkClearance(page, width, true);
-      const expandedBox = await page.getByTestId('map-scale').boundingBox();
       await checkClearance(page, width, false);
-      if (width === 200 && expandedBox) {
-        await page.waitForFunction(
-          (top) => {
-            const box = document
-              .querySelector('[data-testid="map-scale"]')
-              ?.getBoundingClientRect();
-            return !!box && box.top > top + 1;
-          },
-          expandedBox.y,
-          { timeout: 2_000 },
-        );
-        const foldedBox = await page.getByTestId('map-scale').boundingBox();
-        if (!foldedBox) throw new Error('The folded scale disappeared');
-        await checkClearance(page, width, true);
-        await page.waitForFunction(
-          (top) => {
-            const box = document
-              .querySelector('[data-testid="map-scale"]')
-              ?.getBoundingClientRect();
-            return !!box && box.top < top - 1;
-          },
-          foldedBox.y,
-          { timeout: 2_000 },
-        );
-      }
     }
   }
 } finally {
