@@ -2,65 +2,65 @@
 // Refreshed weekly by .github/workflows/live-areas.yml, which opens a pull request on a change.
 //
 // Each feed, the day what it was derived from last changed, and its fingerprint:
-//   renfe-cercanias                2026-11-02  sha256:621d91302f5d0350
+//   renfe-cercanias                2026-11-09  sha256:16eb6545c568abef
 //   fgc-geotren                    2026-10-13  sha256:9295a9b24aacc033
 //   mta-bus                        2026-11-02  sha256:317659ed3ae53a2c
 //   mta-lirr                       2026-10-13  sha256:1ff28555db6bedac
 //   mta-mnr                        2026-10-13  sha256:e947dac7b5d97a97
 //   mta-subway                     2026-10-13  sha256:ffa336dfbc46064c
 //   amb-bus                        2026-11-02  sha256:e6340198108c3336
-//   emt-fuenlabrada                2026-10-13  sha256:322bf103b9ed28d8
-//   nyc-bikeshare                  2026-11-02  sha256:617697df57ed9702
-//   helsinki-hsl                   2026-11-02  sha256:96bd252514ab3b8e
-//   netherlands-ovapi              2026-11-02  sha256:24dfc7cf8a7f85c4
-//   norway-entur                   2026-11-02  sha256:88e44c0192316e5c
+//   emt-fuenlabrada                2026-11-09  sha256:16597899d0d9798b
+//   nyc-bikeshare                  2026-11-09  sha256:a6af43c254ed6a2d
+//   helsinki-hsl                   2026-11-09  sha256:2fb4a1e6954f80b6
+//   netherlands-ovapi              2026-11-09  sha256:73ef98e00cc97d41
+//   norway-entur                   2026-11-09  sha256:76be5d5f3338787e
 //   oslo-bysykkel                  2026-10-13  sha256:69135d164ac3fa4b
-//   bergen-bysykkel                2026-10-13  sha256:3396a0da1c862a64
+//   bergen-bysykkel                2026-11-09  sha256:26771af84f9cfc78
 //   trondheim-bysykkel             2026-11-02  sha256:30fff6b9288af19f
-//   cabi-bikeshare                 2026-11-02  sha256:e945ea9897683b93
-//   divvy-bikeshare                2026-11-02  sha256:a181f911c51ff660
-//   baywheels-bikeshare            2026-11-02  sha256:f7a1c3f6da3be353
-//   bluebikes-bikeshare            2026-11-02  sha256:3918e8b9caefab4d
-//   valenbisi                      2026-11-02  sha256:ee60e319489cad21
+//   cabi-bikeshare                 2026-11-09  sha256:c5e8517fa64ef8a4
+//   divvy-bikeshare                2026-11-09  sha256:e33be15414fa1f49
+//   baywheels-bikeshare            2026-11-09  sha256:728f5394c06bc48f
+//   bluebikes-bikeshare            2026-11-09  sha256:0c08cf4ca865f143
+//   valenbisi                      2026-11-09  sha256:af83f2c76d487140
 //   dublinbikes                    2026-10-13  sha256:92e344a0fc8335ae
 //   villo                          2026-11-02  sha256:7ecbb376a5947d51
-//   velov                          2026-11-02  sha256:b4e6927d4a5a655b
-//   naolib-velo                    2026-11-02  sha256:da59c248abdb7b09
+//   velov                          2026-11-09  sha256:9191faf3cef2b500
+//   naolib-velo                    2026-11-09  sha256:121a3718c86bfa5e
 //   velotoulouse                   2026-11-02  sha256:ee4573be0af69642
-//   veloh                          2026-11-02  sha256:4dcab9e5e22335e8
+//   veloh                          2026-11-09  sha256:b0321fd6914bb25b
 //   cyclocity-vilnius              2026-10-13  sha256:2ef2a4fd8b26da2f
 //   lille-vlille                   2026-10-13  sha256:c435fdca2e660607
-//   tampere-nysse                  2026-11-02  sha256:ca23e881a22186d1
+//   tampere-nysse                  2026-11-09  sha256:5d96345f2320d23a
 //   lehavre-lia                    2026-11-02  sha256:fd2310eaa55da8f3
-//   prague-pid                     2026-11-02  sha256:dc7c81ca30552c8c
+//   prague-pid                     2026-11-09  sha256:e53826af24b4167b
 //   bilbao-metro                   2026-10-13  sha256:dbfd55ebf61c3df2
-//   bordeaux-tbm                   2026-11-02  sha256:2bcf8ae42ddc336e
+//   bordeaux-tbm                   2026-11-09  sha256:b4d565eb751b01ee
 //   montpellier-tam                2026-10-13  sha256:d776f805f90fd8d1
-//   nice-lignes-azur               2026-11-02  sha256:6bf8c66feba11507
-//   ireland-nta                    2026-11-02  sha256:41e968bfd22c2548
-//   toronto-ttc                    2026-10-13  sha256:aca6ea14b0d48d3b
+//   nice-lignes-azur               2026-11-09  sha256:975f06b56169c24c
+//   ireland-nta                    2026-11-09  sha256:2f202ebdddf94e24
+//   toronto-ttc                    2026-11-09  sha256:f36c102ff17b434d
 //   calgary-transit                2026-11-02  sha256:06ae2cc06acb731a
-//   edmonton-ets                   2026-11-02  sha256:b053b1bbdc06431a
+//   edmonton-ets                   2026-11-09  sha256:f8ee872188098a06
 //   halifax-transit                2026-10-13  sha256:7953a826e90a0870
 //   york-yrt                       2026-11-02  sha256:58c7bbadbc342c23
 //   mississauga-miway              2026-10-13  sha256:d6c27a1bf776a4ad
-//   durham-drt                     2026-11-02  sha256:65208e7dec36f372
+//   durham-drt                     2026-11-09  sha256:bf8f10be85671f66
 //   hamilton-hsr                   2026-11-02  sha256:094d8ff8488c7397
-//   boston-mbta                    2026-11-02  sha256:738fd1adb1647c51
+//   boston-mbta                    2026-11-09  sha256:ec211261bf2c6023
 //   seattle-king-county            2026-11-02  sha256:cb5f18bf0c1d709d
-//   austin-capmetro                2026-10-13  sha256:cafd69cda802f92b
-//   vancouver-translink            2026-11-02  sha256:78556fa2183aff62
-//   montreal-stm                   2026-11-02  sha256:d620eedf32819f82
+//   austin-capmetro                2026-11-09  sha256:8df1d51024230545
+//   vancouver-translink            2026-11-09  sha256:56c87af1b8699f9d
+//   montreal-stm                   2026-11-09  sha256:fbbc1cc3d3dd52f6
 //   chicago-metra                  2026-10-13  sha256:863b88795288a0de
 //   portland-trimet                2026-11-02  sha256:762c9e70e7da4324
-//   toronto-bikeshare              2026-11-02  sha256:1cb093bf6c721849
+//   toronto-bikeshare              2026-11-09  sha256:f1e434574b6e5585
 //   rio-bus                        2026-10-13  sha256:27665f568d6ebb2c
 //   rio-brt                        2026-10-13  sha256:27665f568d6ebb2c
-//   brisbane-translink             2026-11-02  sha256:5883eae5e4ced21d
-//   adelaide-metro                 2026-11-02  sha256:89c8deb1adb7b73b
-//   auckland-at                    2026-11-02  sha256:3299b6ee544cc32d
-//   wellington-metlink             2026-10-13  sha256:24bb421bc136c32c
-//   japan-toei-bus                 2026-10-13  sha256:6b442c3038dd5bfc
+//   brisbane-translink             2026-11-09  sha256:d752b60ca1b3defe
+//   adelaide-metro                 2026-11-09  sha256:cdcf01a3a27fe0c2
+//   auckland-at                    2026-11-09  sha256:c631b37f5d073ca3
+//   wellington-metlink             2026-11-09  sha256:4b9755357f244ee5
+//   japan-toei-bus                 2026-11-09  sha256:5ff17d7de1ebd489
 //   japan-toei-train               2026-10-13  sha256:ad896388bdf400b7
 //   japan-sendai-bus               2026-11-02  sha256:b3ab48c53f9e9955
 //   japan-aomori-bus               2026-10-13  sha256:8cb12cb27d29224a
@@ -84,8 +84,8 @@ import type { DerivedSource } from './areas';
 
 export const LIVE_SOURCE_AREAS: Readonly<Record<string, DerivedSource>> = {
   "renfe-cercanias": {
-    "readOn": "2026-11-02",
-    "sha256": "621d91302f5d0350bbcd395e22f664271a515e845982270da96998a5265ca2de",
+    "readOn": "2026-11-09",
+    "sha256": "16eb6545c568abefd8c6280259128c24d84ac233f563dd33024c02ccddbde1d3",
     "modes": [
       "bus",
       "rail"
@@ -536,8 +536,8 @@ export const LIVE_SOURCE_AREAS: Readonly<Record<string, DerivedSource>> = {
     ]
   },
   "emt-fuenlabrada": {
-    "readOn": "2026-10-13",
-    "sha256": "322bf103b9ed28d878240c9fe81d81cb36c1186b26972faf69b5ce599e35f532",
+    "readOn": "2026-11-09",
+    "sha256": "16597899d0d9798ba4f50bf9e400d130b5f484326ba988936f2cd565014a8980",
     "modes": [
       "bus"
     ],
@@ -557,8 +557,8 @@ export const LIVE_SOURCE_AREAS: Readonly<Record<string, DerivedSource>> = {
     ]
   },
   "nyc-bikeshare": {
-    "readOn": "2026-11-02",
-    "sha256": "617697df57ed9702565551610beba176695e2aa95abde62adcbc396393370031",
+    "readOn": "2026-11-09",
+    "sha256": "a6af43c254ed6a2d39f283c0254f14fbbdb443c40fc7aa39634845a12ab3fbd4",
     "modes": [],
     "outer": {
       "west": -74.15,
@@ -576,8 +576,8 @@ export const LIVE_SOURCE_AREAS: Readonly<Record<string, DerivedSource>> = {
     ]
   },
   "helsinki-hsl": {
-    "readOn": "2026-11-02",
-    "sha256": "96bd252514ab3b8e72e0c5dd21001c0f55dbc777566be39c5cc9d353b34f6140",
+    "readOn": "2026-11-09",
+    "sha256": "2fb4a1e6954f80b6ea66f8244391b9d2e66d668364d607078c777c5499ae7728",
     "modes": [
       "bus",
       "ferry",
@@ -613,8 +613,8 @@ export const LIVE_SOURCE_AREAS: Readonly<Record<string, DerivedSource>> = {
     ]
   },
   "netherlands-ovapi": {
-    "readOn": "2026-11-02",
-    "sha256": "24dfc7cf8a7f85c4b4c36df4feb4d9d4a4f3941ce07953bf203365e447bc3189",
+    "readOn": "2026-11-09",
+    "sha256": "73ef98e00cc97d4173f5180e375b8e65fa40a09bd5180bba7390b10d57c20884",
     "modes": [
       "bus",
       "ferry",
@@ -1082,8 +1082,8 @@ export const LIVE_SOURCE_AREAS: Readonly<Record<string, DerivedSource>> = {
     ]
   },
   "norway-entur": {
-    "readOn": "2026-11-02",
-    "sha256": "88e44c0192316e5cf0380671a5bf098c3975108bf7d7ad2716a9e315403dce50",
+    "readOn": "2026-11-09",
+    "sha256": "76be5d5f3338787e44124d5df58137a64f6e24da30f55306511fd653376c4025",
     "modes": [
       "bus",
       "cable",
@@ -1457,7 +1457,7 @@ export const LIVE_SOURCE_AREAS: Readonly<Record<string, DerivedSource>> = {
         "west": 17.6,
         "south": 59.11,
         "east": 18.11,
-        "north": 59.42
+        "north": 59.38
       },
       {
         "west": 17.69,
@@ -1661,8 +1661,8 @@ export const LIVE_SOURCE_AREAS: Readonly<Record<string, DerivedSource>> = {
     ]
   },
   "bergen-bysykkel": {
-    "readOn": "2026-10-13",
-    "sha256": "3396a0da1c862a64c7517768e39e270806a9c2bdd45b325f50852cc555106bb6",
+    "readOn": "2026-11-09",
+    "sha256": "26771af84f9cfc78720f6eb1458f81085cc234e338254dd0159f311226954ce8",
     "modes": [],
     "outer": {
       "west": 5.24,
@@ -1699,8 +1699,8 @@ export const LIVE_SOURCE_AREAS: Readonly<Record<string, DerivedSource>> = {
     ]
   },
   "cabi-bikeshare": {
-    "readOn": "2026-11-02",
-    "sha256": "e945ea9897683b93c15e99d355ff0a2239ebb4d6297426d00ca4f936ea658b04",
+    "readOn": "2026-11-09",
+    "sha256": "c5e8517fa64ef8a453b585ada30972d7f8805a6ae6f68852e14bf3fd2f3ab01a",
     "modes": [],
     "outer": {
       "west": -77.47,
@@ -1718,8 +1718,8 @@ export const LIVE_SOURCE_AREAS: Readonly<Record<string, DerivedSource>> = {
     ]
   },
   "divvy-bikeshare": {
-    "readOn": "2026-11-02",
-    "sha256": "a181f911c51ff6608c597ee66d380273e864c2fd6f28a303c528a8f7c1061e29",
+    "readOn": "2026-11-09",
+    "sha256": "e33be15414fa1f49c062cfc79075df12480a1f6bd262937835d96d4aa9eba51a",
     "modes": [],
     "outer": {
       "west": -87.89,
@@ -1737,8 +1737,8 @@ export const LIVE_SOURCE_AREAS: Readonly<Record<string, DerivedSource>> = {
     ]
   },
   "baywheels-bikeshare": {
-    "readOn": "2026-11-02",
-    "sha256": "f7a1c3f6da3be3537bacb32502d6419e10b24a0e1050ba788034593aa518eca0",
+    "readOn": "2026-11-09",
+    "sha256": "728f5394c06bc48fc02a331a827a3e6be8bf71dbd042be1c20b1c365791dc429",
     "modes": [],
     "outer": {
       "west": -122.56,
@@ -1762,8 +1762,8 @@ export const LIVE_SOURCE_AREAS: Readonly<Record<string, DerivedSource>> = {
     ]
   },
   "bluebikes-bikeshare": {
-    "readOn": "2026-11-02",
-    "sha256": "3918e8b9caefab4d139c5f5ff322887f92a6bbca7b315666ea927303e4646480",
+    "readOn": "2026-11-09",
+    "sha256": "0c08cf4ca865f1434f0466d194c663e9b98dbce42e02940154eb7e65c3116767",
     "modes": [],
     "outer": {
       "west": -71.3,
@@ -1787,8 +1787,8 @@ export const LIVE_SOURCE_AREAS: Readonly<Record<string, DerivedSource>> = {
     ]
   },
   "valenbisi": {
-    "readOn": "2026-11-02",
-    "sha256": "ee60e319489cad210454070cef94077f8a518f8320ac68264300293911063ae4",
+    "readOn": "2026-11-09",
+    "sha256": "af83f2c76d487140d970d7b77daefcffc985a655e23579268e8d215418c72799",
     "modes": [],
     "outer": {
       "west": -0.48,
@@ -1844,8 +1844,8 @@ export const LIVE_SOURCE_AREAS: Readonly<Record<string, DerivedSource>> = {
     ]
   },
   "velov": {
-    "readOn": "2026-11-02",
-    "sha256": "b4e6927d4a5a655b9b741ec5c5282af7e93e73feb182de949d990d84c18771f4",
+    "readOn": "2026-11-09",
+    "sha256": "9191faf3cef2b500ff626595cebf0462f569a762229196376de6c816997c009a",
     "modes": [],
     "outer": {
       "west": 1.9,
@@ -1869,8 +1869,8 @@ export const LIVE_SOURCE_AREAS: Readonly<Record<string, DerivedSource>> = {
     ]
   },
   "naolib-velo": {
-    "readOn": "2026-11-02",
-    "sha256": "da59c248abdb7b09060d31463424133cf993a6d45d9f04bbe7608d4ee4a68068",
+    "readOn": "2026-11-09",
+    "sha256": "121a3718c86bfa5e9eda19a6672bc9fc389ff3af4ebe6159be2d6a370092cd83",
     "modes": [],
     "outer": {
       "west": -1.64,
@@ -1907,8 +1907,8 @@ export const LIVE_SOURCE_AREAS: Readonly<Record<string, DerivedSource>> = {
     ]
   },
   "veloh": {
-    "readOn": "2026-11-02",
-    "sha256": "4dcab9e5e22335e85a57b2a4695a6148f5b76df349238a2f36a9b91c1901dc72",
+    "readOn": "2026-11-09",
+    "sha256": "b0321fd6914bb25b466ee4279dfdba99bf3bcab2e1978e03dc53fe3656b4aaf8",
     "modes": [],
     "outer": {
       "west": 5.93,
@@ -1964,8 +1964,8 @@ export const LIVE_SOURCE_AREAS: Readonly<Record<string, DerivedSource>> = {
     ]
   },
   "tampere-nysse": {
-    "readOn": "2026-11-02",
-    "sha256": "ca23e881a22186d107b9df1f7d7ebd8aeba4681f0537caca1069af2dbf2cdaf9",
+    "readOn": "2026-11-09",
+    "sha256": "5d96345f2320d23adc99c8e934b09341fc5ccbb9f2e611a4dc266e06190e5a89",
     "modes": [
       "bus",
       "tram"
@@ -2014,8 +2014,8 @@ export const LIVE_SOURCE_AREAS: Readonly<Record<string, DerivedSource>> = {
     ]
   },
   "prague-pid": {
-    "readOn": "2026-11-02",
-    "sha256": "dc7c81ca30552c8ca03356e73361c459d9c4dfdf0f992b294095c24075283515",
+    "readOn": "2026-11-09",
+    "sha256": "e53826af24b4167b5b55b878df622510d603f7c3e8f16ee82eebd7351ea94b49",
     "modes": [
       "bus",
       "cable",
@@ -2079,8 +2079,8 @@ export const LIVE_SOURCE_AREAS: Readonly<Record<string, DerivedSource>> = {
     ]
   },
   "bordeaux-tbm": {
-    "readOn": "2026-11-02",
-    "sha256": "2bcf8ae42ddc336eee60fb324f54b79ad75f123601a6d6596ddd28f7a9b07adf",
+    "readOn": "2026-11-09",
+    "sha256": "b4d565eb751b01ee1120f25609f8b69269b9a9d390712e34219c965ce939a711",
     "modes": [
       "bus",
       "ferry",
@@ -2130,8 +2130,8 @@ export const LIVE_SOURCE_AREAS: Readonly<Record<string, DerivedSource>> = {
     ]
   },
   "nice-lignes-azur": {
-    "readOn": "2026-11-02",
-    "sha256": "6bf8c66feba1150790b2f00cd97e2e4142fd7b27d403524a98f889cd18f482f1",
+    "readOn": "2026-11-09",
+    "sha256": "975f06b56169c24c98836932e6d6f060a3ffad762fe6630fd6da3b2d8576d95e",
     "modes": [
       "bus",
       "tram"
@@ -2158,8 +2158,8 @@ export const LIVE_SOURCE_AREAS: Readonly<Record<string, DerivedSource>> = {
     ]
   },
   "ireland-nta": {
-    "readOn": "2026-11-02",
-    "sha256": "41e968bfd22c25486e02606cc44e03daeb5200e2fd1a6e4bcdf981f7c501e8f9",
+    "readOn": "2026-11-09",
+    "sha256": "2f202ebdddf94e24c8612bf89a6cee214631d669e9c31a9c25d34a8ce92dfbfa",
     "modes": [
       "bus",
       "rail",
@@ -2217,8 +2217,8 @@ export const LIVE_SOURCE_AREAS: Readonly<Record<string, DerivedSource>> = {
     ]
   },
   "toronto-ttc": {
-    "readOn": "2026-10-13",
-    "sha256": "aca6ea14b0d48d3b231e6c012aadda831eae5fd263e4a663b7fdfa298b978682",
+    "readOn": "2026-11-09",
+    "sha256": "f36c102ff17b434dd20dd53c12646170f0400424600ed52f2635ae2895b43c06",
     "modes": [
       "bus",
       "subway",
@@ -2262,8 +2262,8 @@ export const LIVE_SOURCE_AREAS: Readonly<Record<string, DerivedSource>> = {
     ]
   },
   "edmonton-ets": {
-    "readOn": "2026-11-02",
-    "sha256": "b053b1bbdc06431a788da6305ca1dc6ca7fa201f000a08c7db60eaf38956ff53",
+    "readOn": "2026-11-09",
+    "sha256": "f8ee872188098a062c1a5a002353555a924817703014565a2ce6a83954cc4b47",
     "modes": [
       "bus",
       "tram"
@@ -2348,8 +2348,8 @@ export const LIVE_SOURCE_AREAS: Readonly<Record<string, DerivedSource>> = {
     ]
   },
   "durham-drt": {
-    "readOn": "2026-11-02",
-    "sha256": "65208e7dec36f372b311a2e1110f37597d760f55bc7409d5db077405cbf36a0e",
+    "readOn": "2026-11-09",
+    "sha256": "bf8f10be85671f6663b334531d462b73860a14d2f27fc6769c5c709382ed075d",
     "modes": [
       "bus"
     ],
@@ -2390,8 +2390,8 @@ export const LIVE_SOURCE_AREAS: Readonly<Record<string, DerivedSource>> = {
     ]
   },
   "boston-mbta": {
-    "readOn": "2026-11-02",
-    "sha256": "738fd1adb1647c51db837df537a5267dfe661874ddefe48db7f293b117d5257c",
+    "readOn": "2026-11-09",
+    "sha256": "ec211261bf2c60237b820766f3d521a016e51f722341e112424e5eed1ccef3f0",
     "modes": [
       "bus",
       "ferry",
@@ -2450,8 +2450,8 @@ export const LIVE_SOURCE_AREAS: Readonly<Record<string, DerivedSource>> = {
     ]
   },
   "austin-capmetro": {
-    "readOn": "2026-10-13",
-    "sha256": "cafd69cda802f92ba1cb6dc586f54de5035be699a3b165a097a89a3675e46111",
+    "readOn": "2026-11-09",
+    "sha256": "8df1d51024230545080be8b681c0ae10cdb1ced7e6b661502fbdf1d44ad6c891",
     "modes": [
       "bus",
       "tram"
@@ -2478,8 +2478,8 @@ export const LIVE_SOURCE_AREAS: Readonly<Record<string, DerivedSource>> = {
     ]
   },
   "vancouver-translink": {
-    "readOn": "2026-11-02",
-    "sha256": "78556fa2183aff62005bc3f96634064b0b9f03dab00d014cca57a4a85bc22bb0",
+    "readOn": "2026-11-09",
+    "sha256": "56c87af1b8699f9dd86a01f6da03de8781cc45bc1d19711bf56713fab8a39456",
     "modes": [
       "bus",
       "ferry",
@@ -2502,8 +2502,8 @@ export const LIVE_SOURCE_AREAS: Readonly<Record<string, DerivedSource>> = {
     ]
   },
   "montreal-stm": {
-    "readOn": "2026-11-02",
-    "sha256": "d620eedf32819f822568493fd6e349f7a3a1bba05dc87057c9621f6acc473f10",
+    "readOn": "2026-11-09",
+    "sha256": "fbbc1cc3d3dd52f678de19edc157e579beb39ceef1797df4a1873a37818710d9",
     "modes": [
       "bus",
       "subway"
@@ -2599,8 +2599,8 @@ export const LIVE_SOURCE_AREAS: Readonly<Record<string, DerivedSource>> = {
     ]
   },
   "toronto-bikeshare": {
-    "readOn": "2026-11-02",
-    "sha256": "1cb093bf6c72184960a5571b0556046ffa028fe4ac5fd3aff85a0b38336c87e5",
+    "readOn": "2026-11-09",
+    "sha256": "f1e434574b6e5585e6ec8ac2e70c7b60d3d52ea482903ff2d63f81155006faa8",
     "modes": [],
     "outer": {
       "west": -79.65,
@@ -2660,8 +2660,8 @@ export const LIVE_SOURCE_AREAS: Readonly<Record<string, DerivedSource>> = {
     ]
   },
   "brisbane-translink": {
-    "readOn": "2026-11-02",
-    "sha256": "5883eae5e4ced21d0b1a69d4eb29c57aad9af04e9857d1210a3f3eaafc183938",
+    "readOn": "2026-11-09",
+    "sha256": "d752b60ca1b3defe22220878f76d57f4ec7f5bb791b540818e85075cb8778491",
     "modes": [
       "bus",
       "ferry",
@@ -2696,8 +2696,8 @@ export const LIVE_SOURCE_AREAS: Readonly<Record<string, DerivedSource>> = {
     ]
   },
   "adelaide-metro": {
-    "readOn": "2026-11-02",
-    "sha256": "89c8deb1adb7b73ba1b3a1eead2e70817b46a4f4186b9cb7a1f3ec26bd59cadb",
+    "readOn": "2026-11-09",
+    "sha256": "cdcf01a3a27fe0c2488eda00a533fcecd85d1dd65c28ebe1bd3d46230925d296",
     "modes": [
       "bus",
       "ferry",
@@ -2828,8 +2828,8 @@ export const LIVE_SOURCE_AREAS: Readonly<Record<string, DerivedSource>> = {
     ]
   },
   "auckland-at": {
-    "readOn": "2026-11-02",
-    "sha256": "3299b6ee544cc32d1286e6e34024450ae28e263c83b05f652f734311fbc864fa",
+    "readOn": "2026-11-09",
+    "sha256": "c631b37f5d073ca3314bf6524c9386e65f5cbc98c4562533d4a4b591f73bf811",
     "modes": [
       "bus",
       "ferry",
@@ -2875,8 +2875,8 @@ export const LIVE_SOURCE_AREAS: Readonly<Record<string, DerivedSource>> = {
     ]
   },
   "wellington-metlink": {
-    "readOn": "2026-10-13",
-    "sha256": "24bb421bc136c32c4ebe98d00ea451f4fd7877106f6452c96a0be37abb18bc89",
+    "readOn": "2026-11-09",
+    "sha256": "4b9755357f244ee5a622ca15ca87f5bf0a8bf098be33e86c938a65e6ddf7397c",
     "modes": [
       "bus",
       "ferry",
@@ -2899,8 +2899,8 @@ export const LIVE_SOURCE_AREAS: Readonly<Record<string, DerivedSource>> = {
     ]
   },
   "japan-toei-bus": {
-    "readOn": "2026-10-13",
-    "sha256": "6b442c3038dd5bfcdabebcf408a717f5dffc313c91fda56152e7f057631315a2",
+    "readOn": "2026-11-09",
+    "sha256": "5ff17d7de1ebd489fdf6976ab0bc11fb4b738898a096800f599f1cef9099d525",
     "modes": [
       "bus"
     ],
