@@ -86,7 +86,9 @@ async function checkClearance(page: Page, width: number, expanded: boolean) {
   if (
     expanded &&
     (await page
-      .locator('[data-testid="map-credit"] [role="link"][aria-label="© OpenStreetMap"]')
+      .locator(
+        '[data-testid="map-credit"] a[href="https://www.openstreetmap.org/copyright"][aria-label="© OpenStreetMap"]',
+      )
       .count()) !== 1
   ) {
     throw new Error('Expanded credit lost its OpenStreetMap link');
@@ -123,31 +125,31 @@ try {
     for (const width of [200, 240, 320]) {
       await checkClearance(page, width, true);
       const expandedBox = await page.getByTestId('map-scale').boundingBox();
+      const expandedCredit = await page.getByTestId('map-credit').boundingBox();
       await checkClearance(page, width, false);
       if (width === 200 && expandedBox) {
-        await page.waitForFunction(
-          (top) => {
-            const box = document
-              .querySelector('[data-testid="map-scale"]')
-              ?.getBoundingClientRect();
-            return !!box && box.top > top + 1;
-          },
-          expandedBox.y,
-          { timeout: 2_000 },
-        );
+        if (!expandedCredit) throw new Error('Expanded credit disappeared');
         const foldedBox = await page.getByTestId('map-scale').boundingBox();
         if (!foldedBox) throw new Error('The folded scale disappeared');
+        const foldedCredit = await page.getByTestId('map-credit').boundingBox();
+        if (!foldedCredit) throw new Error('Folded credit disappeared');
+        const creditHeightDelta = expandedCredit.height - foldedCredit.height;
+        const scaleYDelta = foldedBox.y - expandedBox.y;
+        if (
+          Math.abs(creditHeightDelta) > 1 &&
+          (Math.abs(scaleYDelta) <= 1 || Math.sign(scaleYDelta) !== Math.sign(creditHeightDelta))
+        ) {
+          throw new Error(
+            `Scale did not follow measured credit height at ${width}px: credit ${expandedCredit.height}px → ${foldedCredit.height}px, scale y ${expandedBox.y}px → ${foldedBox.y}px`,
+          );
+        }
         await checkClearance(page, width, true);
-        await page.waitForFunction(
-          (top) => {
-            const box = document
-              .querySelector('[data-testid="map-scale"]')
-              ?.getBoundingClientRect();
-            return !!box && box.top < top - 1;
-          },
-          foldedBox.y,
-          { timeout: 2_000 },
-        );
+        const reexpandedBox = await page.getByTestId('map-scale').boundingBox();
+        if (!reexpandedBox) throw new Error('The re-expanded scale disappeared');
+        if (Math.abs(creditHeightDelta) > 1 && Math.abs(reexpandedBox.y - expandedBox.y) > 1)
+          throw new Error(
+            `Scale did not return after expanding credit at ${width}px: ${expandedBox.y}px → ${reexpandedBox.y}px`,
+          );
       }
     }
   }
