@@ -20,7 +20,7 @@
  * for the constant side, and this gate is what makes forgetting it visible in
  * the diff that introduces it.
  *
- * `~/Oxy/docs/postgres-and-drizzle.md` mandates exactly this check.
+ * [Postgres and Drizzle](https://github.com/OxyHQ/oxy/blob/main/docs/postgres-and-drizzle.md) mandates exactly this check.
  *
  * WHY THIS IS NOT A ONE-LINE `grep`
  *

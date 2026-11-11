@@ -982,7 +982,7 @@ Infrastructure (`oxy-infra`; nothing here writes SSM or touches AWS):
 4. Register a revision derived from the RUNNING one carrying those, repoint the
    service once, and confirm it serves (`curl https://api.goway.to/api/v1/live/sources`
    answers 200 with the sources) — the deploy carries the running revision
-   forward and never adds variables itself (`~/Oxy/docs/infra-and-deploys.md`).
+   forward and never adds variables itself ([infra and deploys](https://github.com/OxyHQ/oxy-infra/blob/main/docs/infra-and-deploys.md)).
 5. The tasks' security group already reaches Valkey (`redis-sg` admits
    `tasks`); nothing to change.
 

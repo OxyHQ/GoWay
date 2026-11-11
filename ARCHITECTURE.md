@@ -18,7 +18,7 @@ packages/
   reconstruction-worker/    Street 3D reconstruction worker (Python/CUDA)
 ```
 
-`contracts` is the single source of truth for the API (`~/Oxy/docs/api-conventions.md`):
+`contracts` is the single source of truth for the API ([API conventions](https://github.com/OxyHQ/oxy/blob/main/docs/engineering/api-conventions.md)):
 every request, response, error code and closed value set is a zod 4 schema
 there, and every type is `z.infer`/`z.input` of one. The backend validates
 requests with those schemas, `@goway.to/sdk` parses responses with them, and the

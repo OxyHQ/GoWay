@@ -63,7 +63,7 @@ async function expectVerdict(name, files, expectedExit, expectedFragment) {
 
 // ── Must FAIL ──────────────────────────────────────────────────────────────
 
-// The exact shape ~/Oxy/docs/postgres-and-drizzle.md describes: a value
+// The exact shape https://github.com/OxyHQ/oxy/blob/main/docs/postgres-and-drizzle.md describes: a value
 // interpolated into a `check()` renders as a bound parameter.
 await expectVerdict(
   'check-constraint-placeholder',

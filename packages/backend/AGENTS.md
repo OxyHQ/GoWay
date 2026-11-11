@@ -2,6 +2,15 @@
 
 Rules on top of the root `AGENTS.md`. Places rules: `src/places/AGENTS.md`.
 
+## Commands
+
+```bash
+bun run --cwd packages/backend dev          # server.ts with --watch
+bun run --cwd packages/backend test         # bun test
+bun run --cwd packages/backend typecheck
+bun run db:generate && bun run check:migrations   # from the root
+```
+
 ## Database (drizzle)
 
 - `src/db/schema/index.ts` is the single source of truth; a table missing there gets no migration and no typed query.

@@ -338,7 +338,7 @@ measured then. Moving from the generic `Dialog` to Bloom's `SettingsModal`,
 and that barrel also links the Storage, Tools and Plan pages. Storage uses
 Bloom's `Select`, and so does Oxy's lazily loaded `EditProfileFieldScreen`.
 A module shared by two `import()`-ed chunks is hoisted into `__common`, which
-is unconditional at first paint (`~/Oxy/docs/build-and-runtime-traps.md` →
+is unconditional at first paint ([build and runtime traps](https://github.com/OxyHQ/oxy/blob/main/docs/engineering/build-and-runtime-traps.md) →
 Metro web chunking). The fix was Bloom's: 7.33.0 (Bloom#316) adds the lean
 `settings-modal/modal` entry for the shell alone, and `MapSettingsModal.tsx`
 imports only that. Never import the `settings-modal` barrel here: it puts
@@ -362,7 +362,7 @@ chunk, and `FileUpload` nowhere. The version itself costs the entry
 entry growth is spread over families GoWay already draws (radio and the
 collapsible it now links, layout, theme, tokens, button, text field, dialog),
 not one new family. Measured by A/B build, never by per-source attribution
-(`~/Oxy/docs/build-and-runtime-traps.md`).
+([build and runtime traps](https://github.com/OxyHQ/oxy/blob/main/docs/engineering/build-and-runtime-traps.md)).
 
 ## Limits
 

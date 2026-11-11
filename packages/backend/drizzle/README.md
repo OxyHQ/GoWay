@@ -297,7 +297,7 @@ the migration built them inside its transaction, under the migrator's 120 s
 have traded that for SHARE on `places` — every write blocked — for the whole
 build. Both statements are therefore `CREATE INDEX IF NOT EXISTS` (the one
 edit to the generated file besides its marker, as
-`~/Oxy/docs/postgres-and-drizzle.md` prescribes), and the migrator builds them
+[Postgres and Drizzle](https://github.com/OxyHQ/oxy/blob/main/docs/postgres-and-drizzle.md) prescribes), and the migrator builds them
 `CONCURRENTLY` before the migration runs (`src/db/indexBuilds.ts`), so the
 migration itself finds them built and takes SHARE only for the moment its
 `IF NOT EXISTS` needs. `bun run check:migration-locks` refuses an index on
