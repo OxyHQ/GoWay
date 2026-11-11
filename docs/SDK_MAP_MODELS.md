@@ -147,7 +147,7 @@ What GoWay would serve with it:
 - **Phase 2:** `GET /models/catalogue` returns
   `{ items: ModelCatalogueEntry[], nextCursor }`. Each entry is
   `{ key, label, asset }`, where `key` is a namespaced string like
-  `vehicle.car`. The list is paged as `~/Oxy/docs/api-conventions.md` requires,
+  `vehicle.car`. The list is paged as [API conventions](https://github.com/OxyHQ/oxy/blob/main/docs/engineering/api-conventions.md) requires,
   even though it is small, because a list that starts without a cursor can't
   add one without breaking its consumers. The labels follow
   [`LABEL_TRANSLATIONS.md`](LABEL_TRANSLATIONS.md): every `LABEL_LANGUAGES`

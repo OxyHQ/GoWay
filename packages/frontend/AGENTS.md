@@ -2,6 +2,17 @@
 
 Rules on top of the root `AGENTS.md`.
 
+## Commands
+
+```bash
+bun run --cwd packages/frontend test         # bun test
+bun run --cwd packages/frontend typecheck
+bun run --cwd packages/frontend brand:check  # logo artwork is generated
+bun run --cwd packages/frontend check:map-clearance
+```
+
+## Rules
+
 - Mercaria is read through `packages/frontend/lib/mercaria` over `@mercaria.co/sdk`; feature code never imports the SDK, and GoWay stores none of Mercaria's data. A place's `commerce.mercaria.store` only decides whether to ask; render only what Mercaria returns.
 - 3D city tiles (`lib/map/cityTiles.ts`) are an internal format and an ODbL Derivative Database: draw only what OSM or a licence-reviewed official model records (storeys only from `building:levels`, roofs only from `roof:shape` or the model), credit a model while drawn, and publish the archive + receipt before serving them. Served per region by manifest (`map-service/src/city.js`); archive keys are dated, never overwritten. Notes: `docs/MAP_3D_CITY.md`, `docs/MAP_3D_SOURCES.md`, `docs/MAP_CITY_PLANET.md`.
 - Imagery is only a source in `lib/map/imagerySources.ts` (licence allows hosting, re-serving, commercial display; never Google, Apple, Bing, Esri, Mapbox, Maxar, NC or scraped), served from GoWay's R2, credited while on screen. Note: `docs/MAP_SATELLITE.md`.

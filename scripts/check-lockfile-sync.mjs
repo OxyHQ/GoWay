@@ -15,7 +15,7 @@
 // widened to something the lockfile does not record (^2.9.0 → >=2.9.0). It fails
 // only when a range resolves to nothing at all — a resolution error, not a sync
 // check. It would have caught none of the incidents while reading like
-// enforcement. (The false positive on a synced lockfile that ~/Oxy/AGENTS.md
+// enforcement. (The false positive on a synced lockfile that Oxy's shared agent guide
 // records did not reproduce: five consecutive runs on unmodified HEAD passed.)
 //
 // WHY TWO CHECKS AND NOT JUST THE INSTALL

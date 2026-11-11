@@ -753,7 +753,7 @@ Measured with `expo export --platform web` against `main` before this change:
 
 The first export put **three.js into `__common`** — 912,807 B on every first
 paint — because two lazy chunks now imported it (the trap in
-`~/Oxy/docs/build-and-runtime-traps.md`). Routing both engines through one
+[build and runtime traps](https://github.com/OxyHQ/oxy/blob/main/docs/engineering/build-and-runtime-traps.md)). Routing both engines through one
 lazy module fixed that; the second export still hoisted `occlusion.ts`
 (+1,186 B), because the adapter imported its defaults at runtime, so the
 adapter now imports the engine folder for types only.
@@ -1316,7 +1316,7 @@ branch is based on (1175833: #126, #128, #129, #130, #133 merged), flags off:
 The first export had `__common` at **90,174 B**: the scrubber used Bloom's
 `Slider`, which another lazy route already imports, so a second lazy importer
 hoisted it to first paint (the trap in
-`~/Oxy/docs/build-and-runtime-traps.md`). The scrubber now uses the platform's
+[build and runtime traps](https://github.com/OxyHQ/oxy/blob/main/docs/engineering/build-and-runtime-traps.md)). The scrubber now uses the platform's
 `<input type="range">` (it is a web-only file), and the export above is the
 result.
 
