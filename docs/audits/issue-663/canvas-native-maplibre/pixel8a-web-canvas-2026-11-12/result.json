@@ -1,0 +1,37 @@
+{
+  "test": "map pointer outside persistent panel; style dialog Escape",
+  "build": "local Expo web Canvas Lab with registered GoWay dev client ID",
+  "browser": "Chromium headless",
+  "viewport": {
+    "width": 1440,
+    "height": 900
+  },
+  "canvas": {
+    "x": 0,
+    "y": 0,
+    "width": 1440,
+    "height": 900
+  },
+  "baselineNoise": {
+    "changedPixels": 0,
+    "meanAbsoluteDelta": 0
+  },
+  "afterDrag": {
+    "changedPixels": 165372,
+    "meanAbsoluteDelta": 18.37
+  },
+  "escapeWithoutOverlayKeepsPanel": true,
+  "escapeClosesStyleDialog": true,
+  "panelAfterEscape": true,
+  "errors": [],
+  "server": [
+    {
+      "status": 503,
+      "url": "https://api.goway.to/api/v1/live/sources"
+    },
+    {
+      "status": 503,
+      "url": "https://api.goway.to/api/v1/live/sources"
+    }
+  ]
+}

@@ -1,0 +1,21 @@
+{
+  "viewport": {
+    "width": 390,
+    "height": 844
+  },
+  "searchThisArea": {
+    "count": 0,
+    "box": null
+  },
+  "directions": {
+    "placeCardOpened": true,
+    "buttonCount": 1,
+    "plannerVisible": true,
+    "bodyBox": {
+      "x": 0,
+      "y": 635.2000122070312,
+      "width": 390,
+      "height": 458.28118896484375
+    }
+  }
+}

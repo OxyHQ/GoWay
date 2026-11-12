@@ -1,0 +1,1286 @@
+11-12 06:14:03.437  1388  1404 I TestRunner: started: realMapPanPinchDetentsAndKeyboard(to.goway.canvas663.CanvasMapProbeTest)
+11-12 06:14:03.469  1450  2151 V GrammaticalInflectionUtils: AttributionSource: android.content.AttributionSource@ec1f832e does not have READ_SYSTEM_GRAMMATICAL_GENDER permission.
+11-12 06:14:03.476   559   678 D SurfaceFlinger: setDesiredMode 4619827677550801152 {mode={fps=120.00 Hz, modePtr={id=1, vsyncRate=120.00 Hz, peakRefreshRate=120.00 Hz}}, emitEvent=false, force=false}
+11-12 06:14:03.480   559   559 D SurfaceFlinger: initiateModeChange 4619827677550801152 {mode={fps=120.00 Hz, modePtr={id=1, vsyncRate=120.00 Hz, peakRefreshRate=120.00 Hz}}, emitEvent=false, force=false}
+11-12 06:14:03.481   559  2478 I libbinder.BpBinder: onLastStrongRef automatically unlinking death recipients for descriptor: '(not cached)'
+11-12 06:14:03.481   561   561 D hwc-display: setActiveConfigWithConstraints:: PrimaryDisplay config(37) test(0)
+11-12 06:14:03.481   561   561 D hwc-display: [PrimaryDisplay] OperationRateManager::onConfig:rate=120
+11-12 06:14:03.481   561   561 I hwc-display: [PrimaryDisplay] OperationRateManager::updateOperationRateLocked:Target@120(desired:120) | Refresh@120(peak:2147483647), Battery:OK, DBV:943(NsMin:0)
+11-12 06:14:03.481   561   561 I hwc-display: [PrimaryDisplay] setActiveConfigWithConstraints: config(37)
+11-12 06:14:03.485  2471  2471 D RecentsView: onTaskDisplayChanged: 1231, new displayId = 0
+11-12 06:14:03.485 31178 31178 W unknown:BridgelessReact: ReactHost{0}.onUserLeaveHint(activity)
+11-12 06:14:03.485 31178 31178 W unknown:BridgelessReact: ReactHost{0}.onHostPause(activity)
+11-12 06:14:03.485 31178 31178 W unknown:BridgelessReact: ReactHost{0}.ReactContext.onHostPause()
+11-12 06:14:03.486  2471  2471 D b/417220811: invalidateLoadedTasks - previous requestLoadId: -1
+11-12 06:14:03.493  1388  1408 D vulkan  : searching for layers in '/data/app/~~LvIYMYvERShSnkC62I9Big==/to.goway.canvas663-93j2hPCpC4CLYKpiD6LhaA==/lib/arm64'
+11-12 06:14:03.493  1388  1408 D vulkan  : searching for layers in '/data/app/~~wLhWAhdi-RB6nClCB7NGsQ==/to.goway.canvas663.test-zHVoxwaMmD99XPiJRG5zgw==/base.apk!/lib/arm64-v8a'
+11-12 06:14:03.493  1388  1408 D vulkan  : searching for layers in '/data/app/~~LvIYMYvERShSnkC62I9Big==/to.goway.canvas663-93j2hPCpC4CLYKpiD6LhaA==/base.apk!/lib/arm64-v8a'
+11-12 06:14:03.506  1388  1388 D AppCompatDelegate: Checking for metadata for AppLocalesMetadataHolderService : Service not found
+11-12 06:14:03.507  2047  2094 D WindowOnBackDispatcher: setTopOnBackInvokedCallback (unwrapped): android.view.ViewRootImpl$$ExternalSyntheticLambda12@fe4ef44
+11-12 06:14:03.508  1388  1388 E ashmem  : Pinning is deprecated since Android Q. Please use trim or other methods.
+11-12 06:14:03.510  1388  1388 D LifecycleMonitor: Lifecycle status change: to.goway.canvas663.MainActivity@3bf348c in: PRE_ON_CREATE
+11-12 06:14:03.519  1450 17156 D ConnectivityService: requestNetwork for uid/pid:10175/2047 asUid: 10286 activeRequest: null callbackRequest: 3647 [NetworkRequest [ REQUEST id=3648, [ Capabilities: INTERNET&NOT_RESTRICTED&TRUSTED&NOT_VCN_MANAGED&NOT_BANDWIDTH_CONSTRAINED Uid: 10286 RequestorUid: 10175 RequestorPkg: com.android.systemui UnderlyingNetworks: Null] ]] callback flags: 0 order: 2147483647 isUidTracked: false declaredMethods: AVAIL|BLK
+11-12 06:14:03.519  1388  1388 D CompatChangeReporter: Compat change id reported: 377864165; UID 10286; state: ENABLED
+11-12 06:14:03.519  1388  1388 D DesktopModeFlags: Toggle override initialized to: OVERRIDE_UNSET
+11-12 06:14:03.520  1450  1932 D WifiNetworkFactory: got request NetworkRequest [ REQUEST id=3648, [ Capabilities: INTERNET&NOT_RESTRICTED&TRUSTED&NOT_VCN_MANAGED&NOT_BANDWIDTH_CONSTRAINED Uid: 10286 RequestorUid: 10175 RequestorPkg: com.android.systemui UnderlyingNetworks: Null] ]
+11-12 06:14:03.520  1450  1932 V WifiNetworkFactory: Accepted network request NetworkRequest [ REQUEST id=3648, [ Capabilities: INTERNET&NOT_RESTRICTED&TRUSTED&NOT_VCN_MANAGED&NOT_BANDWIDTH_CONSTRAINED Uid: 10286 RequestorUid: 10175 RequestorPkg: com.android.systemui UnderlyingNetworks: Null] ]
+11-12 06:14:03.520  1450  1932 D UntrustedWifiNetworkFactory: got request NetworkRequest [ REQUEST id=3648, [ Capabilities: INTERNET&NOT_RESTRICTED&TRUSTED&NOT_VCN_MANAGED&NOT_BANDWIDTH_CONSTRAINED Uid: 10286 RequestorUid: 10175 RequestorPkg: com.android.systemui UnderlyingNetworks: Null] ]
+11-12 06:14:03.520  1450  1932 D OemPaidWifiNetworkFactory: got request NetworkRequest [ REQUEST id=3648, [ Capabilities: INTERNET&NOT_RESTRICTED&TRUSTED&NOT_VCN_MANAGED&NOT_BANDWIDTH_CONSTRAINED Uid: 10286 RequestorUid: 10175 RequestorPkg: com.android.systemui UnderlyingNetworks: Null] ]
+11-12 06:14:03.520  1450  1932 D MultiInternetWifiNetworkFactory: got request NetworkRequest [ REQUEST id=3648, [ Capabilities: INTERNET&NOT_RESTRICTED&TRUSTED&NOT_VCN_MANAGED&NOT_BANDWIDTH_CONSTRAINED Uid: 10286 RequestorUid: 10175 RequestorPkg: com.android.systemui UnderlyingNetworks: Null] ]
+11-12 06:14:03.520  1450  1945 D ConnectivityService: NetReassign [3648 : null → 101] [c 0] [a 1] [i 0]
+11-12 06:14:03.530  2471  2471 D b/417220811: invalidateLoadedTasks - previous requestLoadId: -1
+11-12 06:14:03.534  1388  1388 D nativeloader: Load /data/app/~~LvIYMYvERShSnkC62I9Big==/to.goway.canvas663-93j2hPCpC4CLYKpiD6LhaA==/base.apk!/lib/arm64-v8a/libhermesvm.so using class loader ns clns-10 (caller=/data/app/~~LvIYMYvERShSnkC62I9Big==/to.goway.canvas663-93j2hPCpC4CLYKpiD6LhaA==/base.apk!classes3.dex): ok
+11-12 06:14:03.535  1388  1388 D nativeloader: Load /data/app/~~LvIYMYvERShSnkC62I9Big==/to.goway.canvas663-93j2hPCpC4CLYKpiD6LhaA==/base.apk!/lib/arm64-v8a/libhermestooling.so using class loader ns clns-10 (caller=/data/app/~~LvIYMYvERShSnkC62I9Big==/to.goway.canvas663-93j2hPCpC4CLYKpiD6LhaA==/base.apk!classes3.dex): ok
+11-12 06:14:03.535  1388  1388 D jni_lib_merge: Entering merged library JNI_OnLoad.
+11-12 06:14:03.535  1388  1388 D jni_lib_merge: Preparing 4 pre-merged libs (including stub)
+11-12 06:14:03.535  1388  1388 D jni_lib_merge: Preparing to register libhermes_executor_so.  onload_func: 0x779b1d7fcc
+11-12 06:14:03.535  1388  1388 D jni_lib_merge: Preparing to register libhermesinstancejni_so.  onload_func: 0x779b1df5d4
+11-12 06:14:03.535  1388  1388 D jni_lib_merge: Preparing to register libjsijniprofiler_so.  onload_func: 0x779b1dfe7c
+11-12 06:14:03.535  1388  1388 D jni_lib_merge: About to register 3 actual methods.
+11-12 06:14:03.537  1388  1388 W dev.expo.updates: {"timestamp":1794456843537,"message":"The expo-updates system is explicitly disabled. To enable it, set the enabled setting to true.","code":"InitializationError","level":"warn"}
+11-12 06:14:03.540  1388  1388 D LifecycleMonitor: Lifecycle status change: to.goway.canvas663.MainActivity@3bf348c in: CREATED
+11-12 06:14:03.541  1388  1388 D LifecycleMonitor: Lifecycle status change: to.goway.canvas663.MainActivity@3bf348c in: STARTED
+11-12 06:14:03.541  1388  1388 W WindowOnBackDispatcher: OnBackInvokedCallback is not enabled for the application.
+11-12 06:14:03.541  1388  1388 W WindowOnBackDispatcher: Set 'android:enableOnBackInvokedCallback="true"' in the application manifest.
+11-12 06:14:03.543  1388  1388 D LifecycleMonitor: Lifecycle status change: to.goway.canvas663.MainActivity@3bf348c in: RESUMED
+11-12 06:14:03.552  1388  1388 W unknown:BridgelessReact: ReactHost{0}.startSurface(surfaceId = 0): Schedule
+11-12 06:14:03.552  1388  1388 W unknown:BridgelessReact: ReactHost{0}.attachSurface(surfaceId = 0)
+11-12 06:14:03.552  1388  1440 W unknown:BridgelessReact: ReactHost{0}.getOrCreateReactInstanceTask()
+11-12 06:14:03.552  1388  1440 W unknown:BridgelessReact: ReactHost{0}.getOrCreateReactInstanceTask(): Start
+11-12 06:14:03.552  1388  1440 W unknown:BridgelessReact: ReactHost{0}.getJSBundleLoader()
+11-12 06:14:03.552  1388  1388 W unknown:BridgelessReact: ReactHost{0}.onHostResume(activity)
+11-12 06:14:03.553  1388  1440 W unknown:BridgelessReact: ReactHost{0}.getOrCreateReactInstanceTask(): Creating BridgelessReactContext
+11-12 06:14:03.553  1388  1440 W unknown:BridgelessReact: ReactHost{0}.getOrCreateReactInstanceTask(): Creating ReactInstance
+11-12 06:14:03.553  1388  1388 D VRI[MainActivity]: WindowInsets changed: 1080x2400 statusBars:[0,121,0,0] navigationBars:[0,0,0,63] mandatorySystemGestures:[0,153,0,84]
+11-12 06:14:03.554  1388  1388 D WindowOnBackDispatcher: setTopOnBackInvokedCallback (unwrapped): android.view.ViewRootImpl$$ExternalSyntheticLambda12@68e3236
+11-12 06:14:03.557   559  2478 W libbinder.ServiceManagerCppClient: Permission failure: android.permission.ACCESS_SURFACE_FLINGER from uid=10286 pid=1388
+11-12 06:14:03.557   559  2478 D libbinder.PermissionCache: checking android.permission.ACCESS_SURFACE_FLINGER for uid=10286 => denied (172 us)
+11-12 06:14:03.557   559  2478 W libbinder.ServiceManagerCppClient: Permission failure: android.permission.ROTATE_SURFACE_FLINGER from uid=10286 pid=1388
+11-12 06:14:03.557   559  2478 D libbinder.PermissionCache: checking android.permission.ROTATE_SURFACE_FLINGER for uid=10286 => denied (97 us)
+11-12 06:14:03.557   559  2508 W libbinder.ServiceManagerCppClient: Permission failure: android.permission.ACCESS_SURFACE_FLINGER from uid=10286 pid=0
+11-12 06:14:03.557   559  2508 D libbinder.PermissionCache: checking android.permission.ACCESS_SURFACE_FLINGER for uid=10286 => denied (229 us)
+11-12 06:14:03.557   559  2478 W libbinder.ServiceManagerCppClient: Permission failure: android.permission.INTERNAL_SYSTEM_WINDOW from uid=10286 pid=1388
+11-12 06:14:03.557   559  2478 D libbinder.PermissionCache: checking android.permission.INTERNAL_SYSTEM_WINDOW for uid=10286 => denied (73 us)
+11-12 06:14:03.557   559  2508 W libbinder.ServiceManagerCppClient: Permission failure: android.permission.INTERNAL_SYSTEM_WINDOW from uid=10286 pid=0
+11-12 06:14:03.557   559  2508 D libbinder.PermissionCache: checking android.permission.INTERNAL_SYSTEM_WINDOW for uid=10286 => denied (275 us)
+11-12 06:14:03.591  2471  2471 D b/417220811: invalidateLoadedTasks - previous requestLoadId: -1
+11-12 06:14:03.595  1388  1440 I ExpoModulesCore: ✅ AppContext was initialized
+11-12 06:14:03.602  1388  1440 W unknown:BridgelessReact: ReactHost{0}.getOrCreateReactInstanceTask(): Loading JS Bundle
+11-12 06:14:03.602  1388  1440 W unknown:BridgelessReact: ReactHost{0}.getOrCreateReactInstanceTask(): DevSupportManager.onNewReactContextCreated()
+11-12 06:14:03.603  1388  1440 W unknown:BridgelessReact: ReactHost{0}.startSurface(surfaceId = 0): Execute
+11-12 06:14:03.603  1388  1388 W unknown:BridgelessReact: ReactHost{0}.ReactContext.onHostResume()
+11-12 06:14:03.612  1388  1388 W unknown:BridgelessReact: ReactHost{0}.getOrCreateReactInstanceTask(): Executing ReactInstanceEventListeners
+11-12 06:14:03.617  1388  1388 D nativeloader: Load /data/app/~~LvIYMYvERShSnkC62I9Big==/to.goway.canvas663-93j2hPCpC4CLYKpiD6LhaA==/base.apk!/lib/arm64-v8a/libmaplibre.so using class loader ns clns-10 (caller=/data/app/~~LvIYMYvERShSnkC62I9Big==/to.goway.canvas663-93j2hPCpC4CLYKpiD6LhaA==/base.apk!classes6.dex): ok
+11-12 06:14:03.622  1388  1442 D nativeloader: Load /data/app/~~LvIYMYvERShSnkC62I9Big==/to.goway.canvas663-93j2hPCpC4CLYKpiD6LhaA==/base.apk!/lib/arm64-v8a/libworklets.so using class loader ns clns-10 (caller=/data/app/~~LvIYMYvERShSnkC62I9Big==/to.goway.canvas663-93j2hPCpC4CLYKpiD6LhaA==/base.apk!classes3.dex): ok
+11-12 06:14:03.623  1388  1441 D nativeloader: Load /data/app/~~LvIYMYvERShSnkC62I9Big==/to.goway.canvas663-93j2hPCpC4CLYKpiD6LhaA==/base.apk!/lib/arm64-v8a/libexpo-modules-jsi.so using class loader ns clns-10 (caller=/data/app/~~LvIYMYvERShSnkC62I9Big==/to.goway.canvas663-93j2hPCpC4CLYKpiD6LhaA==/base.apk!classes3.dex): ok
+11-12 06:14:03.625  1388  1441 D nativeloader: Load /data/app/~~LvIYMYvERShSnkC62I9Big==/to.goway.canvas663-93j2hPCpC4CLYKpiD6LhaA==/base.apk!/lib/arm64-v8a/libexpo-modules-core.so using class loader ns clns-10 (caller=/data/app/~~LvIYMYvERShSnkC62I9Big==/to.goway.canvas663-93j2hPCpC4CLYKpiD6LhaA==/base.apk!classes3.dex): ok
+11-12 06:14:03.625  1388  1441 W BridgelessReactContext: [WARNING] Bridgeless doesn't support CatalystInstance. Accessing an API that's not part of the new architecture is not encouraged usage.
+11-12 06:14:03.628  1388  1441 I ExpoModulesCore: ✅ JSI interop was installed
+11-12 06:14:03.630  1388  1441 D nativeloader: Load /data/app/~~LvIYMYvERShSnkC62I9Big==/to.goway.canvas663-93j2hPCpC4CLYKpiD6LhaA==/base.apk!/lib/arm64-v8a/libexpo-modules-v2.so using class loader ns clns-10 (caller=/data/app/~~LvIYMYvERShSnkC62I9Big==/to.goway.canvas663-93j2hPCpC4CLYKpiD6LhaA==/base.apk!classes5.dex): ok
+11-12 06:14:03.632  1388  1441 W ExpoModulesV2: expo.modules.crypto.DigestAlgorithm does not implement io.github.expo.modules.v2.Enumerable. It crosses to JavaScript here, but R8 keeps an enum's entries and its property only when it does, so a release build may fail on it or send its entry names instead
+11-12 06:14:03.632  1388  1441 W ExpoModulesV2: expo.modules.haptics.arguments.NotificationType does not implement io.github.expo.modules.v2.Enumerable. It crosses to JavaScript here, but R8 keeps an enum's entries and its property only when it does, so a release build may fail on it or send its entry names instead
+11-12 06:14:03.633  1388  1441 W ExpoModulesV2: expo.modules.haptics.arguments.ImpactStyle does not implement io.github.expo.modules.v2.Enumerable. It crosses to JavaScript here, but R8 keeps an enum's entries and its property only when it does, so a release build may fail on it or send its entry names instead
+11-12 06:14:03.633  1388  1441 W ExpoModulesV2: expo.modules.haptics.arguments.HapticType does not implement io.github.expo.modules.v2.Enumerable. It crosses to JavaScript here, but R8 keeps an enum's entries and its property only when it does, so a release build may fail on it or send its entry names instead
+11-12 06:14:03.633  1388  1441 I ExpoModulesCore: ✅ Expo Modules v2 installed 2 module(s) on globalThis.expo.modules
+11-12 06:14:03.639  1388  1466 W GooglePlayServicesUtil: to.goway.canvas663 requires the Google Play Store, but it is missing.
+11-12 06:14:03.639  1388  1466 W GoogleApiManager: The service for com.google.android.gms.internal.location.zzda is not available: ConnectionResult{statusCode=SERVICE_INVALID, resolution=null, message=null, clientMethodKey=null}
+11-12 06:14:03.639  1388  1466 W GooglePlayServicesUtil: to.goway.canvas663 requires the Google Play Store, but it is missing.
+11-12 06:14:03.639  1388  1466 W GoogleApiManager: The service for com.google.android.gms.internal.location.zzda is not available: ConnectionResult{statusCode=SERVICE_INVALID, resolution=null, message=null, clientMethodKey=null}
+11-12 06:14:03.639  1388  1466 W GooglePlayServicesUtil: to.goway.canvas663 requires the Google Play Store, but it is missing.
+11-12 06:14:03.639  1388  1466 W GoogleApiManager: The service for com.google.android.gms.internal.location.zzda is not available: ConnectionResult{statusCode=SERVICE_INVALID, resolution=null, message=null, clientMethodKey=null}
+11-12 06:14:03.641  1388  1441 I ExpoModulesCore: ✅ Constants were exported
+11-12 06:14:03.643  1388  1441 I dev.expo.updates: {"timestamp":1794456843643,"message":"UpdatesModule: getConstants called","code":"None","level":"info"}
+11-12 06:14:03.657  1388  1441 W unknown:ViewManagerPropertyUpdater: Could not find generated setter for class com.reactnativekeyboardcontroller.OverKeyboardViewManager
+11-12 06:14:03.658  1388  1441 W unknown:ViewManagerPropertyUpdater: Could not find generated setter for class com.reactnativekeyboardcontroller.views.overlay.OverKeyboardHostShadowNode
+11-12 06:14:03.659  1388  1441 W unknown:ViewManagerPropertyUpdater: Could not find generated setter for class com.reactnativekeyboardcontroller.KeyboardToolbarGroupViewManager
+11-12 06:14:03.659  1388  1441 W unknown:ViewManagerPropertyUpdater: Could not find generated setter for class com.facebook.react.uimanager.LayoutShadowNode
+11-12 06:14:03.659  1388  1441 W unknown:ViewManagerPropertyUpdater: Could not find generated setter for class org.maplibre.reactnative.components.sources.geojsonsource.MLRNGeoJSONSourceManager
+11-12 06:14:03.659  1388  1441 W unknown:ViewManagerPropertyUpdater: Could not find generated setter for class org.maplibre.reactnative.components.annotations.markerview.MLRNMarkerViewManager
+11-12 06:14:03.659  1388  1441 W unknown:ViewManagerPropertyUpdater: Could not find generated setter for class com.swmansion.rnscreens.ScreenContainerViewManager
+11-12 06:14:03.659  1388  1441 W unknown:ViewManagerPropertyUpdater: Could not find generated setter for class org.maplibre.reactnative.components.sources.imagesource.MLRNImageSourceManager
+11-12 06:14:03.660  1388  1441 W unknown:ViewManagerPropertyUpdater: Could not find generated setter for class expo.modules.kotlin.views.GroupViewManagerWrapper
+11-12 06:14:03.660  1388  1441 W unknown:ViewManagerPropertyUpdater: Could not find generated setter for class org.maplibre.reactnative.components.sources.tilesources.vectorsource.MLRNVectorSourceManager
+11-12 06:14:03.660  1388  1441 W unknown:ViewManagerPropertyUpdater: Could not find generated setter for class com.th3rdwave.safeareacontext.SafeAreaViewManager
+11-12 06:14:03.661  1388  1441 W unknown:ViewManagerPropertyUpdater: Could not find generated setter for class com.th3rdwave.safeareacontext.SafeAreaViewShadowNode
+11-12 06:14:03.661  1388  1441 W unknown:ViewManagerPropertyUpdater: Could not find generated setter for class com.swmansion.rnscreens.ScreenViewManager
+11-12 06:14:03.661  1388  1441 W unknown:ViewManagerPropertyUpdater: Could not find generated setter for class com.swmansion.reanimated.view.REASharedTransitionBoundaryManager
+11-12 06:14:03.661  1388  1441 W unknown:ViewManagerPropertyUpdater: Could not find generated setter for class com.swmansion.rnscreens.gamma.stack.header.config.StackHeaderConfigViewManager
+11-12 06:14:03.661  1388  1441 W unknown:ViewManagerPropertyUpdater: Could not find generated setter for class org.maplibre.reactnative.components.images.MLRNImagesManager
+11-12 06:14:03.661  1388  1441 W unknown:ViewManagerPropertyUpdater: Could not find generated setter for class org.maplibre.reactnative.components.annotations.callout.MLRNCalloutManager
+11-12 06:14:03.662  1388  1441 W unknown:ViewManagerPropertyUpdater: Could not find generated setter for class com.th3rdwave.safeareacontext.SafeAreaProviderManager
+11-12 06:14:03.662  1388  1441 W unknown:ViewManagerPropertyUpdater: Could not find generated setter for class com.swmansion.rnscreens.SearchBarManager
+11-12 06:14:03.662  1388  1441 W unknown:ViewManagerPropertyUpdater: Could not find generated setter for class com.swmansion.rnscreens.gamma.tabs.host.TabsHostViewManager
+11-12 06:14:03.663  1388  1441 W unknown:ViewManagerPropertyUpdater: Could not find generated setter for class org.maplibre.reactnative.components.camera.MLRNCameraManager
+11-12 06:14:03.663  1388  1441 W unknown:ViewManagerPropertyUpdater: Could not find generated setter for class com.swmansion.rnscreens.ScreenStackHeaderConfigViewManager
+11-12 06:14:03.663  1388  1441 W unknown:ViewManagerPropertyUpdater: Could not find generated setter for class org.maplibre.reactnative.components.mapview.MLRNMapViewManager
+11-12 06:14:03.663  1388  1441 W unknown:ViewManagerPropertyUpdater: Could not find generated setter for class org.maplibre.reactnative.components.mapview.MLRNMapViewManager$MapShadowNode
+11-12 06:14:03.663  1388  1441 W unknown:ViewManagerPropertyUpdater: Could not find generated setter for class com.swmansion.rnscreens.gamma.stack.host.StackHostViewManager
+11-12 06:14:03.663  1388  1441 W unknown:ViewManagerPropertyUpdater: Could not find generated setter for class org.maplibre.reactnative.components.sources.tilesources.rasterdemsource.MLRNRasterDEMSourceManager
+11-12 06:14:03.664  1388  1441 W unknown:ViewManagerPropertyUpdater: Could not find generated setter for class com.swmansion.rnscreens.ScreenStackHeaderSubviewManager
+11-12 06:14:03.664  1388  1441 W unknown:ViewManagerPropertyUpdater: Could not find generated setter for class com.swmansion.rnscreens.gamma.modals.formsheet.FormSheetHostViewManager
+11-12 06:14:03.664  1388  1441 W unknown:ViewManagerPropertyUpdater: Could not find generated setter for class org.maplibre.reactnative.components.annotations.pointannotation.MLRNPointAnnotationManager
+11-12 06:14:03.664  1388  1441 W unknown:ViewManagerPropertyUpdater: Could not find generated setter for class com.reactnativekeyboardcontroller.KeyboardBackgroundViewManager
+11-12 06:14:03.665  1388  1441 W unknown:ViewManagerPropertyUpdater: Could not find generated setter for class com.swmansion.rnscreens.ScreenFooterManager
+11-12 06:14:03.665  1388  1441 W unknown:ViewManagerPropertyUpdater: Could not find generated setter for class com.swmansion.rnscreens.ModalScreenViewManager
+11-12 06:14:03.665  1388  1441 W unknown:ViewManagerPropertyUpdater: Could not find generated setter for class com.reactnativekeyboardcontroller.KeyboardGestureAreaViewManager
+11-12 06:14:03.665  1388  1441 W unknown:ViewManagerPropertyUpdater: Could not find generated setter for class org.maplibre.reactnative.components.layer.MLRNLayerManager
+11-12 06:14:03.665  1388  1441 W unknown:ViewManagerPropertyUpdater: Could not find generated setter for class com.swmansion.rnscreens.safearea.SafeAreaViewManager
+11-12 06:14:03.666  1388  1441 W unknown:ViewManagerPropertyUpdater: Could not find generated setter for class org.maplibre.reactnative.components.location.MLRNNativeUserLocationManager
+11-12 06:14:03.666  1388  1441 W unknown:ViewManagerPropertyUpdater: Could not find generated setter for class com.swmansion.rnscreens.ScreenStackViewManager
+11-12 06:14:03.666  1388  1441 W unknown:ViewManagerPropertyUpdater: Could not find generated setter for class com.reactnativekeyboardcontroller.ClippingScrollViewDecoratorViewManager
+11-12 06:14:03.666  1388  1441 W unknown:ViewManagerPropertyUpdater: Could not find generated setter for class com.swmansion.rnscreens.gamma.stack.header.subview.StackHeaderSubviewViewManager
+11-12 06:14:03.666  1388  1441 W unknown:ViewManagerPropertyUpdater: Could not find generated setter for class com.reactnativecommunity.webview.RNCWebViewManager
+11-12 06:14:03.667  1388  1441 W unknown:ViewManagerPropertyUpdater: Could not find generated setter for class org.maplibre.reactnative.components.sources.tilesources.rastersource.MLRNRasterSourceManager
+11-12 06:14:03.667  1388  1441 W unknown:ViewManagerPropertyUpdater: Could not find generated setter for class com.reactnativekeyboardcontroller.KeyboardControllerViewManager
+11-12 06:14:03.667  1388  1441 W unknown:ViewManagerPropertyUpdater: Could not find generated setter for class com.swmansion.rnscreens.gamma.scrollviewmarker.ScrollViewMarkerViewManager
+11-12 06:14:03.668  1388  1441 W unknown:ViewManagerPropertyUpdater: Could not find generated setter for class org.reactnative.maskedview.RNCMaskedViewManager
+11-12 06:14:03.668  1388  1441 W unknown:ViewManagerPropertyUpdater: Could not find generated setter for class com.swmansion.rnscreens.gamma.modals.formsheet.FormSheetContentWrapperViewManager
+11-12 06:14:03.668  1388  1441 W unknown:ViewManagerPropertyUpdater: Could not find generated setter for class com.swmansion.rnscreens.ScreenContentWrapperManager
+11-12 06:14:03.668  1388  1441 W unknown:ViewManagerPropertyUpdater: Could not find generated setter for class org.maplibre.reactnative.components.mapview.MLRNAndroidTextureMapViewManager
+11-12 06:14:03.668  1388  1441 W unknown:ViewManagerPropertyUpdater: Could not find generated setter for class com.swmansion.rnscreens.gamma.stack.screen.StackScreenViewManager
+11-12 06:14:03.668  1388  1441 W unknown:ViewManagerPropertyUpdater: Could not find generated setter for class com.swmansion.rnscreens.gamma.tabs.screen.TabsScreenViewManager
+11-12 06:14:03.688  1388  1441 W unknown:ViewManagerPropertyUpdater: Could not find generated setter for class com.horcrux.svg.RenderableViewManager$DefsViewManager
+11-12 06:14:03.688  1388  1441 W unknown:ViewManagerPropertyUpdater: Could not find generated setter for class com.horcrux.svg.VirtualViewManager$RenderableShadowNode
+11-12 06:14:03.689  1388  1441 W unknown:ViewManagerPropertyUpdater: Could not find generated setter for class com.horcrux.svg.RenderableViewManager$FeMergeManager
+11-12 06:14:03.689  1388  1441 W unknown:ViewManagerPropertyUpdater: Could not find generated setter for class com.facebook.react.views.safeareaview.ReactSafeAreaViewManager
+11-12 06:14:03.690  1388  1441 W unknown:ViewManagerPropertyUpdater: Could not find generated setter for class com.swmansion.gesturehandler.react.RNGestureHandlerDetectorViewManager
+11-12 06:14:03.691  1388  1441 W unknown:ViewManagerPropertyUpdater: Could not find generated setter for class com.horcrux.svg.RenderableViewManager$LinearGradientManager
+11-12 06:14:03.691  1388  1441 W unknown:ViewManagerPropertyUpdater: Could not find generated setter for class com.horcrux.svg.RenderableViewManager$FeGaussianBlurManager
+11-12 06:14:03.692  1388  1441 W unknown:ViewManagerPropertyUpdater: Could not find generated setter for class com.facebook.react.views.progressbar.ReactProgressBarViewManager
+11-12 06:14:03.693  1388  1441 W unknown:ViewManagerPropertyUpdater: Could not find generated setter for class com.facebook.react.views.scroll.ReactHorizontalScrollViewManager
+11-12 06:14:03.693  1388  1441 W unknown:ViewManagerPropertyUpdater: Could not find generated setter for class com.facebook.react.views.text.ReactTextViewManager
+11-12 06:14:03.694  1388  1441 W unknown:ViewManagerPropertyUpdater: Could not find generated setter for class com.horcrux.svg.RenderableViewManager$FeColorMatrixManager
+11-12 06:14:03.695  1388  1441 W unknown:ViewManagerPropertyUpdater: Could not find generated setter for class com.facebook.react.views.scroll.ReactHorizontalScrollContainerViewManager
+11-12 06:14:03.695  1388  1441 W unknown:ViewManagerPropertyUpdater: Could not find generated setter for class com.horcrux.svg.RenderableViewManager$ClipPathViewManager
+11-12 06:14:03.696  1388  1441 W unknown:ViewManagerPropertyUpdater: Could not find generated setter for class com.horcrux.svg.RenderableViewManager$SymbolManager
+11-12 06:14:03.697  1388  1441 W unknown:ViewManagerPropertyUpdater: Could not find generated setter for class com.horcrux.svg.RenderableViewManager$PatternManager
+11-12 06:14:03.698  1388  1441 W unknown:ViewManagerPropertyUpdater: Could not find generated setter for class com.horcrux.svg.RenderableViewManager$FeBlendManager
+11-12 06:14:03.698  1388  1441 W unknown:ViewManagerPropertyUpdater: Could not find generated setter for class com.facebook.react.views.view.ReactViewManager
+11-12 06:14:03.699  1388  1441 W unknown:ViewManagerPropertyUpdater: Could not find generated setter for class com.horcrux.svg.SvgViewManager
+11-12 06:14:03.700  1388  1441 W unknown:ViewManagerPropertyUpdater: Could not find generated setter for class com.facebook.react.views.switchview.ReactSwitchManager
+11-12 06:14:03.703  1388  1441 W unknown:ViewManagerPropertyUpdater: Could not find generated setter for class com.horcrux.svg.RenderableViewManager$UseViewManager
+11-12 06:14:03.703  1388  1441 W unknown:ViewManagerPropertyUpdater: Could not find generated setter for class com.horcrux.svg.RenderableViewManager$CircleViewManager
+11-12 06:14:03.704  1388  1441 W unknown:ViewManagerPropertyUpdater: Could not find generated setter for class com.horcrux.svg.RenderableViewManager$TSpanViewManager
+11-12 06:14:03.705  1388  1441 W unknown:ViewManagerPropertyUpdater: Could not find generated setter for class com.horcrux.svg.RenderableViewManager$FilterManager
+11-12 06:14:03.705  1388  1441 W unknown:ViewManagerPropertyUpdater: Could not find generated setter for class com.horcrux.svg.RenderableViewManager$MarkerManager
+11-12 06:14:03.706  1388  1441 W unknown:ViewManagerPropertyUpdater: Could not find generated setter for class com.swmansion.gesturehandler.react.RNGestureHandlerButtonViewManager
+11-12 06:14:03.707  1388  1441 W unknown:ViewManagerPropertyUpdater: Could not find generated setter for class com.facebook.react.views.modal.ReactModalHostManager
+11-12 06:14:03.708  1388  1441 W unknown:ViewManagerPropertyUpdater: Could not find generated setter for class com.horcrux.svg.RenderableViewManager$ForeignObjectManager
+11-12 06:14:03.709  1388  1441 W unknown:ViewManagerPropertyUpdater: Could not find generated setter for class com.horcrux.svg.RenderableViewManager$EllipseViewManager
+11-12 06:14:03.709  1388  1441 W unknown:ViewManagerPropertyUpdater: Could not find generated setter for class com.horcrux.svg.RenderableViewManager$LineViewManager
+11-12 06:14:03.710  1388  1441 W unknown:ViewManagerPropertyUpdater: Could not find generated setter for class com.horcrux.svg.RenderableViewManager$FeFloodManager
+11-12 06:14:03.710  1388  1441 W unknown:ViewManagerPropertyUpdater: Could not find generated setter for class com.horcrux.svg.RenderableViewManager$GroupViewManager
+11-12 06:14:03.711  1388  1441 W unknown:ViewManagerPropertyUpdater: Could not find generated setter for class com.horcrux.svg.RenderableViewManager$TextViewManager
+11-12 06:14:03.712  1388  1441 W unknown:ViewManagerPropertyUpdater: Could not find generated setter for class com.horcrux.svg.RenderableViewManager$ImageViewManager
+11-12 06:14:03.712  1388  1441 W unknown:ViewManagerPropertyUpdater: Could not find generated setter for class com.horcrux.svg.RenderableViewManager$FeCompositeManager
+11-12 06:14:03.713  1388  1441 W unknown:ViewManagerPropertyUpdater: Could not find generated setter for class com.facebook.react.views.image.ReactImageManager
+11-12 06:14:03.714  1388  1441 W unknown:ViewManagerPropertyUpdater: Could not find generated setter for class com.horcrux.svg.RenderableViewManager$RadialGradientManager
+11-12 06:14:03.714  1388  1441 W unknown:ViewManagerPropertyUpdater: Could not find generated setter for class com.horcrux.svg.RenderableViewManager$MaskManager
+11-12 06:14:03.715  1388  1441 W unknown:ViewManagerPropertyUpdater: Could not find generated setter for class com.facebook.react.views.unimplementedview.ReactUnimplementedViewManager
+11-12 06:14:03.716  1388  1441 W unknown:ViewManagerPropertyUpdater: Could not find generated setter for class com.horcrux.svg.RenderableViewManager$RectViewManager
+11-12 06:14:03.716  1388  1441 W unknown:ViewManagerPropertyUpdater: Could not find generated setter for class com.horcrux.svg.RenderableViewManager$TextPathViewManager
+11-12 06:14:03.717  1388  1441 W unknown:ViewManagerPropertyUpdater: Could not find generated setter for class com.facebook.react.views.scroll.ReactScrollViewManager
+11-12 06:14:03.718  1388  1441 W unknown:ViewManagerPropertyUpdater: Could not find generated setter for class com.horcrux.svg.RenderableViewManager$FeOffsetManager
+11-12 06:14:03.718  1388  1441 W unknown:ViewManagerPropertyUpdater: Could not find generated setter for class com.horcrux.svg.RenderableViewManager$PathViewManager
+11-12 06:14:03.719  1388  1441 W unknown:ViewManagerPropertyUpdater: Could not find generated setter for class com.facebook.react.views.drawer.ReactDrawerLayoutManager
+11-12 06:14:03.720  1388  1441 W unknown:ViewManagerPropertyUpdater: Could not find generated setter for class com.facebook.react.views.swiperefresh.SwipeRefreshLayoutManager
+11-12 06:14:03.721  1388  1441 W unknown:ViewManagerPropertyUpdater: Could not find generated setter for class com.facebook.react.views.textinput.ReactTextInputManager
+11-12 06:14:03.722  1388  1441 W unknown:ViewManagerPropertyUpdater: Could not find generated setter for class com.facebook.react.views.text.SelectableTextViewManager
+11-12 06:14:03.722  1388  1441 W unknown:ViewManagerPropertyUpdater: Could not find generated setter for class com.swmansion.gesturehandler.react.RNGestureHandlerRootViewManager
+11-12 06:14:03.723  1388  1441 W unknown:ViewManagerPropertyUpdater: Could not find generated setter for class com.facebook.react.views.virtual.view.ReactVirtualViewManager
+11-12 06:14:03.732  1388  1441 D nativeloader: Load /data/app/~~LvIYMYvERShSnkC62I9Big==/to.goway.canvas663-93j2hPCpC4CLYKpiD6LhaA==/base.apk!/lib/arm64-v8a/librnscreens.so using class loader ns clns-10 (caller=/data/app/~~LvIYMYvERShSnkC62I9Big==/to.goway.canvas663-93j2hPCpC4CLYKpiD6LhaA==/base.apk!classes5.dex): ok
+11-12 06:14:03.734  1388  1441 I ReactNativeJS: Running "main"
+11-12 06:14:03.743  1388  1441 D nativeloader: Load /data/app/~~LvIYMYvERShSnkC62I9Big==/to.goway.canvas663-93j2hPCpC4CLYKpiD6LhaA==/base.apk!/lib/arm64-v8a/libgesturehandler.so using class loader ns clns-10 (caller=/data/app/~~LvIYMYvERShSnkC62I9Big==/to.goway.canvas663-93j2hPCpC4CLYKpiD6LhaA==/base.apk!classes3.dex): ok
+11-12 06:14:03.762  1388  1441 D nativeloader: Load /data/app/~~LvIYMYvERShSnkC62I9Big==/to.goway.canvas663-93j2hPCpC4CLYKpiD6LhaA==/base.apk!/lib/arm64-v8a/libreanimated.so using class loader ns clns-10 (caller=/data/app/~~LvIYMYvERShSnkC62I9Big==/to.goway.canvas663-93j2hPCpC4CLYKpiD6LhaA==/base.apk!classes3.dex): ok
+11-12 06:14:03.770  1388  1441 W ExpoModulesV2: expo.modules.crypto.DigestOptions$Encoding does not implement io.github.expo.modules.v2.Enumerable. It crosses to JavaScript here, but R8 keeps an enum's entries and its property only when it does, so a release build may fail on it or send its entry names instead
+11-12 06:14:03.776  1388  1441 V AsyncStorageExpoMigration: No scoped database found
+11-12 06:14:03.855  1388  1388 I ReactNative: [GESTURE HANDLER] Initialize gesture handler for root view com.facebook.react.runtime.ReactSurfaceView{c6f8dda V.E...... ......ID 0,0-1080,2400 #1}
+11-12 06:14:03.856  1388  1446 I HWUI    : Using FreeType backend (prop=Auto)
+11-12 06:14:03.866  1450 17156 W libbinder.ServiceManagerCppClient: Permission failure: android.permission.ACCESS_SURFACE_FLINGER from uid=10286 pid=0
+11-12 06:14:03.866  1450 17156 D libbinder.PermissionCache: checking android.permission.ACCESS_SURFACE_FLINGER for uid=10286 => denied (277 us)
+11-12 06:14:03.866  1450 17156 W libbinder.ServiceManagerCppClient: Permission failure: android.permission.ROTATE_SURFACE_FLINGER from uid=10286 pid=0
+11-12 06:14:03.866  1450 17156 D libbinder.PermissionCache: checking android.permission.ROTATE_SURFACE_FLINGER for uid=10286 => denied (43 us)
+11-12 06:14:03.866  1450 17156 W libbinder.ServiceManagerCppClient: Permission failure: android.permission.INTERNAL_SYSTEM_WINDOW from uid=10286 pid=0
+11-12 06:14:03.866  1450 17156 D libbinder.PermissionCache: checking android.permission.INTERNAL_SYSTEM_WINDOW for uid=10286 => denied (24 us)
+11-12 06:14:03.868  1450  1644 I ActivityTaskManager: Displayed to.goway.canvas663/.MainActivity for user 0: +410ms
+11-12 06:14:03.872  1388  1441 D DefaultLocationEngineProvider: DefaultLocationEngine will be used.
+11-12 06:14:03.874  1388  1388 D MLRNOfflineModule: No packs need migration
+11-12 06:14:03.900  1450  1896 I ImeTracker: to.goway.canvas663:aa436b2: onRequestHide at ORIGIN_SERVER reason HIDE_UNSPECIFIED_WINDOW fromUser false
+11-12 06:14:03.901  1388  1388 I ImeTracker: to.goway.canvas663:aa436b2: onCancelled at PHASE_CLIENT_ALREADY_HIDDEN
+11-12 06:14:03.902  1450 17634 I ImeTracker: system_server:5586290: onRequestHide at ORIGIN_SERVER reason IME_REQUESTED_CHANGED_LISTENER fromUser false
+11-12 06:14:03.903  1450  1647 I ImeTracker: system_server:5586290: onCancelled at PHASE_SERVER_SHOULD_HIDE
+11-12 06:14:03.933  2047  2094 D WindowOnBackDispatcher: setTopOnBackInvokedCallback (unwrapped): null
+11-12 06:14:03.940  1450 17634 D ConnectivityService: requestNetwork for uid/pid:10286/1388 activeRequest: null callbackRequest: 3649 [NetworkRequest [ REQUEST id=3650, [ Capabilities: INTERNET&NOT_RESTRICTED&TRUSTED&NOT_VCN_MANAGED&NOT_BANDWIDTH_CONSTRAINED Uid: 10286 RequestorUid: 10286 RequestorPkg: to.goway.canvas663 UnderlyingNetworks: Null] ]] callback flags: 0 order: 2147483647 isUidTracked: false declaredMethods: AVAIL|LOST
+11-12 06:14:03.942  1450  1932 D WifiNetworkFactory: got request NetworkRequest [ REQUEST id=3650, [ Capabilities: INTERNET&NOT_RESTRICTED&TRUSTED&NOT_VCN_MANAGED&NOT_BANDWIDTH_CONSTRAINED Uid: 10286 RequestorUid: 10286 RequestorPkg: to.goway.canvas663 UnderlyingNetworks: Null] ]
+11-12 06:14:03.942  1450  1932 V WifiNetworkFactory: Accepted network request NetworkRequest [ REQUEST id=3650, [ Capabilities: INTERNET&NOT_RESTRICTED&TRUSTED&NOT_VCN_MANAGED&NOT_BANDWIDTH_CONSTRAINED Uid: 10286 RequestorUid: 10286 RequestorPkg: to.goway.canvas663 UnderlyingNetworks: Null] ]
+11-12 06:14:03.942  1450  1932 D UntrustedWifiNetworkFactory: got request NetworkRequest [ REQUEST id=3650, [ Capabilities: INTERNET&NOT_RESTRICTED&TRUSTED&NOT_VCN_MANAGED&NOT_BANDWIDTH_CONSTRAINED Uid: 10286 RequestorUid: 10286 RequestorPkg: to.goway.canvas663 UnderlyingNetworks: Null] ]
+11-12 06:14:03.942  1450  1932 D OemPaidWifiNetworkFactory: got request NetworkRequest [ REQUEST id=3650, [ Capabilities: INTERNET&NOT_RESTRICTED&TRUSTED&NOT_VCN_MANAGED&NOT_BANDWIDTH_CONSTRAINED Uid: 10286 RequestorUid: 10286 RequestorPkg: to.goway.canvas663 UnderlyingNetworks: Null] ]
+11-12 06:14:03.942  1450  1932 D MultiInternetWifiNetworkFactory: got request NetworkRequest [ REQUEST id=3650, [ Capabilities: INTERNET&NOT_RESTRICTED&TRUSTED&NOT_VCN_MANAGED&NOT_BANDWIDTH_CONSTRAINED Uid: 10286 RequestorUid: 10286 RequestorPkg: to.goway.canvas663 UnderlyingNetworks: Null] ]
+11-12 06:14:03.943  1450  1945 D ConnectivityService: NetReassign [3650 : null → 101] [c 1] [a 0] [i 2]
+11-12 06:14:03.972  1450 17634 I WifiService: getVerboseLoggingLevel uid=10286
+11-12 06:14:03.973  1450  2151 D ConnectivityService: requestNetwork for uid/pid:10286/1388 activeRequest: null callbackRequest: 3651 [NetworkRequest [ REQUEST id=3652, [ Capabilities: INTERNET&NOT_RESTRICTED&TRUSTED&NOT_VCN_MANAGED&NOT_BANDWIDTH_CONSTRAINED Uid: 10286 RequestorUid: 10286 RequestorPkg: to.goway.canvas663 UnderlyingNetworks: Null] ]] callback flags: 0 order: 2147483647 isUidTracked: false declaredMethods: AVAIL|LOSING|LOST|UNAVAIL|NC|LP
+11-12 06:14:03.974  1450  1945 D ConnectivityService: NetReassign [3652 : null → 101] [c 1] [a 0] [i 0]
+11-12 06:14:03.974  1450  1932 D WifiNetworkFactory: got request NetworkRequest [ REQUEST id=3652, [ Capabilities: INTERNET&NOT_RESTRICTED&TRUSTED&NOT_VCN_MANAGED&NOT_BANDWIDTH_CONSTRAINED Uid: 10286 RequestorUid: 10286 RequestorPkg: to.goway.canvas663 UnderlyingNetworks: Null] ]
+11-12 06:14:03.974  1450  1932 V WifiNetworkFactory: Accepted network request NetworkRequest [ REQUEST id=3652, [ Capabilities: INTERNET&NOT_RESTRICTED&TRUSTED&NOT_VCN_MANAGED&NOT_BANDWIDTH_CONSTRAINED Uid: 10286 RequestorUid: 10286 RequestorPkg: to.goway.canvas663 UnderlyingNetworks: Null] ]
+11-12 06:14:03.974  1450 17634 I WifiService: getWifiEnabledState uid=10286 state=3
+11-12 06:14:03.974  1450  1932 D UntrustedWifiNetworkFactory: got request NetworkRequest [ REQUEST id=3652, [ Capabilities: INTERNET&NOT_RESTRICTED&TRUSTED&NOT_VCN_MANAGED&NOT_BANDWIDTH_CONSTRAINED Uid: 10286 RequestorUid: 10286 RequestorPkg: to.goway.canvas663 UnderlyingNetworks: Null] ]
+11-12 06:14:03.974  1450  1932 D OemPaidWifiNetworkFactory: got request NetworkRequest [ REQUEST id=3652, [ Capabilities: INTERNET&NOT_RESTRICTED&TRUSTED&NOT_VCN_MANAGED&NOT_BANDWIDTH_CONSTRAINED Uid: 10286 RequestorUid: 10286 RequestorPkg: to.goway.canvas663 UnderlyingNetworks: Null] ]
+11-12 06:14:03.974  1450 17156 I WifiService: getConnectionInfo uid=10286
+11-12 06:14:03.974  1450  1932 D MultiInternetWifiNetworkFactory: got request NetworkRequest [ REQUEST id=3652, [ Capabilities: INTERNET&NOT_RESTRICTED&TRUSTED&NOT_VCN_MANAGED&NOT_BANDWIDTH_CONSTRAINED Uid: 10286 RequestorUid: 10286 RequestorPkg: to.goway.canvas663 UnderlyingNetworks: Null] ]
+11-12 06:14:03.974  1450 17156 V WifiPermissionsUtil: enforceCanAccessScanResults(pkg=to.goway.canvas663, uid=10286): location is disabled
+11-12 06:14:03.974  1450 17156 V WifiService: Keeping REDACT_FOR_ACCESS_FINE_LOCATION:java.lang.SecurityException: Location mode is disabled for the device
+11-12 06:14:03.975  1450 17156 I WifiService: getWifiEnabledState uid=10286 state=3
+11-12 06:14:03.975  1450 17634 I WifiService: getConnectionInfo uid=10286
+11-12 06:14:03.976  1450 17634 V WifiPermissionsUtil: enforceCanAccessScanResults(pkg=to.goway.canvas663, uid=10286): location is disabled
+11-12 06:14:03.976  1450 17634 V WifiService: Keeping REDACT_FOR_ACCESS_FINE_LOCATION:java.lang.SecurityException: Location mode is disabled for the device
+11-12 06:14:04.026  1450 17156 I WifiService: getWifiEnabledState uid=10286 state=3
+11-12 06:14:04.027  1450 17156 I WifiService: getConnectionInfo uid=10286
+11-12 06:14:04.027  1450 17156 V WifiPermissionsUtil: enforceCanAccessScanResults(pkg=to.goway.canvas663, uid=10286): location is disabled
+11-12 06:14:04.027  1450 17156 V WifiService: Keeping REDACT_FOR_ACCESS_FINE_LOCATION:java.lang.SecurityException: Location mode is disabled for the device
+11-12 06:14:04.037 31178 31178 D VRI[MainActivity]: visibilityChanged oldVisibility=true newVisibility=false
+11-12 06:14:04.052 31178 31201 I ReactNativeJNI: Memory warning (pressure level: TRIM_MEMORY_UI_HIDDEN) received by JS VM, ignoring because it's non-severe
+11-12 06:14:04.143  1450  2012 W ImageReader_JNI: Unable to acquire a buffer item, very likely client tried to acquire more than maxImages buffers
+11-12 06:14:04.158  1388  1388 I ReactNative: [GESTURE HANDLER] Gesture handler is already enabled for a parent view
+11-12 06:14:04.170  1388  1388 D AutofillManager: view not autofillable - not passing ime action check
+11-12 06:14:04.170  1388  1388 D AutofillManager: view not autofillable - not passing ime action check
+11-12 06:14:04.193  1388  1510 D nativeloader: Load /data/app/~~LvIYMYvERShSnkC62I9Big==/to.goway.canvas663-93j2hPCpC4CLYKpiD6LhaA==/base.apk!/lib/arm64-v8a/libavif_android.so using class loader ns clns-10 (caller=/data/app/~~LvIYMYvERShSnkC62I9Big==/to.goway.canvas663-93j2hPCpC4CLYKpiD6LhaA==/base.apk!classes3.dex): ok
+11-12 06:14:04.335  1749  1757 I pixel-thermal: charger_therm:38.784 raw data: charger_therm:38784
+11-12 06:14:04.338  1749  1757 I pixel-thermal: VIRTUAL-SKIN-CHARGE:37.5627 raw data: VIRTUAL-SKIN-CHARGE:37562.7 VIRTUAL-SKIN-CHARGE-SUB-1:36647 VIRTUAL-SKIN-CHARGE-SUB-2:37562.7 charger_therm:38784 modem_therm:37849 quiet_therm:36781 rffe_therm:35579 soc_therm:37092
+11-12 06:14:04.338  1749  1757 I pixel-thermal: VIRTUAL-SKIN-CHARGE power_budget=3929.99 err=0.437317 s_power=2200 time_elapsed_ms=7015 p=174.927 i=1600 d=0 dt_per_min=nan compensation=0 budget transient=0 control target=2 excluded power budget=44.9372 (PARTIAL_SYSTEM_POWER: 898.74 mW, cdev_weight: 0.050000)
+11-12 06:14:04.339  1749  1757 I pixel-thermal: VIRTUAL-SKIN-SPEAKER:36.5139 raw data: VIRTUAL-SKIN-SPEAKER:36513.9 VIRTUAL-SKIN-SPEAKER-SUB-1:33926.8 VIRTUAL-SKIN-SPEAKER-SUB-2:36513.9 battery:36700 gnss_tcxo_therm:37315 quiet_therm:36781 soc_therm:37092 usb_conn_therm:35400
+11-12 06:14:04.340  1749  1757 I pixel-thermal: VIRTUAL-SKIN-CHARGE-WLC:37.2635 raw data: VIRTUAL-SKIN-CHARGE-WLC:37263.5 charger_therm:38784 modem_therm:37849 rffe_therm:35579 soc_therm:37092
+11-12 06:14:04.340  1749  1757 I pixel-thermal: VIRTUAL-SKIN-CHARGE-WLC power_budget=1902.36 err=0.736492 s_power=1400 time_elapsed_ms=7015 p=147.298 i=400 d=-0 dt_per_min=nan compensation=0 budget transient=0 control target=2 excluded power budget=44.9372 (PARTIAL_SYSTEM_POWER: 898.74 mW, cdev_weight: 0.050000)
+11-12 06:14:04.526   667  2174 W powerhal-libperfmgr: The actual duration is way far from the target (370365641 >> 11620000)
+11-12 06:14:04.528   667  2174 W powerhal-libperfmgr: The actual duration is way far from the target (332143148 >> 11620000)
+11-12 06:14:04.530  1388  1388 I Choreographer: Skipped 39 frames!  The application may be doing too much work on its main thread.
+11-12 06:14:04.619  1388  1526 I WebViewFactory: Loading com.android.webview version 148.0.7778.120 (code 777812001)
+11-12 06:14:04.622  1388  1526 D ApplicationLoaders: Returning zygote-cached class loader: /system/framework/android.test.base.jar
+11-12 06:14:04.622  1388  1526 D ApplicationLoaders: Returning zygote-cached class loader: /system_ext/framework/androidx.window.extensions.jar
+11-12 06:14:04.624  1388  1526 D nativeloader: InitLlndkLibrariesProduct: libEGL.so:libGLESv1_CM.so:libGLESv2.so:libGLESv3.so:libRS.so:libandroid_net.so:libapexsupport.so:libavf.so:libbinder_ndk.so:libc.so:libcgrouprc.so:libclang_rt.asan-aarch64-android.so:libclang_rt.hwasan-aarch64-android.so:libcom.android.tethering.connectivity_native.so:libdl.so:libft2.so:liblog.so:libm.so:libmediandk.so:libnativewindow.so:libneuralnetworks.so:libselinux.so:libsync.so:libvendorsupport.so:libvndksupport.so:libvulkan.so
+11-12 06:14:04.624  1388  1526 D nativeloader: Configuring product-clns-11 for unbundled product apk /product/app/webview/webview.apk. target_sdk_version=36, uses_libraries=, library_path=/product/app/webview/lib/arm64:/product/app/webview/webview.apk!/lib/arm64-v8a:/product/lib64:/system/product/lib64, permitted_path=/data:/mnt/expand:/product/lib64:/system/product/lib64
+11-12 06:14:04.624  1388  1526 D nativeloader: InitVndkspLibrariesProduct: VNDK is deprecated with product
+11-12 06:14:04.636  1388  1526 I cr_WVCFactoryProvider: version=148.0.7778.120 (777812001) minSdkVersion=29 multiprocess=true packageId=2 splits=<none>
+11-12 06:14:04.640  1388  1526 D nativeloader: Load /product/app/webview/webview.apk!/lib/arm64-v8a/libwebviewchromium.so using class loader ns product-clns-11 (caller=/product/app/webview/webview.apk): ok
+11-12 06:14:04.641  1388  1526 D nativeloader: Load /system/lib64/libwebviewchromium_plat_support.so using class loader ns product-clns-11 (caller=/product/app/webview/webview.apk): ok
+11-12 06:14:04.646  1388  1526 I cr_LibraryLoader: Successfully loaded native library
+11-12 06:14:04.646  1388  1526 I cr_CachingUmaRecorder: Flushed 16 samples from 16 histograms, 0 samples were dropped.
+11-12 06:14:04.924  1388  1526 D nativeloader: Load /data/app/~~LvIYMYvERShSnkC62I9Big==/to.goway.canvas663-93j2hPCpC4CLYKpiD6LhaA==/base.apk!/lib/arm64-v8a/libzstd-kmp.so using class loader ns clns-10 (caller=/data/app/~~LvIYMYvERShSnkC62I9Big==/to.goway.canvas663-93j2hPCpC4CLYKpiD6LhaA==/base.apk!classes5.dex): ok
+11-12 06:14:05.360  1749  1757 I pixel-thermal: VIRTUAL-SKIN:36.9122 raw data: VIRTUAL-SKIN:36912.2 VIRTUAL-SKIN-SUB-1:36912.2 VIRTUAL-SKIN-SUB-2:32844.8 VIRTUAL-SKIN-SUB-3:35213.2 charger_therm:38784 gnss_tcxo_therm:37315 modem_therm:37849 quiet_therm:36781 rffe_therm:35579 soc_therm:37092 usb_conn_therm:35400
+11-12 06:14:05.360  1749  1757 I pixel-thermal: soc_therm:37.092 raw data: soc_therm:37092
+11-12 06:14:05.360  1749  1757 I pixel-thermal: VIRTUAL-SKIN-HINT:36.9122 raw data: VIRTUAL-SKIN:36912.2 VIRTUAL-SKIN-HINT:36912.2
+11-12 06:14:05.360  1749  1757 I pixel-thermal: VIRTUAL-SKIN-CPU-MID:36.9122 raw data: VIRTUAL-SKIN:36912.2 VIRTUAL-SKIN-CPU-MID:36912.2
+11-12 06:14:05.360  1749  1757 I pixel-thermal: VIRTUAL-SKIN-CPU-HIGH:36.9122 raw data: VIRTUAL-SKIN:36912.2 VIRTUAL-SKIN-CPU-HIGH:36912.2
+11-12 06:14:05.361  1749  1757 I pixel-thermal: VIRTUAL-SKIN-SOC:36.9122 raw data: VIRTUAL-SKIN:36912.2 VIRTUAL-SKIN-SOC:36912.2
+11-12 06:14:05.361  1749  1757 I pixel-thermal: VIRTUAL-SKIN-SOC power_budget=3226.34 err=8.0878 s_power=800 time_elapsed_ms=7015 p=2426.34 i=0 d=-0 dt_per_min=nan compensation=0 budget transient=0 control target=3 excluded power budget=0
+11-12 06:14:05.361  1749  1757 I pixel-thermal: VIRTUAL-SKIN-SOC binded power rails: (S4M_VDD_CPUCL0: 299.94 mW)(S2M_VDD_CPUCL2: 282.21 mW)(S3M_VDD_CPUCL1: 237.93 mW)(S2S_VDD_G3D: 3.97 mW)(S7M_VDD_TPU: 0.00 mW)
+11-12 06:14:05.361  1749  1757 I pixel-thermal: cellular-emergency:36.9122 raw data: VIRTUAL-SKIN:36912.2 cellular-emergency:36912.2
+11-12 06:14:05.361  1749  1757 I pixel-thermal: VIRTUAL-SKIN-CPU-LIGHT-ODPM:36.9122 raw data: VIRTUAL-SKIN:36912.2 VIRTUAL-SKIN-CPU-LIGHT-ODPM:36912.2
+11-12 06:14:05.361  1749  1757 I pixel-thermal: VIRTUAL-SKIN-CPU-LIGHT-ODPM power_budget=1860.76 err=2.0878 s_power=800 time_elapsed_ms=7015 p=835.118 i=225.638 d=-0 dt_per_min=nan compensation=0 budget transient=0 control target=2 excluded power budget=0
+11-12 06:14:05.361  1749  1757 I pixel-thermal: VIRTUAL-SKIN-CPU-LIGHT-ODPM binded power rails: (S4M_VDD_CPUCL0: 299.94 mW)(S2M_VDD_CPUCL2: 282.21 mW)(S3M_VDD_CPUCL1: 237.93 mW)
+11-12 06:14:05.362  1749  1757 I pixel-thermal: VIRTUAL-SKIN-GPU:36.9122 raw data: VIRTUAL-SKIN:36912.2 VIRTUAL-SKIN-GPU:36912.2
+11-12 06:14:05.609  1450  1669 I WifiService: isFeatureSupported uid=1000 returns [WIFI_FEATURE_INFRA, WIFI_FEATURE_PASSPOINT, WIFI_FEATURE_P2P, WIFI_FEATURE_MOBILE_HOTSPOT, WIFI_FEATURE_AWARE, WIFI_FEATURE_D2D_RTT, WIFI_FEATURE_D2AP_RTT, WIFI_FEATURE_PNO, WIFI_FEATURE_TDLS, WIFI_FEATURE_AP_STA, WIFI_FEATURE_LINK_LAYER_STATS, WIFI_FEATURE_RSSI_MONITOR, WIFI_FEATURE_MKEEP_ALIVE, WIFI_FEATURE_CONFIG_NDO, WIFI_FEATURE_CONTROL_ROAMING, WIFI_FEATURE_IE_WHITELIST, WIFI_FEATURE_SCAN_RAND, WIFI_FEATURE_TX_POWER_LIMIT, WIFI_FEATURE_WPA3_SAE, WIFI_FEATURE_WPA3_SUITE_B, WIFI_FEATURE_OWE, WIFI_FEATURE_LOW_LATENCY, WIFI_FEATURE_DPP, WIFI_FEATURE_P2P_RAND_MAC, WIFI_FEATURE_CONNECTED_RAND_MAC, WIFI_FEATURE_AP_RAND_MAC, WIFI_FEATURE_MBO, WIFI_FEATURE_OCE, WIFI_FEATURE_FILS_SHA256, WIFI_FEATURE_FILS_SHA384, WIFI_FEATURE_SAE_PK, WIFI_FEATURE_DPP_ENROLLEE_RESPONDER, WIFI_FEATURE_PASSPOINT_TERMS_AND_CONDITIONS, WIFI_FEATURE_SAE_H2E, WIFI_FEATURE_WFD_R2, WIFI_FEATURE_DECORATED_IDENTITY, WIFI_FEATURE_TRUST_ON_FIRST_USE, WIFI_FEATURE_SET_TLS_MINIMUM_VERSION, WIFI_FEATURE_TLS_V1_3, WIFI_FEATURE_WEP, WIFI_FEATURE_WPA_PERSONAL, WIFI_FEATURE_AGGRESSIVE_ROAMING_MODE_SUPPORT]
+11-12 06:14:05.609  1450  1669 I WifiService: getWifiActivityEnergyInfoAsync uid=1000
+11-12 06:14:05.610   987  1077 I WifiHAL : Creating message to get link statistics; iface = 47
+11-12 06:14:05.614  1167  1167 D AOC     : A3:MSG: controller.cc, 275: CNTRL: cmd ID: 0x000a, tag: 0x11 [cntr = 44933]
+11-12 06:14:05.614  1167  1167 D AOC     : A3:MSG: controller.cc, 919: CNTRL: ipc: control, cmd ID: 0x000a, tag: 0x11, rc: 0
+11-12 06:14:05.615  1167  1167 D AOC     : A3:MSG: controller.cc, 275: CNTRL: cmd ID: 0x000a, tag: 0x12 [cntr = 44934]
+11-12 06:14:05.615  1167  1167 D AOC     : A3:MSG: controller.cc, 919: CNTRL: ipc: control, cmd ID: 0x000a, tag: 0x12, rc: 0
+11-12 06:14:05.617  1167  1167 D AOC     : A3:MSG: controller.cc, 275: CNTRL: cmd ID: 0x000a, tag: 0x13 [cntr = 44935]
+11-12 06:14:05.619  1167  1167 D AOC     : A3:MSG: controller.cc, 919: CNTRL: ipc: control, cmd ID: 0x000a, tag: 0x13, rc: 0
+11-12 06:14:05.619  1167  1167 D AOC     : A3:MSG: controller.cc, 275: CNTRL: cmd ID: 0x000a, tag: 0x14 [cntr = 44936]
+11-12 06:14:05.620  1167  1167 D AOC     : A3:MSG: controller.cc, 919: CNTRL: ipc: control, cmd ID: 0x000a, tag: 0x14, rc: 0
+11-12 06:14:05.621  1167  1167 D AOC     : A3:MSG: controller.cc, 275: CNTRL: cmd ID: 0x000a, tag: 0x15 [cntr = 44937]
+11-12 06:14:05.622  1167  1167 D AOC     : A3:MSG: controller.cc, 919: CNTRL: ipc: control, cmd ID: 0x000a, tag: 0x15, rc: 0
+11-12 06:14:05.623  1167  1167 D AOC     : A3:MSG: controller.cc, 275: CNTRL: cmd ID: 0x000a, tag: 0x16 [cntr = 44938]
+11-12 06:14:05.623  1167  1167 D AOC     : A3:MSG: controller.cc, 919: CNTRL: ipc: control, cmd ID: 0x000a, tag: 0x16, rc: 0
+11-12 06:14:05.624  1167  1167 D AOC     : A3:MSG: controller.cc, 275: CNTRL: cmd ID: 0x000a, tag: 0x17 [cntr = 44939]
+11-12 06:14:05.624  1167  1167 D AOC     : A3:MSG: controller.cc, 919: CNTRL: ipc: control, cmd ID: 0x000a, tag: 0x17, rc: 0
+11-12 06:14:05.626  1167  1167 D AOC     : A3:MSG: controller.cc, 275: CNTRL: cmd ID: 0x000a, tag: 0x18 [cntr = 44940]
+11-12 06:14:05.626  1167  1167 D AOC     : A3:MSG: controller.cc, 919: CNTRL: ipc: control, cmd ID: 0x000a, tag: 0x18, rc: 0
+11-12 06:14:05.627  1167  1167 D AOC     : A3:MSG: controller.cc, 275: CNTRL: cmd ID: 0x000a, tag: 0x19 [cntr = 44941]
+11-12 06:14:05.628  1167  1167 D AOC     : A3:MSG: controller.cc, 919: CNTRL: ipc: control, cmd ID: 0x000a, tag: 0x19, rc: 0
+11-12 06:14:05.629  1167  1167 D AOC     : A3:MSG: controller.cc, 275: CNTRL: cmd ID: 0x000a, tag: 0x1a [cntr = 44942]
+11-12 06:14:05.629  1167  1167 D AOC     : A3:MSG: controller.cc, 919: CNTRL: ipc: control, cmd ID: 0x000a, tag: 0x1a, rc: 0
+11-12 06:14:05.630  1167  1167 D AOC     : A3:MSG: controller.cc, 275: CNTRL: cmd ID: 0x000a, tag: 0x1b [cntr = 44943]
+11-12 06:14:05.630  1167  1167 D AOC     : A3:MSG: controller.cc, 919: CNTRL: ipc: control, cmd ID: 0x000a, tag: 0x1b, rc: 0
+11-12 06:14:05.631  1167  1167 D AOC     : A3:MSG: controller.cc, 275: CNTRL: cmd ID: 0x000a, tag: 0x1c [cntr = 44944]
+11-12 06:14:05.632  1167  1167 D AOC     : A3:MSG: controller.cc, 919: CNTRL: ipc: control, cmd ID: 0x000a, tag: 0x1c, rc: 0
+11-12 06:14:05.633  1167  1167 D AOC     : A3:MSG: controller.cc, 275: CNTRL: cmd ID: 0x000a, tag: 0x1d [cntr = 44945]
+11-12 06:14:05.633  1167  1167 D AOC     : A3:MSG: controller.cc, 919: CNTRL: ipc: control, cmd ID: 0x000a, tag: 0x1d, rc: 0
+11-12 06:14:05.634  1167  1167 D AOC     : A3:MSG: controller.cc, 275: CNTRL: cmd ID: 0x000a, tag: 0x1e [cntr = 44946]
+11-12 06:14:05.634  1167  1167 D AOC     : A3:MSG: controller.cc, 919: CNTRL: ipc: control, cmd ID: 0x000a, tag: 0x1e, rc: 0
+11-12 06:14:05.638  1167  1167 D AOC     : A3:MSG: controller.cc, 275: CNTRL: cmd ID: 0x000a, tag: 0x1f [cntr = 44947]
+11-12 06:14:05.638  1167  1167 D AOC     : A3:MSG: controller.cc, 919: CNTRL: ipc: control, cmd ID: 0x000a, tag: 0x1f, rc: 0
+11-12 06:14:05.639  1167  1167 D AOC     : A3:MSG: controller.cc, 275: CNTRL: cmd ID: 0x000a, tag: 0x20 [cntr = 44948]
+11-12 06:14:05.639  1167  1167 D AOC     : A3:MSG: controller.cc, 919: CNTRL: ipc: control, cmd ID: 0x000a, tag: 0x20, rc: 0
+11-12 06:14:05.640  1167  1167 D AOC     : A3:MSG: controller.cc, 275: CNTRL: cmd ID: 0x000a, tag: 0x21 [cntr = 44949]
+11-12 06:14:05.641  1167  1167 D AOC     : A3:MSG: controller.cc, 919: CNTRL: ipc: control, cmd ID: 0x000a, tag: 0x21, rc: 0
+11-12 06:14:05.642   934   934 I bthal.activitywatcher: getStateResidency: ActivityStat{0 : totalTimeMs 683344471 totalEntryCount 3247943358 lastEntryMs 330837959}
+11-12 06:14:05.642   934   934 I bthal.activitywatcher: getStateResidency: ActivityStat{1 : totalTimeMs 27003559 totalEntryCount 1660345595 lastEntryMs 330838049}
+11-12 06:14:05.642   934   934 I bthal.activitywatcher: getStateResidency: ActivityStat{2 : totalTimeMs 0 totalEntryCount 0 lastEntryMs 0}
+11-12 06:14:05.642   934   934 I bthal.activitywatcher: getStateResidency: ActivityStat{3 : totalTimeMs 2729953 totalEntryCount 3247941609 lastEntryMs 330837948}
+11-12 06:14:05.646   987  4906 I WifiHAL : Getting cached scan results, iface handle = 0xb4000075e009a050
+11-12 06:14:05.646   987  4906 E WifiHAL : Creating message to get cached scan results
+11-12 06:14:05.650   987  4906 I WifiHAL : In GetCachedScanResultsCommand::handleResponse
+11-12 06:14:05.653   934   934 I bthal.activitywatcher: send_hci_activities_vsc: Sent VSC <[4]{89, 253, 1, 1}>
+11-12 06:14:05.653   943   943 W android.hardware.power.stats-service.pixel: getStateResidency latency for Bluetooth exceeded time allowed: 12307us
+11-12 06:14:05.656   943   943 E android.hardware.power.stats-service.pixel: Failed to open file /data/vendor/gps/power_stats: No such file or directory
+11-12 06:14:05.656   943   943 E android.hardware.power.stats-service.pixel: Failed to get results for GPS
+11-12 06:14:05.658   934  1753 I bthal.activitywatcher: filter_hci_activities_vse: Filtered <[103]{14, 101, 1, 89, 253, 0, 1, 13, 247, 68, 0, 150, 121, 2, 0, 209, 17, 40, 0, 0, 0, 0, 0, 221, 17, 40, 0, 0, 0, 0, 0, 1, 69, 35, 0, 248, 29, 0, 0, 221, 17, 40, 0, 0, 0, 0, 0, 209, 17, 40, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 12, 247, 68, 0, 173, 2, 0, 0, 198, 17, 40, 0, 0, 0, 0, 0, 198, 17, 40, 0, 0, 0, 0, 0}>
+11-12 06:14:05.658   934  1753 I bthal.flowcontrol: HciEventPreProcess: HCI Event 0xe Opcode 0xfd59 Length 103 handled by ControllerActivityWatcher
+11-12 06:14:05.659   934  1753 I bthal.bqr: Batt_Per: 72, Avg_Cur_Pwr: 1 mA, BEr_Tx_Plv: 0 dBm, Le_Tx_Plv: 0 dBm, Idle_Tm: 31858 ms, Act_Tm: 7675 ms, BEr_Tx_Tm: 0 ms, BEr_Rx_Tm: 0 ms, Le_Tx_Tm: 0 ms, Le_Rx_Tm: 0 ms, total_Tm 31858 ms, Rx_1Ch_Tm 0 ms, Rx_2Ch_Tm 0 ms, Tx_iPA_1Ch_Tm 0 ms, Tx_iPA_2Ch_Tm 0 ms, Tx_ePA_1Ch_Tm 0 ms, Tx_ePA_2Ch_Tm 0 ms, BEr_Rx_Scan_total_Tm 0, Le_Rx_Scan_total_Tm 0
+11-12 06:14:05.659   934  1753 I bthal.bqr: update_bqr_energy_reportv7: Avg_Cur_Pwr: 1, BEr_Tx_Plv: 0 dBm, Le_Tx_Plv: 0
+11-12 06:14:05.659   934  1753 I bthal.flowcontrol: HciEventPreProcess: HCI Event 0xff Opcode 0 Length 92 unhandled by debug_VendorEvent
+11-12 06:14:05.660  7997  8016 W btm_acl : system/stack/acl/btm_acl.cc:1494 BTM_ReadRemoteVersion: Unable to find active acl
+11-12 06:14:05.661  7997  8016 I bluetooth: system/btif/src/btif_bqr.cc:1019 bqr_delivery_event: len: 89, addr: ff:ff:ff:ff:ff:ff, lmp_ver: 0, manufacturer_id: 0, lmp_subver: 0
+11-12 06:14:05.661  7997  8029 I BluetoothQualityReportJni: android/app/jni/com_android_bluetooth_BluetoothQualityReport.cpp:51 bqr_delivery_callback:
+11-12 06:14:05.661  7997  8029 I BluetoothQualityReportNativeInterface: BQR: {
+11-12 06:14:05.661  7997  8029 I BluetoothQualityReportNativeInterface:   mAddr: FF:FF:FF:FF:FF:FF, mLmpVer: 0x00, mLmpSubVer: 0x0000, mManufacturerId: 0x0000, mName: , mBluetoothClass: 0,
+11-12 06:14:05.661  7997  8029 I BluetoothQualityReportNativeInterface:   BqrCommon: {
+11-12 06:14:05.661  7997  8029 I BluetoothQualityReportNativeInterface:     mQualityReportId: Energy Monitor(0x06), mPacketType: INVALID(0x00), mConnectionHandle: 0x0000, mConnectionRole: 0(0), mTxPowerLevel: 0, mRssi: 0, mSnr: 0, mUnusedAfhChannelCount: 0,
+11-12 06:14:05.661  7997  8029 I BluetoothQualityReportNativeInterface:     mAfhSelectUnidealChannelCount: 0, mLsto: 0, mPiconetClock: 0x00000000, mRetransmissionCount: 0, mNoRxCount: 0, mNakCount: 0, mLastTxAckTimestamp: 0x00000000, mFlowOffCount: 0,
+11-12 06:14:05.661  7997  8029 I BluetoothQualityReportNativeInterface:     mLastFlowOnTimestamp: 0x00000000, mOverflowCount: 0, mUnderflowCount: 0, mAddr: null, mCalFailedItemCount: 0,
+11-12 06:14:05.661  7997  8029 I BluetoothQualityReportNativeInterface:     mTxTotalPackets: 0, mTxUnackPackets: 0, mTxFlushPackets: 0, mTxLastSubeventPackets: 0, mCrcErrorPackets: 0, mRxDupPackets: 0, mRxUnRecvPackets: 0, mCoexInfoMask: 0
+11-12 06:14:05.661  7997  8029 I BluetoothQualityReportNativeInterface:   }
+11-12 06:14:05.661  7997  8029 I BluetoothQualityReportNativeInterface:   BqrEnergyMonitor: {
+11-12 06:14:05.661  7997  8029 I BluetoothQualityReportNativeInterface:     AvgCurrentConsume: 1, mIdleTotalTime: 162930, mIdleStateEnterCount: 1959, mActiveTotalTime: 7675, mActiveStateEnterCount: 997,
+11-12 06:14:05.661  7997  8029 I BluetoothQualityReportNativeInterface:     mBredrTxTotalTime: 0, mBredrTxStateEnterCount: 0, mBredrTxAvgPowerLevel: 0, mBredrRxTotalTime: 0, mBredrRxStateEnterCount: 1958, mLeTxTotalTime: 0, mLeTxStateEnterCount: 0, mLeTxAvgPowerLevel: 0, mLeRxTotalTime: 0, mLeRxStateEnterCount: 0, mReportTotalTime: 162930, mRxActiveOneChainTime: 0, mRxActiveTwoChainTime: 0, mTxiPaActiveOneChainTime: 0, mTxiPaActiveTwoChainTime: 0, mTxePaActiveOneChainTime: 0, mTxePaActiveTwoChainTime: 0
+11-12 06:14:05.661  7997  8029 I BluetoothQualityReportNativeInterface:   }
+11-12 06:14:05.661  7997  8029 I BluetoothQualityReportNativeInterface: }
+11-12 06:14:05.742  1450 17634 D TelephonyManager: requestModemActivityInfo: Sending result to app: ModemActivityInfo{ mTimestamp=1772913338 mSleepTimeMs=1031198702 mIdleTimeMs=190055462 mActivityStatsTechSpecificInfo=[{mRat=GERAN,mFrequencyRange=UNKNOWN,mTxTimeMs[]=[0, 0, 0, 0, 0],mRxTimeMs=551584908}, {mRat=UTRAN,mFrequencyRange=UNKNOWN,mTxTimeMs[]=[0, 0, 0, 0, 0],mRxTimeMs=31996}, {mRat=EUTRAN,mFrequencyRange=UNKNOWN,mTxTimeMs[]=[0, 0, 0, 0, 0],mRxTimeMs=0}, {mRat=NGRAN,mFrequencyRange=HIGH,mTxTimeMs[]=[0, 0, 0, 0, 0],mRxTimeMs=0}, {mRat=NGRAN,mFrequencyRange=MMWAVE,mTxTimeMs[]=[0, 0, 0, 0, 0],mRxTimeMs=0}, {mRat=UNKNOWN,mFrequencyRange=UNKNOWN,mTxTimeMs[]=[0, 0, 0, 0, 0],mRxTimeMs=0}]}
+11-12 06:14:06.079   987  4906 I WifiHAL : Creating message to get link statistics; iface = 47
+11-12 06:14:06.114   987  4906 I WifiHAL : Getting cached scan results, iface handle = 0xb4000075e009a050
+11-12 06:14:06.114   987  4906 E WifiHAL : Creating message to get cached scan results
+11-12 06:14:06.116   987  4906 I WifiHAL : In GetCachedScanResultsCommand::handleResponse
+11-12 06:14:06.127  1450  1932 D WifiClientModeImpl[160565:wlan0]: updateLinkLayerStatsRssiSpeedFrequencyCapabilities rssi=-42 TxLinkspeed=1134 freq=5200 RxLinkSpeed=1200
+11-12 06:14:06.128  1450  1932 D WifiDataStall: tx tput in kbps: 1014176
+11-12 06:14:06.128  1450  1932 D WifiDataStall: rx tput in kbps: 1129687
+11-12 06:14:06.128  1450  1932 V WifiConfigManager: Updating scan detail cache freq=5200 BSSID=7a:96:99:18:18:8b RSSI=-41 for "LukeSkyRouter"WPA_PSK
+11-12 06:14:06.128  1450  1932 D WifiDataStall:  use default cca Level
+11-12 06:14:06.128  1450  1932 D WifiDataStall:  ccaLevel = 15
+11-12 06:14:06.128  1450  1932 D WifiDataStall: L2 txTputKbps: 1067554, rxTputKbps: 1129687, L3 txTputKbps: 12, rxTputKbps: 189, TxTrafficHigh: true, RxTrafficHigh: true, Throughput Sufficient: true
+11-12 06:14:06.128  1450  1932 D WifiThroughputPredictor:  utilization (LLS) -1 isBluetoothConnected: false final utilization: 15
+11-12 06:14:06.128  1450  1932 D WifiThroughputPredictor:  BW: 2 RSSI: -42 Nss: 2 Mode: 6 symDur: 13600 snrDb 32 bitPerTone: 8333 rate: 1200 throughput: 1129
+11-12 06:14:06.128  1450  1932 D WifiThroughputPredictor:  utilization (LLS) -1 isBluetoothConnected: false final utilization: 15
+11-12 06:14:06.128  1450  1932 D WifiThroughputPredictor:  BW: 2 RSSI: -42 Nss: 2 Mode: 6 symDur: 13600 snrDb 32 bitPerTone: 8333 rate: 1200 throughput: 1129
+11-12 06:14:06.131   987  4906 D WifiHAL : Start debug command: mType GET_FEATURE
+11-12 06:14:06.131   987  4906 I WifiHAL : CreateRequest mType = GET_FEATURE
+11-12 06:14:06.131   987  4906 D WifiHAL : In DebugCommand::handleResponse, mType:GET_FEATURE
+11-12 06:14:06.131   987  4906 D WifiHAL : len = 4, expected len = 4
+11-12 06:14:06.132  1450  1932 I HalDevMgr: bestIfaceCreationProposal is null, requestIface=STA, existingIface=[name=wlan0 type=STA]
+11-12 06:14:06.132  1450  1932 D WifiScoreCard: BSSID update SIGNAL_POLL ID: 300630434 SSID: "LukeSkyRouter", BSSID: 7a:96:99:18:18:8b, MAC: 9e:ac:31:50:a6:ce, IP: /192.168.8.170, Security type: 2, Supplicant state: COMPLETED, Wi-Fi standard: 11ax, RSSI: -42, Link speed: 1134Mbps, Tx Link speed: 1134Mbps, Max Supported Tx Link speed: 1200Mbps, Rx Link speed: 1200Mbps, Max Supported Rx Link speed: 1200Mbps, Frequency: 5200MHz, Net ID: 0, Metered hint: false, score: 88, isUsable: true, CarrierMerged: false, SubscriptionId: -1, IsPrimary: 1, Trusted: true, Restricted: false, Ephemeral: false, OEM paid: false, OEM private: false, OSU AP: false, FQDN: <none>, Provider friendly name: <none>, Requesting package name: <none>"LukeSkyRouter"wpa2-pskMLO Information: , Is TID-To-Link negotiation supported by the AP: false, AP MLD Address: <none>, AP MLO Link Id: <none>, AP MLO Affiliated links: <none>, Vendor Data: <none>
+11-12 06:14:06.132  1450  1932 D WifiScoreCard: txRate: 9 txSpeed: 1134
+11-12 06:14:06.132  1450  1932 D WifiScoreCard: network update SIGNAL_POLL "LukeSkyRouter" ID: 169407839 RSSI -42 txSpeed 1134
+11-12 06:14:06.133  1450  1932 D WifiClientModeImpl[160565:wlan0]:  ClientModeImpl$L2ConnectedState screen=on 22 0 "LukeSkyRouter" 7a:96:99:18:18:8b rssi=-42 f=5200 sc=88 link=1134 tx=8.0, 0.0, 0.0 rx=24.4 bcn=14779396 [on:984 tx:5 rx:4 period:3054] from screen [on:75229042 period:1045186932] score=88
+11-12 06:14:06.736  1388  1522 W Mbgl    : {Worker 4}[General]: Invalid geometry in line layer
+11-12 06:14:06.743  1388  1441 W ReactNativeJS: MapLibre Native [WARN] [Mbgl] {Worker 4}[General]: Invalid geometry in line layer
+11-12 06:14:06.744  1388  1393 W goway.canvas663: userfaultfd: MOVE ioctl seems unsupported: Connection timed out
+11-12 06:14:07.083  1388  1388 I CanvasMapProbe: {"step":"initial","viewIdentity":91816241,"mapIdentity":264806422,"latitude":41.38739999999997,"longitude":2.1685999999999694,"zoom":11,"zoomGesturesEnabled":true,"width":1080,"height":2400,"hillshade":[{"id":"goway:relief:hillshade","shadow":["rgba(6.000000476837158,11,22,1)"],"highlight":["rgba(93,115.00000762939453,144,1)"]}],"handleY":1321,"handleHeight":126,"handleValue":"{\"text\":\"Half open\",\"min\":0,\"now\":1,\"max\":2}","chrome":[{"id":"map-credit","x":21,"y":1037,"width":1038,"height":273,"visibleRect":"[21,1037][1059,1310]","globalVisible":true,"shown":true},{"id":"map-credit-toggle","x":912,"y":1179,"width":126,"height":126,"visibleRect":"[912,1179][1038,1305]","globalVisible":true,"shown":true},{"id":"map-scale","x":21,"y":949,"width":288,"height":77,"visibleRect":"[21,949][309,1026]","globalVisible":true,"shown":true}],"imeVisible":false}
+11-12 06:14:07.083  1388  1388 I UiAutomation: Initialized for user 0 on display 0
+11-12 06:14:07.088  7439  8113 I AiAiEcho: Settings changed for uri: content://settings/secure/accessibility_enabled
+11-12 06:14:07.525  1388  1388 I Choreographer: Skipped 52 frames!  The application may be doing too much work on its main thread.
+11-12 06:14:07.538  1388  1404 I CanvasMapInput: action=0 pointers=1 elapsedMs=12
+11-12 06:14:07.539  1388  1388 I CanvasMapInput: delivered action=0 count=1 ids=[0] elapsed=1
+11-12 06:14:07.540  1388  1404 I CanvasMapInput: action=2 pointers=1 elapsedMs=1
+11-12 06:14:07.547  1388  1388 I CanvasMapInput: delivered action=2 count=1 ids=[0] elapsed=17
+11-12 06:14:07.558  1388  1404 I CanvasMapInput: action=2 pointers=1 elapsedMs=1
+11-12 06:14:07.564  1388  1388 I CanvasMapInput: delivered action=2 count=1 ids=[0] elapsed=33
+11-12 06:14:07.576  1388  1404 I CanvasMapInput: action=2 pointers=1 elapsedMs=2
+11-12 06:14:07.580  1388  1388 I CanvasMapInput: delivered action=2 count=1 ids=[0] elapsed=50
+11-12 06:14:07.595  1388  1404 I CanvasMapInput: action=2 pointers=1 elapsedMs=2
+11-12 06:14:07.605  1388  1388 I CanvasMapInput: delivered action=2 count=1 ids=[0] elapsed=75
+11-12 06:14:07.614  1388  1404 I CanvasMapInput: action=2 pointers=1 elapsedMs=2
+11-12 06:14:07.622  1388  1388 I CanvasMapInput: delivered action=2 count=1 ids=[0] elapsed=91
+11-12 06:14:07.633  1388  1404 I CanvasMapInput: action=2 pointers=1 elapsedMs=2
+11-12 06:14:07.639  1388  1388 I CanvasMapInput: delivered action=2 count=1 ids=[0] elapsed=108
+11-12 06:14:07.651  1388  1404 I CanvasMapInput: action=2 pointers=1 elapsedMs=2
+11-12 06:14:07.655  1388  1388 I CanvasMapInput: delivered action=2 count=1 ids=[0] elapsed=125
+11-12 06:14:07.670  1388  1404 I CanvasMapInput: action=2 pointers=1 elapsedMs=2
+11-12 06:14:07.680  1388  1388 I CanvasMapInput: delivered action=2 count=1 ids=[0] elapsed=150
+11-12 06:14:07.688  1388  1404 I CanvasMapInput: action=2 pointers=1 elapsedMs=2
+11-12 06:14:07.697  1388  1388 I CanvasMapInput: delivered action=2 count=1 ids=[0] elapsed=166
+11-12 06:14:07.707  1388  1404 I CanvasMapInput: action=2 pointers=1 elapsedMs=1
+11-12 06:14:07.713  1388  1388 I CanvasMapInput: delivered action=2 count=1 ids=[0] elapsed=183
+11-12 06:14:07.724  1388  1404 I CanvasMapInput: action=2 pointers=1 elapsedMs=0
+11-12 06:14:07.730  1388  1388 I CanvasMapInput: delivered action=2 count=1 ids=[0] elapsed=200
+11-12 06:14:07.743  1388  1404 I CanvasMapInput: action=2 pointers=1 elapsedMs=1
+11-12 06:14:07.747  1388  1388 I CanvasMapInput: delivered action=2 count=1 ids=[0] elapsed=217
+11-12 06:14:07.761  1388  1404 I CanvasMapInput: action=2 pointers=1 elapsedMs=2
+11-12 06:14:07.764  1388  1388 I CanvasMapInput: delivered action=2 count=1 ids=[0] elapsed=234
+11-12 06:14:07.779  1388  1404 I CanvasMapInput: action=2 pointers=1 elapsedMs=2
+11-12 06:14:07.789  1388  1388 I CanvasMapInput: delivered action=2 count=1 ids=[0] elapsed=259
+11-12 06:14:07.797  1388  1404 I CanvasMapInput: action=2 pointers=1 elapsedMs=1
+11-12 06:14:07.806  1388  1388 I CanvasMapInput: delivered action=2 count=1 ids=[0] elapsed=275
+11-12 06:14:07.816  1388  1404 I CanvasMapInput: action=2 pointers=1 elapsedMs=1
+11-12 06:14:07.823  1388  1388 I CanvasMapInput: delivered action=2 count=1 ids=[0] elapsed=292
+11-12 06:14:07.835  1388  1404 I CanvasMapInput: action=2 pointers=1 elapsedMs=2
+11-12 06:14:07.840  1388  1388 I CanvasMapInput: delivered action=2 count=1 ids=[0] elapsed=309
+11-12 06:14:07.854  1388  1404 I CanvasMapInput: action=2 pointers=1 elapsedMs=2
+11-12 06:14:07.856  1388  1388 I CanvasMapInput: delivered action=2 count=1 ids=[0] elapsed=326
+11-12 06:14:07.872  1388  1404 I CanvasMapInput: action=2 pointers=1 elapsedMs=2
+11-12 06:14:07.881  1388  1388 I CanvasMapInput: delivered action=2 count=1 ids=[0] elapsed=351
+11-12 06:14:07.891  1388  1404 I CanvasMapInput: action=2 pointers=1 elapsedMs=2
+11-12 06:14:07.898  1388  1388 I CanvasMapInput: delivered action=2 count=1 ids=[0] elapsed=367
+11-12 06:14:07.910  1388  1404 I CanvasMapInput: action=2 pointers=1 elapsedMs=2
+11-12 06:14:07.915  1388  1388 I CanvasMapInput: delivered action=2 count=1 ids=[0] elapsed=384
+11-12 06:14:07.928  1388  1404 I CanvasMapInput: action=2 pointers=1 elapsedMs=2
+11-12 06:14:07.931  1388  1388 I CanvasMapInput: delivered action=2 count=1 ids=[0] elapsed=401
+11-12 06:14:07.947  1388  1404 I CanvasMapInput: action=2 pointers=1 elapsedMs=2
+11-12 06:14:07.957  1388  1388 I CanvasMapInput: delivered action=2 count=1 ids=[0] elapsed=426
+11-12 06:14:07.965  1388  1404 I CanvasMapInput: action=2 pointers=1 elapsedMs=2
+11-12 06:14:07.973  1388  1388 I CanvasMapInput: delivered action=2 count=1 ids=[0] elapsed=443
+11-12 06:14:07.984  1388  1388 I CanvasMapInput: delivered action=1 count=1 ids=[0] elapsed=457
+11-12 06:14:08.000  1388  1404 I CanvasMapInput: action=1 pointers=1 elapsedMs=18
+11-12 06:14:09.046  1388  1559 D ProfileInstaller: Installing profile for to.goway.canvas663
+11-12 06:14:09.135   987  4906 I WifiHAL : Creating message to get link statistics; iface = 47
+11-12 06:14:09.187   987  1077 I WifiHAL : Getting cached scan results, iface handle = 0xb4000075e009a050
+11-12 06:14:09.188   987  1077 E WifiHAL : Creating message to get cached scan results
+11-12 06:14:09.193   987  1077 I WifiHAL : In GetCachedScanResultsCommand::handleResponse
+11-12 06:14:09.205  1388  1388 I CanvasMapProbe: {"step":"pan","viewIdentity":91816241,"mapIdentity":264806422,"latitude":41.38739999995137,"longitude":2.138477004814092,"zoom":11,"zoomGesturesEnabled":true,"width":1080,"height":2400,"hillshade":[{"id":"goway:relief:hillshade","shadow":["rgba(6.000000476837158,11,22,1)"],"highlight":["rgba(93,115.00000762939453,144,1)"]}],"handleY":1321,"handleHeight":126,"handleValue":"{\"text\":\"Half open\",\"min\":0,\"now\":1,\"max\":2}","chrome":[{"id":"map-credit","x":891,"y":1173,"width":168,"height":137,"visibleRect":"[891,1173][1059,1310]","globalVisible":true,"shown":true},{"id":"map-credit-toggle","x":912,"y":1178,"width":126,"height":126,"visibleRect":"[912,1178][1038,1304]","globalVisible":true,"shown":true},{"id":"map-scale","x":21,"y":1085,"width":288,"height":77,"visibleRect":"[21,1085][309,1162]","globalVisible":true,"shown":true}],"imeVisible":false}
+11-12 06:14:09.212  1450  1932 D WifiClientModeImpl[160565:wlan0]: updateLinkLayerStatsRssiSpeedFrequencyCapabilities rssi=-42 TxLinkspeed=1200 freq=5200 RxLinkSpeed=1200
+11-12 06:14:09.213  1450  1932 D WifiDataStall: tx tput in kbps: 1067554
+11-12 06:14:09.213  1450  1932 D WifiDataStall: rx tput in kbps: 1129687
+11-12 06:14:09.213  1450  1932 V WifiConfigManager: Updating scan detail cache freq=5200 BSSID=7a:96:99:18:18:8b RSSI=-41 for "LukeSkyRouter"WPA_PSK
+11-12 06:14:09.213  1450  1932 D WifiDataStall:  use default cca Level
+11-12 06:14:09.213  1450  1932 D WifiDataStall:  ccaLevel = 15
+11-12 06:14:09.213  1450  1932 D WifiDataStall: L2 txTputKbps: 1118390, rxTputKbps: 1129687, L3 txTputKbps: 46, rxTputKbps: 2969, TxTrafficHigh: true, RxTrafficHigh: true, Throughput Sufficient: true
+11-12 06:14:09.214  1450  1932 D WifiThroughputPredictor:  utilization (LLS) -1 isBluetoothConnected: false final utilization: 15
+11-12 06:14:09.215  1450  1932 D WifiThroughputPredictor:  BW: 2 RSSI: -42 Nss: 2 Mode: 6 symDur: 13600 snrDb 32 bitPerTone: 8333 rate: 1200 throughput: 1129
+11-12 06:14:09.215  1450  1932 D WifiThroughputPredictor:  utilization (LLS) -1 isBluetoothConnected: false final utilization: 15
+11-12 06:14:09.215  1450  1932 D WifiThroughputPredictor:  BW: 2 RSSI: -42 Nss: 2 Mode: 6 symDur: 13600 snrDb 32 bitPerTone: 8333 rate: 1200 throughput: 1129
+11-12 06:14:09.219   987  1077 D WifiHAL : Start debug command: mType GET_FEATURE
+11-12 06:14:09.219   987  1077 I WifiHAL : CreateRequest mType = GET_FEATURE
+11-12 06:14:09.219   987  1077 D WifiHAL : In DebugCommand::handleResponse, mType:GET_FEATURE
+11-12 06:14:09.219   987  1077 D WifiHAL : len = 4, expected len = 4
+11-12 06:14:09.220  1450  1932 I HalDevMgr: bestIfaceCreationProposal is null, requestIface=STA, existingIface=[name=wlan0 type=STA]
+11-12 06:14:09.220  1450  1932 D WifiScoreCard: BSSID update SIGNAL_POLL ID: 300630434 SSID: "LukeSkyRouter", BSSID: 7a:96:99:18:18:8b, MAC: 9e:ac:31:50:a6:ce, IP: /192.168.8.170, Security type: 2, Supplicant state: COMPLETED, Wi-Fi standard: 11ax, RSSI: -42, Link speed: 1200Mbps, Tx Link speed: 1200Mbps, Max Supported Tx Link speed: 1200Mbps, Rx Link speed: 1200Mbps, Max Supported Rx Link speed: 1200Mbps, Frequency: 5200MHz, Net ID: 0, Metered hint: false, score: 88, isUsable: true, CarrierMerged: false, SubscriptionId: -1, IsPrimary: 1, Trusted: true, Restricted: false, Ephemeral: false, OEM paid: false, OEM private: false, OSU AP: false, FQDN: <none>, Provider friendly name: <none>, Requesting package name: <none>"LukeSkyRouter"wpa2-pskMLO Information: , Is TID-To-Link negotiation supported by the AP: false, AP MLD Address: <none>, AP MLO Link Id: <none>, AP MLO Affiliated links: <none>, Vendor Data: <none>
+11-12 06:14:09.220  1450  1932 D WifiScoreCard: txRate: 60 txSpeed: 1200
+11-12 06:14:09.220  1450  1932 D WifiScoreCard: network update SIGNAL_POLL "LukeSkyRouter" ID: 169407839 RSSI -42 txSpeed 1200
+11-12 06:14:09.220  1450  1932 D WifiClientModeImpl[160565:wlan0]:  ClientModeImpl$L2ConnectedState screen=on 22 0 "LukeSkyRouter" 7a:96:99:18:18:8b rssi=-42 f=5200 sc=88 link=1200 tx=58.4, 0.8, 0.0 rx=180.0 bcn=14779425 [on:1289 tx:46 rx:46 period:3087] from screen [on:75230331 period:1045190019] score=88
+11-12 06:14:09.646  1388  1388 I Choreographer: Skipped 52 frames!  The application may be doing too much work on its main thread.
+11-12 06:14:09.661  1388  1404 I CanvasMapInput: action=0 pointers=1 elapsedMs=14
+11-12 06:14:09.662  1388  1388 I CanvasMapInput: delivered action=0 count=1 ids=[0] elapsed=0
+11-12 06:14:09.663  1388  1404 I CanvasMapInput: action=261 pointers=2 elapsedMs=1
+11-12 06:14:09.664  1388  1388 I CanvasMapInput: delivered action=5 count=2 ids=[0, 1] elapsed=15
+11-12 06:14:09.664  1388  1388 I CanvasMapScale: pointers=2 span=0.0 threshold=18.375 enabled=true progress=false
+11-12 06:14:09.665  1388  1404 I CanvasMapInput: action=2 pointers=2 elapsedMs=1
+11-12 06:14:09.669  1388  1388 I CanvasMapInput: delivered action=2 count=2 ids=[0, 1] elapsed=16
+11-12 06:14:09.670  1388  1388 I CanvasMapScale: pointers=2 span=368.0 threshold=18.375 enabled=true progress=false
+11-12 06:14:09.683  1388  1404 I CanvasMapInput: action=2 pointers=2 elapsedMs=2
+11-12 06:14:09.694  1388  1388 I CanvasMapInput: delivered action=2 count=2 ids=[0, 1] elapsed=41
+11-12 06:14:09.695  1388  1388 I CanvasMapScale: pointers=2 span=437.03125 threshold=18.375 enabled=true progress=true
+11-12 06:14:09.702  1388  1404 I CanvasMapInput: action=2 pointers=2 elapsedMs=2
+11-12 06:14:09.711  1388  1388 I CanvasMapInput: delivered action=2 count=2 ids=[0, 1] elapsed=58
+11-12 06:14:09.713  1388  1388 I CanvasMapScale: pointers=2 span=478.02734 threshold=18.375 enabled=true progress=true
+11-12 06:14:09.720  1388  1404 I CanvasMapInput: action=2 pointers=2 elapsedMs=2
+11-12 06:14:09.721   561   690 I hwc-display: Display Temperature : 35°C
+11-12 06:14:09.727  1388  1388 I CanvasMapInput: delivered action=2 count=2 ids=[0, 1] elapsed=75
+11-12 06:14:09.730  1388  1388 I CanvasMapScale: pointers=2 span=523.2539 threshold=18.375 enabled=true progress=true
+11-12 06:14:09.739  1388  1404 I CanvasMapInput: action=2 pointers=2 elapsedMs=2
+11-12 06:14:09.744  1388  1388 I CanvasMapInput: delivered action=2 count=2 ids=[0, 1] elapsed=92
+11-12 06:14:09.746  1388  1388 I CanvasMapScale: pointers=2 span=565.40234 threshold=18.375 enabled=true progress=true
+11-12 06:14:09.757  1388  1404 I CanvasMapInput: action=2 pointers=2 elapsedMs=1
+11-12 06:14:09.761  1388  1388 I CanvasMapInput: delivered action=2 count=2 ids=[0, 1] elapsed=108
+11-12 06:14:09.763  1388  1388 I CanvasMapScale: pointers=2 span=610.3047 threshold=18.375 enabled=true progress=true
+11-12 06:14:09.775  1388  1404 I CanvasMapInput: action=2 pointers=2 elapsedMs=1
+11-12 06:14:09.786  1388  1388 I CanvasMapInput: delivered action=2 count=2 ids=[0, 1] elapsed=133
+11-12 06:14:09.787  1388  1388 I CanvasMapScale: pointers=2 span=677.15625 threshold=18.375 enabled=true progress=true
+11-12 06:14:09.795  1388  1404 I CanvasMapInput: action=2 pointers=2 elapsedMs=3
+11-12 06:14:09.803  1388  1388 I CanvasMapInput: delivered action=2 count=2 ids=[0, 1] elapsed=150
+11-12 06:14:09.805  1388  1388 I CanvasMapScale: pointers=2 span=718.21484 threshold=18.375 enabled=true progress=true
+11-12 06:14:09.814  1388  1404 I CanvasMapInput: action=2 pointers=2 elapsedMs=2
+11-12 06:14:09.819  1388  1388 I CanvasMapInput: delivered action=2 count=2 ids=[0, 1] elapsed=167
+11-12 06:14:09.821  1388  1388 I CanvasMapScale: pointers=2 span=757.60156 threshold=18.375 enabled=true progress=true
+11-12 06:14:09.832  1388  1404 I CanvasMapInput: action=2 pointers=2 elapsedMs=2
+11-12 06:14:09.836  1388  1388 I CanvasMapInput: delivered action=2 count=2 ids=[0, 1] elapsed=184
+11-12 06:14:09.838  1388  1388 I CanvasMapScale: pointers=2 span=802.77734 threshold=18.375 enabled=true progress=true
+11-12 06:14:09.850  1388  1404 I CanvasMapInput: action=2 pointers=2 elapsedMs=2
+11-12 06:14:09.861  1388  1388 I CanvasMapInput: delivered action=2 count=2 ids=[0, 1] elapsed=209
+11-12 06:14:09.863  1388  1388 I CanvasMapScale: pointers=2 span=869.33203 threshold=18.375 enabled=true progress=true
+11-12 06:14:09.868  1388  1404 I CanvasMapInput: action=2 pointers=2 elapsedMs=1
+11-12 06:14:09.878  1388  1388 I CanvasMapInput: delivered action=2 count=2 ids=[0, 1] elapsed=225
+11-12 06:14:09.880  1388  1388 I CanvasMapScale: pointers=2 span=914.16797 threshold=18.375 enabled=true progress=true
+11-12 06:14:09.887  1388  1404 I CanvasMapInput: action=2 pointers=2 elapsedMs=3
+11-12 06:14:09.895  1388  1388 I CanvasMapInput: delivered action=2 count=2 ids=[0, 1] elapsed=242
+11-12 06:14:09.897  1388  1388 I CanvasMapScale: pointers=2 span=958.77734 threshold=18.375 enabled=true progress=true
+11-12 06:14:09.907  1388  1404 I CanvasMapInput: action=2 pointers=2 elapsedMs=3
+11-12 06:14:09.911  1388  1388 I CanvasMapInput: delivered action=2 count=2 ids=[0, 1] elapsed=259
+11-12 06:14:09.913  1388  1388 I CanvasMapScale: pointers=2 span=997.3672 threshold=18.375 enabled=true progress=true
+11-12 06:14:09.924  1388  1404 I CanvasMapInput: action=2 pointers=2 elapsedMs=1
+11-12 06:14:09.936  1388  1388 I CanvasMapInput: delivered action=2 count=2 ids=[0, 1] elapsed=284
+11-12 06:14:09.938  1388  1388 I CanvasMapScale: pointers=2 span=1057.5176 threshold=18.375 enabled=true progress=true
+11-12 06:14:09.942  1388  1404 I CanvasMapInput: action=2 pointers=2 elapsedMs=1
+11-12 06:14:09.953  1388  1388 I CanvasMapInput: delivered action=2 count=2 ids=[0, 1] elapsed=301
+11-12 06:14:09.955  1388  1388 I CanvasMapScale: pointers=2 span=1107.8359 threshold=18.375 enabled=true progress=true
+11-12 06:14:09.960  1388  1404 I CanvasMapInput: action=2 pointers=2 elapsedMs=1
+11-12 06:14:09.970  1388  1388 I CanvasMapInput: delivered action=2 count=2 ids=[0, 1] elapsed=317
+11-12 06:14:09.971  1388  1388 I CanvasMapScale: pointers=2 span=1151.2734 threshold=18.375 enabled=true progress=true
+11-12 06:14:09.979  1388  1404 I CanvasMapInput: action=2 pointers=2 elapsedMs=2
+11-12 06:14:09.987  1388  1388 I CanvasMapInput: delivered action=2 count=2 ids=[0, 1] elapsed=334
+11-12 06:14:09.988  1388  1388 I CanvasMapScale: pointers=2 span=1195.7734 threshold=18.375 enabled=true progress=true
+11-12 06:14:09.997  1388  1404 I CanvasMapInput: action=2 pointers=2 elapsedMs=1
+11-12 06:14:10.003  1388  1388 I CanvasMapInput: delivered action=2 count=2 ids=[0, 1] elapsed=351
+11-12 06:14:10.005  1388  1388 I CanvasMapScale: pointers=2 span=1237.3594 threshold=18.375 enabled=true progress=true
+11-12 06:14:10.015  1388  1562 W Mbgl-HttpRequest: Request failed due to a permanent error: Canceled
+11-12 06:14:10.016  1388  1404 I CanvasMapInput: action=2 pointers=2 elapsedMs=2
+11-12 06:14:10.016  1388  1542 W Mbgl-HttpRequest: Request failed due to a permanent error: Canceled
+11-12 06:14:10.017  1388  1563 W Mbgl-HttpRequest: Request failed due to a permanent error: Canceled
+11-12 06:14:10.019  1388  1539 W Mbgl-HttpRequest: Request failed due to a permanent error: Canceled
+11-12 06:14:10.024  1388  1548 W Mbgl-HttpRequest: Request failed due to a permanent error: Canceled
+11-12 06:14:10.024  1388  1388 I CanvasMapInput: delivered action=2 count=2 ids=[0, 1] elapsed=367
+11-12 06:14:10.024  1388  1540 W Mbgl-HttpRequest: Request failed due to a permanent error: Canceled
+11-12 06:14:10.025  1388  1388 I CanvasMapScale: pointers=2 span=1285.1406 threshold=18.375 enabled=true progress=true
+11-12 06:14:10.034  1388  1404 I CanvasMapInput: action=2 pointers=2 elapsedMs=2
+11-12 06:14:10.045  1388  1388 I CanvasMapInput: delivered action=2 count=2 ids=[0, 1] elapsed=392
+11-12 06:14:10.047  1388  1388 I CanvasMapScale: pointers=2 span=1347.8984 threshold=18.375 enabled=true progress=true
+11-12 06:14:10.049  1388  1523 W Mbgl-HttpRequest: Request failed due to a permanent error: Canceled
+11-12 06:14:10.051  1388  1544 W Mbgl-HttpRequest: Request failed due to a permanent error: Canceled
+11-12 06:14:10.052  1388  1404 I CanvasMapInput: action=2 pointers=2 elapsedMs=2
+11-12 06:14:10.062  1388  1388 I CanvasMapInput: delivered action=2 count=2 ids=[0, 1] elapsed=409
+11-12 06:14:10.063  1388  1388 I CanvasMapScale: pointers=2 span=1393.6211 threshold=18.375 enabled=true progress=true
+11-12 06:14:10.070  1388  1404 I CanvasMapInput: action=2 pointers=2 elapsedMs=2
+11-12 06:14:10.078  1388  1388 I CanvasMapInput: delivered action=2 count=2 ids=[0, 1] elapsed=426
+11-12 06:14:10.080  1388  1388 I CanvasMapScale: pointers=2 span=1438.1641 threshold=18.375 enabled=true progress=true
+11-12 06:14:10.087  1388  1404 I CanvasMapInput: action=2 pointers=2 elapsedMs=1
+11-12 06:14:10.095  1388  1388 I CanvasMapInput: delivered action=2 count=2 ids=[0, 1] elapsed=443
+11-12 06:14:10.098  1388  1388 I CanvasMapScale: pointers=2 span=1479.6367 threshold=18.375 enabled=true progress=true
+11-12 06:14:10.105  1388  1404 I CanvasMapInput: action=262 pointers=2 elapsedMs=2
+11-12 06:14:10.107  1388  1388 I CanvasMapInput: delivered action=6 count=2 ids=[0, 1] elapsed=457
+11-12 06:14:10.108  1388  1388 I CanvasMapScale: pointers=1 span=0.0 threshold=18.375 enabled=true progress=false
+11-12 06:14:10.108  1388  1388 I CanvasMapInput: delivered action=1 count=1 ids=[0] elapsed=459
+11-12 06:14:10.121  1388  1404 I CanvasMapInput: action=1 pointers=1 elapsedMs=15
+11-12 06:14:11.324  1388  1388 I CanvasMapProbe: {"step":"pinch","viewIdentity":91816241,"mapIdentity":264806422,"latitude":41.419908442068134,"longitude":2.13456043290995,"zoom":12.915181159973145,"zoomGesturesEnabled":true,"width":1080,"height":2400,"hillshade":[{"id":"goway:relief:hillshade","shadow":["rgba(6.000000476837158,11,22,1)"],"highlight":["rgba(93,115.00000762939453,144,1)"]}],"handleY":1321,"handleHeight":126,"handleValue":"{\"text\":\"Half open\",\"min\":0,\"now\":1,\"max\":2}","chrome":[{"id":"map-credit","x":891,"y":1173,"width":168,"height":137,"visibleRect":"[891,1173][1059,1310]","globalVisible":true,"shown":true},{"id":"map-credit-toggle","x":912,"y":1178,"width":126,"height":126,"visibleRect":"[912,1178][1038,1304]","globalVisible":true,"shown":true},{"id":"map-scale","x":21,"y":1085,"width":412,"height":77,"visibleRect":"[21,1085][433,1162]","globalVisible":true,"shown":true}],"imeVisible":false}
+11-12 06:14:11.349  1749  1757 I pixel-thermal: charger_therm:40.164 raw data: charger_therm:40164
+11-12 06:14:11.351  1749  1757 I pixel-thermal: VIRTUAL-SKIN-CHARGE:37.6197 raw data: VIRTUAL-SKIN-CHARGE:37619.7 VIRTUAL-SKIN-CHARGE-SUB-1:37018.3 VIRTUAL-SKIN-CHARGE-SUB-2:37619.7 charger_therm:40164 modem_therm:38205 quiet_therm:36781 rffe_therm:35712 soc_therm:37270
+11-12 06:14:11.351  1749  1757 I pixel-thermal: VIRTUAL-SKIN-CHARGE power_budget=3870.71 err=0.380264 s_power=2200 time_elapsed_ms=7016 p=152.106 i=1600 d=-0 dt_per_min=nan compensation=0 budget transient=0 control target=2 excluded power budget=81.3986 (PARTIAL_SYSTEM_POWER: 1627.97 mW, cdev_weight: 0.050000)
+11-12 06:14:11.358  1749  1757 I pixel-thermal: VIRTUAL-SKIN-SPEAKER:36.6242 raw data: VIRTUAL-SKIN-SPEAKER:36624.2 VIRTUAL-SKIN-SPEAKER-SUB-1:34037.1 VIRTUAL-SKIN-SPEAKER-SUB-2:36624.2 battery:36600 gnss_tcxo_therm:37493 quiet_therm:36781 soc_therm:37270 usb_conn_therm:35512
+11-12 06:14:11.359  1749  1757 I pixel-thermal: VIRTUAL-SKIN-CHARGE-WLC:37.645 raw data: VIRTUAL-SKIN-CHARGE-WLC:37645 charger_therm:40164 modem_therm:38205 rffe_therm:35712 soc_therm:37270
+11-12 06:14:11.359  1749  1757 I pixel-thermal: VIRTUAL-SKIN-CHARGE-WLC power_budget=1789.59 err=0.354965 s_power=1400 time_elapsed_ms=7016 p=70.993 i=400 d=-0 dt_per_min=nan compensation=0 budget transient=0 control target=2 excluded power budget=81.3986 (PARTIAL_SYSTEM_POWER: 1627.97 mW, cdev_weight: 0.050000)
+11-12 06:14:11.365  1749  1757 I pixel-thermal: Successfully update cdev dc_icl sysfs to 13
+11-12 06:14:11.740  1388  1388 I Choreographer: Skipped 49 frames!  The application may be doing too much work on its main thread.
+11-12 06:14:11.740  1388  1404 I CanvasMapProbe: {"step":"pinch-result","passed":true}
+11-12 06:14:11.762  1388  1404 I CanvasMapInput: action=0 pointers=1 elapsedMs=17
+11-12 06:14:11.763  1388  1388 I CanvasMapInput: delivered action=0 count=1 ids=[0] elapsed=1
+11-12 06:14:11.816  1388  1388 I CanvasMapInput: delivered action=1 count=1 ids=[0] elapsed=70
+11-12 06:14:11.834  1388  1404 I CanvasMapInput: action=1 pointers=1 elapsedMs=20
+11-12 06:14:11.914  1450  1945 D InetDiagMessage: Destroyed 0 sockets, proto=IPPROTO_TCP, family=AF_INET, states=14
+11-12 06:14:11.919  1450  1945 D InetDiagMessage: Destroyed 0 sockets, proto=IPPROTO_TCP, family=AF_INET6, states=14
+11-12 06:14:11.919  1450  1945 D InetDiagMessage: Destroyed live tcp sockets for uids={10094} in 8ms
+11-12 06:14:12.225   987  1077 I WifiHAL : Creating message to get link statistics; iface = 47
+11-12 06:14:12.325   987  4906 I WifiHAL : Getting cached scan results, iface handle = 0xb4000075e009a050
+11-12 06:14:12.325   987  4906 E WifiHAL : Creating message to get cached scan results
+11-12 06:14:12.332   987  4906 I WifiHAL : In GetCachedScanResultsCommand::handleResponse
+11-12 06:14:12.333   987  4906 E libbinder.IPCThreadState: binder thread pool (1 threads) starved for 108 ms
+11-12 06:14:12.355  1450  1932 D WifiClientModeImpl[160565:wlan0]: updateLinkLayerStatsRssiSpeedFrequencyCapabilities rssi=-41 TxLinkspeed=1200 freq=5200 RxLinkSpeed=1200
+11-12 06:14:12.355  1450  1932 D WifiDataStall: tx tput in kbps: 1118390
+11-12 06:14:12.355  1450  1932 D WifiDataStall: rx tput in kbps: 1129687
+11-12 06:14:12.356  1450  1932 V WifiConfigManager: Updating scan detail cache freq=5200 BSSID=7a:96:99:18:18:8b RSSI=-41 for "LukeSkyRouter"WPA_PSK
+11-12 06:14:12.357  1450  1932 D WifiDataStall:  use default cca Level
+11-12 06:14:12.357  1450  1932 D WifiDataStall:  ccaLevel = 15
+11-12 06:14:12.357  1450  1932 D WifiDataStall: L2 txTputKbps: 1129687, rxTputKbps: 1129687, L3 txTputKbps: 11, rxTputKbps: 1843, TxTrafficHigh: true, RxTrafficHigh: true, Throughput Sufficient: true
+11-12 06:14:12.359  1450  1932 D WifiThroughputPredictor:  utilization (LLS) -1 isBluetoothConnected: false final utilization: 15
+11-12 06:14:12.361  1450  1932 D WifiThroughputPredictor:  BW: 2 RSSI: -41 Nss: 2 Mode: 6 symDur: 13600 snrDb 33 bitPerTone: 8333 rate: 1200 throughput: 1129
+11-12 06:14:12.361  1450  1932 D WifiThroughputPredictor:  utilization (LLS) -1 isBluetoothConnected: false final utilization: 15
+11-12 06:14:12.361  1450  1932 D WifiThroughputPredictor:  BW: 2 RSSI: -41 Nss: 2 Mode: 6 symDur: 13600 snrDb 33 bitPerTone: 8333 rate: 1200 throughput: 1129
+11-12 06:14:12.369   987  4906 D WifiHAL : Start debug command: mType GET_FEATURE
+11-12 06:14:12.369   987  4906 I WifiHAL : CreateRequest mType = GET_FEATURE
+11-12 06:14:12.369   987  4906 D WifiHAL : In DebugCommand::handleResponse, mType:GET_FEATURE
+11-12 06:14:12.369   987  4906 D WifiHAL : len = 4, expected len = 4
+11-12 06:14:12.372  1450  1932 I HalDevMgr: bestIfaceCreationProposal is null, requestIface=STA, existingIface=[name=wlan0 type=STA]
+11-12 06:14:12.374  1450  1932 D WifiScoreCard: BSSID update SIGNAL_POLL ID: 300630434 SSID: "LukeSkyRouter", BSSID: 7a:96:99:18:18:8b, MAC: 9e:ac:31:50:a6:ce, IP: /192.168.8.170, Security type: 2, Supplicant state: COMPLETED, Wi-Fi standard: 11ax, RSSI: -41, Link speed: 1200Mbps, Tx Link speed: 1200Mbps, Max Supported Tx Link speed: 1200Mbps, Rx Link speed: 1200Mbps, Max Supported Rx Link speed: 1200Mbps, Frequency: 5200MHz, Net ID: 0, Metered hint: false, score: 88, isUsable: true, CarrierMerged: false, SubscriptionId: -1, IsPrimary: 1, Trusted: true, Restricted: false, Ephemeral: false, OEM paid: false, OEM private: false, OSU AP: false, FQDN: <none>, Provider friendly name: <none>, Requesting package name: <none>"LukeSkyRouter"wpa2-pskMLO Information: , Is TID-To-Link negotiation supported by the AP: false, AP MLD Address: <none>, AP MLO Link Id: <none>, AP MLO Affiliated links: <none>, Vendor Data: <none>
+11-12 06:14:12.374  1450  1932 D WifiScoreCard: txRate: 30 txSpeed: 1200
+11-12 06:14:12.375  1450  1932 D WifiScoreCard: network update SIGNAL_POLL "LukeSkyRouter" ID: 169407839 RSSI -41 txSpeed 1200
+11-12 06:14:12.376  1450  1932 D WifiClientModeImpl[160565:wlan0]:  ClientModeImpl$L2ConnectedState screen=on 22 0 "LukeSkyRouter" 7a:96:99:18:18:8b rssi=-41 f=5200 sc=88 link=1200 tx=29.2, 0.2, 0.0 rx=176.4 bcn=14779455 [on:987 tx:7 rx:11 period:3156] from screen [on:75231318 period:1045193175] score=88
+11-12 06:14:12.387  1749  1757 I pixel-thermal: VIRTUAL-SKIN:37.0813 raw data: VIRTUAL-SKIN:37081.3 VIRTUAL-SKIN-SUB-1:37081.3 VIRTUAL-SKIN-SUB-2:33103.9 VIRTUAL-SKIN-SUB-3:35510.2 charger_therm:40164 gnss_tcxo_therm:37493 modem_therm:38205 quiet_therm:36781 rffe_therm:35712 soc_therm:37270 usb_conn_therm:35512
+11-12 06:14:12.388  1749  1757 I pixel-thermal: soc_therm:37.27 raw data: soc_therm:37270
+11-12 06:14:12.388  1749  1757 I pixel-thermal: VIRTUAL-SKIN-HINT:37.0813 raw data: VIRTUAL-SKIN:37081.3 VIRTUAL-SKIN-HINT:37081.3
+11-12 06:14:12.388  1749  1757 I pixel-thermal: VIRTUAL-SKIN-CPU-MID:37.0813 raw data: VIRTUAL-SKIN:37081.3 VIRTUAL-SKIN-CPU-MID:37081.3
+11-12 06:14:12.388  1749  1757 I pixel-thermal: VIRTUAL-SKIN-CPU-HIGH:37.0813 raw data: VIRTUAL-SKIN:37081.3 VIRTUAL-SKIN-CPU-HIGH:37081.3
+11-12 06:14:12.388  1749  1757 I pixel-thermal: VIRTUAL-SKIN-SOC:37.0813 raw data: VIRTUAL-SKIN:37081.3 VIRTUAL-SKIN-SOC:37081.3
+11-12 06:14:12.388  1749  1757 I pixel-thermal: VIRTUAL-SKIN-SOC power_budget=3175.61 err=7.9187 s_power=800 time_elapsed_ms=7023 p=2375.61 i=0 d=-0 dt_per_min=nan compensation=0 budget transient=0 control target=3 excluded power budget=0
+11-12 06:14:12.388  1749  1757 I pixel-thermal: VIRTUAL-SKIN-SOC binded power rails: (S4M_VDD_CPUCL0: 424.06 mW)(S3M_VDD_CPUCL1: 525.30 mW)(S2S_VDD_G3D: 136.96 mW)(S7M_VDD_TPU: 0.00 mW)(S2M_VDD_CPUCL2: 1990.72 mW)
+11-12 06:14:12.388  1749  1757 I pixel-thermal: cellular-emergency:37.0813 raw data: VIRTUAL-SKIN:37081.3 cellular-emergency:37081.3
+11-12 06:14:12.389  1749  1757 I pixel-thermal: VIRTUAL-SKIN-CPU-LIGHT-ODPM:37.0813 raw data: VIRTUAL-SKIN:37081.3 VIRTUAL-SKIN-CPU-LIGHT-ODPM:37081.3
+11-12 06:14:12.389  1749  1757 I pixel-thermal: VIRTUAL-SKIN-CPU-LIGHT-ODPM power_budget=1793.12 err=1.9187 s_power=800 time_elapsed_ms=7023 p=767.479 i=225.638 d=-0 dt_per_min=nan compensation=0 budget transient=0 control target=2 excluded power budget=0
+11-12 06:14:12.389  1749  1757 I pixel-thermal: VIRTUAL-SKIN-CPU-LIGHT-ODPM binded power rails: (S4M_VDD_CPUCL0: 424.06 mW)(S3M_VDD_CPUCL1: 525.30 mW)(S2M_VDD_CPUCL2: 1990.72 mW)
+11-12 06:14:12.389  1749  1757 I pixel-thermal: VIRTUAL-SKIN-GPU:37.0813 raw data: VIRTUAL-SKIN:37081.3 VIRTUAL-SKIN-GPU:37081.3
+11-12 06:14:12.390  1749  1757 I pixel-thermal: Successfully update cdev thermal-cpufreq-2 sysfs to 2
+11-12 06:14:13.091  1388  1388 I CanvasMapProbe: {"step":"detent-0","viewIdentity":91816241,"mapIdentity":264806422,"latitude":41.419908442068134,"longitude":2.13456043290995,"zoom":12.915181159973145,"zoomGesturesEnabled":true,"width":1080,"height":2400,"hillshade":[{"id":"goway:relief:hillshade","shadow":["rgba(6.000000476837158,11,22,1)"],"highlight":["rgba(93,115.00000762939453,144,1)"]}],"handleY":840,"handleHeight":126,"handleValue":"{\"text\":\"Expanded\",\"min\":0,\"now\":2,\"max\":2}","chrome":[{"id":"map-credit","x":891,"y":693,"width":168,"height":136,"visibleRect":"[891,693][1059,829]","globalVisible":true,"shown":true},{"id":"map-credit-toggle","x":912,"y":698,"width":126,"height":126,"visibleRect":"[912,698][1038,824]","globalVisible":true,"shown":true},{"id":"map-scale","x":21,"y":605,"width":412,"height":77,"visibleRect":"[21,605][433,682]","globalVisible":true,"shown":true}],"imeVisible":false}
+11-12 06:14:13.405  1388  1388 I Choreographer: Skipped 37 frames!  The application may be doing too much work on its main thread.
+11-12 06:14:13.405  1388  1404 I CanvasMapProbe: {"step":"detent-result-0","expected":2,"settled":true}
+11-12 06:14:13.426  1388  1388 I CanvasMapInput: delivered action=0 count=1 ids=[0] elapsed=0
+11-12 06:14:13.426  1388  1404 I CanvasMapInput: action=0 pointers=1 elapsedMs=13
+11-12 06:14:13.478  1388  1388 I CanvasMapInput: delivered action=1 count=1 ids=[0] elapsed=63
+11-12 06:14:13.496  1388  1404 I CanvasMapInput: action=1 pointers=1 elapsedMs=19
+11-12 06:14:14.750  1388  1388 I CanvasMapProbe: {"step":"detent-1","viewIdentity":91816241,"mapIdentity":264806422,"latitude":41.419908442068134,"longitude":2.13456043290995,"zoom":12.915181159973145,"zoomGesturesEnabled":true,"width":1080,"height":2400,"hillshade":[{"id":"goway:relief:hillshade","shadow":["rgba(6.000000476837158,11,22,1)"],"highlight":["rgba(93,115.00000762939453,144,1)"]}],"handleY":1981,"handleHeight":126,"handleValue":"{\"text\":\"Collapsed\",\"min\":0,\"now\":0,\"max\":2}","chrome":[{"id":"map-credit","x":891,"y":1833,"width":168,"height":137,"visibleRect":"[891,1833][1059,1970]","globalVisible":true,"shown":true},{"id":"map-credit-toggle","x":912,"y":1838,"width":126,"height":126,"visibleRect":"[912,1838][1038,1964]","globalVisible":true,"shown":true},{"id":"map-scale","x":21,"y":1745,"width":412,"height":77,"visibleRect":"[21,1745][433,1822]","globalVisible":true,"shown":true}],"imeVisible":false}
+11-12 06:14:15.296  1388  1388 I Choreographer: Skipped 65 frames!  The application may be doing too much work on its main thread.
+11-12 06:14:15.296  1388  1404 I CanvasMapProbe: {"step":"detent-result-1","expected":0,"settled":true}
+11-12 06:14:15.326  1388  1388 I CanvasMapInput: delivered action=0 count=1 ids=[0] elapsed=0
+11-12 06:14:15.327  1388  1404 I CanvasMapInput: action=0 pointers=1 elapsedMs=18
+11-12 06:14:15.379  1388  1388 I CanvasMapInput: delivered action=1 count=1 ids=[0] elapsed=68
+11-12 06:14:15.380   987  4906 I WifiHAL : Creating message to get link statistics; iface = 47
+11-12 06:14:15.387  1388  1404 I CanvasMapInput: action=1 pointers=1 elapsedMs=10
+11-12 06:14:15.425   987  1077 I WifiHAL : Getting cached scan results, iface handle = 0xb4000075e009a050
+11-12 06:14:15.425   987  1077 E WifiHAL : Creating message to get cached scan results
+11-12 06:14:15.429   987  1077 I WifiHAL : In GetCachedScanResultsCommand::handleResponse
+11-12 06:14:15.449  1450  1932 D WifiClientModeImpl[160565:wlan0]: updateLinkLayerStatsRssiSpeedFrequencyCapabilities rssi=-41 TxLinkspeed=1200 freq=5200 RxLinkSpeed=1200
+11-12 06:14:15.449  1450  1932 D WifiDataStall: tx tput in kbps: 1129687
+11-12 06:14:15.449  1450  1932 D WifiDataStall: rx tput in kbps: 1129687
+11-12 06:14:15.450  1450  1932 V WifiConfigManager: Updating scan detail cache freq=5200 BSSID=7a:96:99:18:18:8b RSSI=-41 for "LukeSkyRouter"WPA_PSK
+11-12 06:14:15.450  1450  1932 D WifiDataStall:  use default cca Level
+11-12 06:14:15.450  1450  1932 D WifiDataStall:  ccaLevel = 15
+11-12 06:14:15.451  1450  1932 D WifiDataStall: L2 txTputKbps: 1073203, rxTputKbps: 1129687, L3 txTputKbps: 0, rxTputKbps: 11, TxTrafficHigh: false, RxTrafficHigh: false, Throughput Sufficient: true
+11-12 06:14:15.455  1450  1932 D WifiThroughputPredictor:  utilization (LLS) -1 isBluetoothConnected: false final utilization: 15
+11-12 06:14:15.455  1450  1932 D WifiThroughputPredictor:  BW: 2 RSSI: -41 Nss: 2 Mode: 6 symDur: 13600 snrDb 33 bitPerTone: 8333 rate: 1200 throughput: 1129
+11-12 06:14:15.455  1450  1932 D WifiThroughputPredictor:  utilization (LLS) -1 isBluetoothConnected: false final utilization: 15
+11-12 06:14:15.456  1450  1932 D WifiThroughputPredictor:  BW: 2 RSSI: -41 Nss: 2 Mode: 6 symDur: 13600 snrDb 33 bitPerTone: 8333 rate: 1200 throughput: 1129
+11-12 06:14:15.465   987  1077 D WifiHAL : Start debug command: mType GET_FEATURE
+11-12 06:14:15.466   987  1077 I WifiHAL : CreateRequest mType = GET_FEATURE
+11-12 06:14:15.466   987  1077 D WifiHAL : In DebugCommand::handleResponse, mType:GET_FEATURE
+11-12 06:14:15.466   987  1077 D WifiHAL : len = 4, expected len = 4
+11-12 06:14:15.469  1450  1932 I HalDevMgr: bestIfaceCreationProposal is null, requestIface=STA, existingIface=[name=wlan0 type=STA]
+11-12 06:14:15.470  1450  1932 D WifiScoreReport: report new wifi score 89
+11-12 06:14:15.471  1450  1932 D WifiScoreCard: BSSID update SIGNAL_POLL ID: 300630434 SSID: "LukeSkyRouter", BSSID: 7a:96:99:18:18:8b, MAC: 9e:ac:31:50:a6:ce, IP: /192.168.8.170, Security type: 2, Supplicant state: COMPLETED, Wi-Fi standard: 11ax, RSSI: -41, Link speed: 1200Mbps, Tx Link speed: 1200Mbps, Max Supported Tx Link speed: 1200Mbps, Rx Link speed: 1200Mbps, Max Supported Rx Link speed: 1200Mbps, Frequency: 5200MHz, Net ID: 0, Metered hint: false, score: 89, isUsable: true, CarrierMerged: false, SubscriptionId: -1, IsPrimary: 1, Trusted: true, Restricted: false, Ephemeral: false, OEM paid: false, OEM private: false, OSU AP: false, FQDN: <none>, Provider friendly name: <none>, Requesting package name: <none>"LukeSkyRouter"wpa2-pskMLO Information: , Is TID-To-Link negotiation supported by the AP: false, AP MLD Address: <none>, AP MLO Link Id: <none>, AP MLO Affiliated links: <none>, Vendor Data: <none>
+11-12 06:14:15.471  1450  1932 D WifiScoreCard: txRate: 11 txSpeed: 1200
+11-12 06:14:15.471  1450  1932 D WifiScoreCard: network update SIGNAL_POLL "LukeSkyRouter" ID: 169407839 RSSI -41 txSpeed 1200
+11-12 06:14:15.472  1450  1932 D WifiClientModeImpl[160565:wlan0]:  ClientModeImpl$L2ConnectedState screen=on 22 0 "LukeSkyRouter" 7a:96:99:18:18:8b rssi=-41 f=5200 sc=89 link=1200 tx=10.2, 0.1, 0.0 rx=61.6 bcn=14779485 [on:94 tx:0 rx:0 period:3096] from screen [on:75231412 period:1045196271] score=89
+11-12 06:14:15.473  1450  1945 D ConnectivityService: NetReassign [no changes] [c 1] [a 0] [i 2]
+11-12 06:14:16.642  1388  1388 I CanvasMapProbe: {"step":"detent-2","viewIdentity":91816241,"mapIdentity":264806422,"latitude":41.419908442068134,"longitude":2.13456043290995,"zoom":12.915181159973145,"zoomGesturesEnabled":true,"width":1080,"height":2400,"hillshade":[{"id":"goway:relief:hillshade","shadow":["rgba(6.000000476837158,11,22,1)"],"highlight":["rgba(93,115.00000762939453,144,1)"]}],"handleY":1321,"handleHeight":126,"handleValue":"{\"text\":\"Half open\",\"min\":0,\"now\":1,\"max\":2}","chrome":[{"id":"map-credit","x":891,"y":1173,"width":168,"height":137,"visibleRect":"[891,1173][1059,1310]","globalVisible":true,"shown":true},{"id":"map-credit-toggle","x":912,"y":1178,"width":126,"height":126,"visibleRect":"[912,1178][1038,1304]","globalVisible":true,"shown":true},{"id":"map-scale","x":21,"y":1085,"width":412,"height":77,"visibleRect":"[21,1085][433,1162]","globalVisible":true,"shown":true}],"imeVisible":false}
+11-12 06:14:16.686   936  1005 I CHRE    : @ 1772935.901: [ImuCal] [GYRO_RPS] (s0, c0) Offset | Temp [C] | Quality: -0.000464, -0.000210, -0.000176 | 37.62 | 4
+11-12 06:14:16.686   936  1005 I CHRE    : @ 1772935.901: [ImuCal] [GYRO_RPS] (s0) Temp Sensitivity: -0.000066, 0.000019, 0.000047
+11-12 06:14:16.687   936  1005 I CHRE    : @ 1772935.901: [ImuCal] [GYRO_RPS] (s0) Temp Intercept: 0.002029, -0.000878, -0.001775
+11-12 06:14:17.069  1388  1388 I Choreographer: Skipped 50 frames!  The application may be doing too much work on its main thread.
+11-12 06:14:17.069  1388  1404 I CanvasMapProbe: {"step":"detent-result-2","expected":1,"settled":true}
+11-12 06:14:17.098  1388  1404 I CanvasMapInput: action=0 pointers=1 elapsedMs=18
+11-12 06:14:17.099  1388  1388 I CanvasMapInput: delivered action=0 count=1 ids=[0] elapsed=0
+11-12 06:14:17.100  1388  1404 I CanvasMapInput: action=2 pointers=1 elapsedMs=1
+11-12 06:14:17.104  1388  1388 I CanvasMapInput: delivered action=2 count=1 ids=[0] elapsed=19
+11-12 06:14:17.118  1388  1404 I CanvasMapInput: action=2 pointers=1 elapsedMs=1
+11-12 06:14:17.129  1388  1388 I CanvasMapInput: delivered action=2 count=1 ids=[0] elapsed=44
+11-12 06:14:17.137  1388  1404 I CanvasMapInput: action=2 pointers=1 elapsedMs=2
+11-12 06:14:17.146  1388  1388 I CanvasMapInput: delivered action=2 count=1 ids=[0] elapsed=61
+11-12 06:14:17.155  1388  1404 I CanvasMapInput: action=2 pointers=1 elapsedMs=2
+11-12 06:14:17.163  1388  1388 I CanvasMapInput: delivered action=2 count=1 ids=[0] elapsed=77
+11-12 06:14:17.174  1388  1404 I CanvasMapInput: action=2 pointers=1 elapsedMs=2
+11-12 06:14:17.179  1388  1388 I CanvasMapInput: delivered action=2 count=1 ids=[0] elapsed=94
+11-12 06:14:17.192  1388  1404 I CanvasMapInput: action=2 pointers=1 elapsedMs=1
+11-12 06:14:17.196  1388  1388 I CanvasMapInput: delivered action=2 count=1 ids=[0] elapsed=111
+11-12 06:14:17.211  1388  1404 I CanvasMapInput: action=2 pointers=1 elapsedMs=2
+11-12 06:14:17.221  1388  1388 I CanvasMapInput: delivered action=2 count=1 ids=[0] elapsed=136
+11-12 06:14:17.229  1388  1404 I CanvasMapInput: action=2 pointers=1 elapsedMs=2
+11-12 06:14:17.238  1388  1388 I CanvasMapInput: delivered action=2 count=1 ids=[0] elapsed=153
+11-12 06:14:17.247  1388  1404 I CanvasMapInput: action=2 pointers=1 elapsedMs=1
+11-12 06:14:17.255  1388  1388 I CanvasMapInput: delivered action=2 count=1 ids=[0] elapsed=169
+11-12 06:14:17.267  1388  1404 I CanvasMapInput: action=2 pointers=1 elapsedMs=3
+11-12 06:14:17.272  1388  1388 I CanvasMapInput: delivered action=2 count=1 ids=[0] elapsed=186
+11-12 06:14:17.285  1388  1404 I CanvasMapInput: action=2 pointers=1 elapsedMs=2
+11-12 06:14:17.289  1388  1388 I CanvasMapInput: delivered action=2 count=1 ids=[0] elapsed=203
+11-12 06:14:17.305  1388  1404 I CanvasMapInput: action=2 pointers=1 elapsedMs=3
+11-12 06:14:17.313  1388  1388 I CanvasMapInput: delivered action=2 count=1 ids=[0] elapsed=228
+11-12 06:14:17.324  1388  1404 I CanvasMapInput: action=2 pointers=1 elapsedMs=2
+11-12 06:14:17.330  1388  1388 I CanvasMapInput: delivered action=2 count=1 ids=[0] elapsed=244
+11-12 06:14:17.343  1388  1404 I CanvasMapInput: action=2 pointers=1 elapsedMs=2
+11-12 06:14:17.347  1388  1388 I CanvasMapInput: delivered action=2 count=1 ids=[0] elapsed=261
+11-12 06:14:17.361  1388  1404 I CanvasMapInput: action=2 pointers=1 elapsedMs=2
+11-12 06:14:17.372  1388  1388 I CanvasMapInput: delivered action=2 count=1 ids=[0] elapsed=286
+11-12 06:14:17.380  1388  1404 I CanvasMapInput: action=2 pointers=1 elapsedMs=2
+11-12 06:14:17.389  1388  1388 I CanvasMapInput: delivered action=2 count=1 ids=[0] elapsed=303
+11-12 06:14:17.398  1388  1404 I CanvasMapInput: action=2 pointers=1 elapsedMs=2
+11-12 06:14:17.405  1388  1388 I CanvasMapInput: delivered action=2 count=1 ids=[0] elapsed=320
+11-12 06:14:17.417  1388  1404 I CanvasMapInput: action=2 pointers=1 elapsedMs=2
+11-12 06:14:17.422  1388  1388 I CanvasMapInput: delivered action=2 count=1 ids=[0] elapsed=336
+11-12 06:14:17.435  1388  1404 I CanvasMapInput: action=2 pointers=1 elapsedMs=2
+11-12 06:14:17.439  1388  1388 I CanvasMapInput: delivered action=2 count=1 ids=[0] elapsed=353
+11-12 06:14:17.454  1388  1404 I CanvasMapInput: action=2 pointers=1 elapsedMs=2
+11-12 06:14:17.464  1388  1388 I CanvasMapInput: delivered action=2 count=1 ids=[0] elapsed=378
+11-12 06:14:17.472  1388  1404 I CanvasMapInput: action=2 pointers=1 elapsedMs=1
+11-12 06:14:17.481  1388  1388 I CanvasMapInput: delivered action=2 count=1 ids=[0] elapsed=395
+11-12 06:14:17.489  1388  1404 I CanvasMapInput: action=2 pointers=1 elapsedMs=1
+11-12 06:14:17.497  1388  1388 I CanvasMapInput: delivered action=2 count=1 ids=[0] elapsed=412
+11-12 06:14:17.509  1388  1404 I CanvasMapInput: action=2 pointers=1 elapsedMs=3
+11-12 06:14:17.514  1388  1388 I CanvasMapInput: delivered action=2 count=1 ids=[0] elapsed=428
+11-12 06:14:17.526  1388  1404 I CanvasMapInput: action=2 pointers=1 elapsedMs=1
+11-12 06:14:17.530  1388  1388 I CanvasMapInput: delivered action=2 count=1 ids=[0] elapsed=445
+11-12 06:14:17.544  1388  1404 I CanvasMapInput: action=2 pointers=1 elapsedMs=1
+11-12 06:14:17.555  1388  1388 I CanvasMapInput: delivered action=2 count=1 ids=[0] elapsed=470
+11-12 06:14:17.562  1388  1404 I CanvasMapInput: action=2 pointers=1 elapsedMs=1
+11-12 06:14:17.572  1388  1388 I CanvasMapInput: delivered action=2 count=1 ids=[0] elapsed=487
+11-12 06:14:17.581  1388  1404 I CanvasMapInput: action=2 pointers=1 elapsedMs=2
+11-12 06:14:17.589  1388  1388 I CanvasMapInput: delivered action=2 count=1 ids=[0] elapsed=503
+11-12 06:14:17.598  1388  1404 I CanvasMapInput: action=2 pointers=1 elapsedMs=1
+11-12 06:14:17.606  1388  1388 I CanvasMapInput: delivered action=2 count=1 ids=[0] elapsed=520
+11-12 06:14:17.617  1388  1404 I CanvasMapInput: action=2 pointers=1 elapsedMs=2
+11-12 06:14:17.622  1388  1388 I CanvasMapInput: delivered action=2 count=1 ids=[0] elapsed=537
+11-12 06:14:17.635  1388  1404 I CanvasMapInput: action=2 pointers=1 elapsedMs=2
+11-12 06:14:17.639  1388  1388 I CanvasMapInput: delivered action=2 count=1 ids=[0] elapsed=554
+11-12 06:14:17.653  1388  1404 I CanvasMapInput: action=2 pointers=1 elapsedMs=2
+11-12 06:14:17.664  1388  1388 I CanvasMapInput: delivered action=2 count=1 ids=[0] elapsed=579
+11-12 06:14:17.672  1388  1404 I CanvasMapInput: action=2 pointers=1 elapsedMs=3
+11-12 06:14:17.681  1388  1388 I CanvasMapInput: delivered action=2 count=1 ids=[0] elapsed=595
+11-12 06:14:17.691  1388  1388 I CanvasMapInput: delivered action=1 count=1 ids=[0] elapsed=609
+11-12 06:14:17.707  1388  1404 I CanvasMapInput: action=1 pointers=1 elapsedMs=18
+11-12 06:14:18.373  1749  1757 I pixel-thermal: charger_therm:41.891 raw data: charger_therm:41891
+11-12 06:14:18.374  1749  1757 I pixel-thermal: VIRTUAL-SKIN-CHARGE:37.7637 raw data: VIRTUAL-SKIN-CHARGE:37763.7 VIRTUAL-SKIN-CHARGE-SUB-1:37579.8 VIRTUAL-SKIN-CHARGE-SUB-2:37763.7 charger_therm:41891 modem_therm:39007 quiet_therm:37003 rffe_therm:35734 soc_therm:37782
+11-12 06:14:18.374  1749  1757 I pixel-thermal: VIRTUAL-SKIN-CHARGE power_budget=3785.96 err=0.236294 s_power=2200 time_elapsed_ms=7020 p=94.5175 i=1600 d=-0 dt_per_min=nan compensation=0 budget transient=0 control target=2 excluded power budget=108.556 (PARTIAL_SYSTEM_POWER: 2171.13 mW, cdev_weight: 0.050000)
+11-12 06:14:18.376  1749  1757 I pixel-thermal: VIRTUAL-SKIN-SPEAKER:36.6225 raw data: VIRTUAL-SKIN-SPEAKER:36622.5 VIRTUAL-SKIN-SPEAKER-SUB-1:34447.8 VIRTUAL-SKIN-SPEAKER-SUB-2:36622.5 battery:36500 gnss_tcxo_therm:38094 quiet_therm:37003 soc_therm:37782 usb_conn_therm:35512
+11-12 06:14:18.376  1749  1757 I pixel-thermal: VIRTUAL-SKIN-CHARGE-WLC:38.2218 raw data: VIRTUAL-SKIN-CHARGE-WLC:38221.8 charger_therm:41891 modem_therm:39007 rffe_therm:35734 soc_therm:37782
+11-12 06:14:18.376  1749  1757 I pixel-thermal: VIRTUAL-SKIN-CHARGE-WLC power_budget=1553.69 err=-0.221832 s_power=1400 time_elapsed_ms=7020 p=-133.099 i=395.342 d=-0 dt_per_min=nan compensation=0 budget transient=0 control target=2 excluded power budget=108.556 (PARTIAL_SYSTEM_POWER: 2171.13 mW, cdev_weight: 0.050000)
+11-12 06:14:18.377  1749  1757 I pixel-thermal: Successfully update cdev fcc sysfs to 4
+11-12 06:14:18.383  1749  1757 I pixel-thermal: Successfully update cdev dc_icl sysfs to 14
+11-12 06:14:18.475   987  4906 I WifiHAL : Creating message to get link statistics; iface = 47
+11-12 06:14:18.529   987  1077 I WifiHAL : Getting cached scan results, iface handle = 0xb4000075e009a050
+11-12 06:14:18.529   987  1077 E WifiHAL : Creating message to get cached scan results
+11-12 06:14:18.534   987  1077 I WifiHAL : In GetCachedScanResultsCommand::handleResponse
+11-12 06:14:18.554  1450  1932 D WifiClientModeImpl[160565:wlan0]: updateLinkLayerStatsRssiSpeedFrequencyCapabilities rssi=-42 TxLinkspeed=1200 freq=5200 RxLinkSpeed=1200
+11-12 06:14:18.555  1450  1932 D WifiDataStall: tx tput in kbps: 1073203
+11-12 06:14:18.555  1450  1932 D WifiDataStall: rx tput in kbps: 1129687
+11-12 06:14:18.555  1450  1932 V WifiConfigManager: Updating scan detail cache freq=5200 BSSID=7a:96:99:18:18:8b RSSI=-41 for "LukeSkyRouter"WPA_PSK
+11-12 06:14:18.556  1450  1932 D WifiDataStall:  use default cca Level
+11-12 06:14:18.556  1450  1932 D WifiDataStall:  ccaLevel = 15
+11-12 06:14:18.556  1450  1932 D WifiDataStall: L2 txTputKbps: 1073203, rxTputKbps: 1129687, L3 txTputKbps: 0, rxTputKbps: 7, TxTrafficHigh: false, RxTrafficHigh: false, Throughput Sufficient: true
+11-12 06:14:18.557  1450  1932 D WifiThroughputPredictor:  utilization (LLS) -1 isBluetoothConnected: false final utilization: 15
+11-12 06:14:18.557  1450  1932 D WifiThroughputPredictor:  BW: 2 RSSI: -42 Nss: 2 Mode: 6 symDur: 13600 snrDb 32 bitPerTone: 8333 rate: 1200 throughput: 1129
+11-12 06:14:18.557  1450  1932 D WifiThroughputPredictor:  utilization (LLS) -1 isBluetoothConnected: false final utilization: 15
+11-12 06:14:18.557  1450  1932 D WifiThroughputPredictor:  BW: 2 RSSI: -42 Nss: 2 Mode: 6 symDur: 13600 snrDb 32 bitPerTone: 8333 rate: 1200 throughput: 1129
+11-12 06:14:18.566   987  1077 D WifiHAL : Start debug command: mType GET_FEATURE
+11-12 06:14:18.566   987  1077 I WifiHAL : CreateRequest mType = GET_FEATURE
+11-12 06:14:18.566   987  1077 D WifiHAL : In DebugCommand::handleResponse, mType:GET_FEATURE
+11-12 06:14:18.566   987  1077 D WifiHAL : len = 4, expected len = 4
+11-12 06:14:18.570  1450  1932 I HalDevMgr: bestIfaceCreationProposal is null, requestIface=STA, existingIface=[name=wlan0 type=STA]
+11-12 06:14:18.570  1450  1932 D WifiScoreReport: report new wifi score 88
+11-12 06:14:18.571  1450  1932 D WifiScoreCard: BSSID update SIGNAL_POLL ID: 300630434 SSID: "LukeSkyRouter", BSSID: 7a:96:99:18:18:8b, MAC: 9e:ac:31:50:a6:ce, IP: /192.168.8.170, Security type: 2, Supplicant state: COMPLETED, Wi-Fi standard: 11ax, RSSI: -42, Link speed: 1200Mbps, Tx Link speed: 1200Mbps, Max Supported Tx Link speed: 1200Mbps, Rx Link speed: 1200Mbps, Max Supported Rx Link speed: 1200Mbps, Frequency: 5200MHz, Net ID: 0, Metered hint: false, score: 88, isUsable: true, CarrierMerged: false, SubscriptionId: -1, IsPrimary: 1, Trusted: true, Restricted: false, Ephemeral: false, OEM paid: false, OEM private: false, OSU AP: false, FQDN: <none>, Provider friendly name: <none>, Requesting package name: <none>"LukeSkyRouter"wpa2-pskMLO Information: , Is TID-To-Link negotiation supported by the AP: false, AP MLD Address: <none>, AP MLO Link Id: <none>, AP MLO Affiliated links: <none>, Vendor Data: <none>
+11-12 06:14:18.571  1450  1932 D WifiScoreCard: txRate: 4 txSpeed: 1200
+11-12 06:14:18.571  1450  1932 D WifiScoreCard: network update SIGNAL_POLL "LukeSkyRouter" ID: 169407839 RSSI -42 txSpeed 1200
+11-12 06:14:18.572  1450  1932 D WifiClientModeImpl[160565:wlan0]:  ClientModeImpl$L2ConnectedState screen=on 22 0 "LukeSkyRouter" 7a:96:99:18:18:8b rssi=-42 f=5200 sc=88 link=1200 tx=3.6, 0.0, 0.0 rx=21.9 bcn=14779516 [on:84 tx:0 rx:0 period:3100] from screen [on:75231496 period:1045199371] score=88
+11-12 06:14:18.572  1450  1945 D ConnectivityService: NetReassign [no changes] [c 1] [a 0] [i 2]
+11-12 06:14:18.663  1388  1388 I CanvasMapProbe: {"step":"handle-drag-expanded","viewIdentity":91816241,"mapIdentity":264806422,"latitude":41.419908442068134,"longitude":2.13456043290995,"zoom":12.915181159973145,"zoomGesturesEnabled":true,"width":1080,"height":2400,"hillshade":[{"id":"goway:relief:hillshade","shadow":["rgba(6.000000476837158,11,22,1)"],"highlight":["rgba(93,115.00000762939453,144,1)"]}],"handleY":840,"handleHeight":126,"handleValue":"{\"text\":\"Expanded\",\"min\":0,\"now\":2,\"max\":2}","chrome":[{"id":"map-credit","x":891,"y":693,"width":168,"height":136,"visibleRect":"[891,693][1059,829]","globalVisible":true,"shown":true},{"id":"map-credit-toggle","x":912,"y":698,"width":126,"height":126,"visibleRect":"[912,698][1038,824]","globalVisible":true,"shown":true},{"id":"map-scale","x":21,"y":605,"width":412,"height":77,"visibleRect":"[21,605][433,682]","globalVisible":true,"shown":true}],"imeVisible":false}
+11-12 06:14:19.000  1388  1388 I Choreographer: Skipped 39 frames!  The application may be doing too much work on its main thread.
+11-12 06:14:19.021  1388  1388 I CanvasMapInput: delivered action=0 count=1 ids=[0] elapsed=0
+11-12 06:14:19.022  1388  1404 I CanvasMapInput: action=0 pointers=1 elapsedMs=11
+11-12 06:14:19.025  1388  1404 I CanvasMapInput: action=2 pointers=1 elapsedMs=3
+11-12 06:14:19.034  1388  1388 I CanvasMapInput: delivered action=2 count=1 ids=[0] elapsed=16
+11-12 06:14:19.043  1388  1404 I CanvasMapInput: action=2 pointers=1 elapsedMs=1
+11-12 06:14:19.051  1388  1388 I CanvasMapInput: delivered action=2 count=1 ids=[0] elapsed=34
+11-12 06:14:19.060  1388  1404 I CanvasMapInput: action=2 pointers=1 elapsedMs=0
+11-12 06:14:19.067  1388  1388 I CanvasMapInput: delivered action=2 count=1 ids=[0] elapsed=51
+11-12 06:14:19.079  1388  1404 I CanvasMapInput: action=2 pointers=1 elapsedMs=2
+11-12 06:14:19.084  1388  1388 I CanvasMapInput: delivered action=2 count=1 ids=[0] elapsed=68
+11-12 06:14:19.097  1388  1404 I CanvasMapInput: action=2 pointers=1 elapsedMs=1
+11-12 06:14:19.101  1388  1388 I CanvasMapInput: delivered action=2 count=1 ids=[0] elapsed=84
+11-12 06:14:19.116  1388  1404 I CanvasMapInput: action=2 pointers=1 elapsedMs=2
+11-12 06:14:19.126  1388  1388 I CanvasMapInput: delivered action=2 count=1 ids=[0] elapsed=109
+11-12 06:14:19.135  1388  1404 I CanvasMapInput: action=2 pointers=1 elapsedMs=2
+11-12 06:14:19.143  1388  1388 I CanvasMapInput: delivered action=2 count=1 ids=[0] elapsed=126
+11-12 06:14:19.154  1388  1404 I CanvasMapInput: action=2 pointers=1 elapsedMs=2
+11-12 06:14:19.160  1388  1388 I CanvasMapInput: delivered action=2 count=1 ids=[0] elapsed=143
+11-12 06:14:19.174  1388  1404 I CanvasMapInput: action=2 pointers=1 elapsedMs=3
+11-12 06:14:19.177  1388  1388 I CanvasMapInput: delivered action=2 count=1 ids=[0] elapsed=160
+11-12 06:14:19.193  1388  1404 I CanvasMapInput: action=2 pointers=1 elapsedMs=2
+11-12 06:14:19.202  1388  1388 I CanvasMapInput: delivered action=2 count=1 ids=[0] elapsed=185
+11-12 06:14:19.213  1388  1404 I CanvasMapInput: action=2 pointers=1 elapsedMs=3
+11-12 06:14:19.218  1388  1388 I CanvasMapInput: delivered action=2 count=1 ids=[0] elapsed=202
+11-12 06:14:19.232  1388  1404 I CanvasMapInput: action=2 pointers=1 elapsedMs=2
+11-12 06:14:19.243  1388  1388 I CanvasMapInput: delivered action=2 count=1 ids=[0] elapsed=219
+11-12 06:14:19.250  1388  1404 I CanvasMapInput: action=2 pointers=1 elapsedMs=1
+11-12 06:14:19.260  1388  1388 I CanvasMapInput: delivered action=2 count=1 ids=[0] elapsed=243
+11-12 06:14:19.267  1388  1404 I CanvasMapInput: action=2 pointers=1 elapsedMs=0
+11-12 06:14:19.277  1388  1388 I CanvasMapInput: delivered action=2 count=1 ids=[0] elapsed=260
+11-12 06:14:19.286  1388  1404 I CanvasMapInput: action=2 pointers=1 elapsedMs=2
+11-12 06:14:19.293  1388  1388 I CanvasMapInput: delivered action=2 count=1 ids=[0] elapsed=277
+11-12 06:14:19.304  1388  1404 I CanvasMapInput: action=2 pointers=1 elapsedMs=2
+11-12 06:14:19.310  1388  1388 I CanvasMapInput: delivered action=2 count=1 ids=[0] elapsed=294
+11-12 06:14:19.322  1388  1404 I CanvasMapInput: action=2 pointers=1 elapsedMs=2
+11-12 06:14:19.327  1388  1388 I CanvasMapInput: delivered action=2 count=1 ids=[0] elapsed=310
+11-12 06:14:19.340  1388  1404 I CanvasMapInput: action=2 pointers=1 elapsedMs=1
+11-12 06:14:19.344  1388  1388 I CanvasMapInput: delivered action=2 count=1 ids=[0] elapsed=327
+11-12 06:14:19.359  1388  1404 I CanvasMapInput: action=2 pointers=1 elapsedMs=2
+11-12 06:14:19.369  1388  1388 I CanvasMapInput: delivered action=2 count=1 ids=[0] elapsed=352
+11-12 06:14:19.378  1388  1404 I CanvasMapInput: action=2 pointers=1 elapsedMs=2
+11-12 06:14:19.385  1388  1388 I CanvasMapInput: delivered action=2 count=1 ids=[0] elapsed=369
+11-12 06:14:19.396  1388  1404 I CanvasMapInput: action=2 pointers=1 elapsedMs=2
+11-12 06:14:19.402  1388  1388 I CanvasMapInput: delivered action=2 count=1 ids=[0] elapsed=385
+11-12 06:14:19.404  1749  1757 I pixel-thermal: VIRTUAL-SKIN:37.6011 raw data: VIRTUAL-SKIN:37601.1 VIRTUAL-SKIN-SUB-1:37601.1 VIRTUAL-SKIN-SUB-2:33637 VIRTUAL-SKIN-SUB-3:35814.6 charger_therm:41891 gnss_tcxo_therm:38094 modem_therm:39007 quiet_therm:37003 rffe_therm:35734 soc_therm:37782 usb_conn_therm:35512
+11-12 06:14:19.404  1749  1757 I pixel-thermal: soc_therm:37.782 raw data: soc_therm:37782
+11-12 06:14:19.404  1749  1757 I pixel-thermal: VIRTUAL-SKIN-HINT:37.6011 raw data: VIRTUAL-SKIN:37601.1 VIRTUAL-SKIN-HINT:37601.1
+11-12 06:14:19.404  1749  1757 I pixel-thermal: VIRTUAL-SKIN-CPU-MID:37.6011 raw data: VIRTUAL-SKIN:37601.1 VIRTUAL-SKIN-CPU-MID:37601.1
+11-12 06:14:19.404  1749  1757 I pixel-thermal: VIRTUAL-SKIN-CPU-HIGH:37.6011 raw data: VIRTUAL-SKIN:37601.1 VIRTUAL-SKIN-CPU-HIGH:37601.1
+11-12 06:14:19.404  1749  1757 I pixel-thermal: VIRTUAL-SKIN-SOC:37.6011 raw data: VIRTUAL-SKIN:37601.1 VIRTUAL-SKIN-SOC:37601.1
+11-12 06:14:19.404  1749  1757 I pixel-thermal: VIRTUAL-SKIN-SOC power_budget=3019.68 err=7.39895 s_power=800 time_elapsed_ms=7022 p=2219.68 i=0 d=-0 dt_per_min=nan compensation=0 budget transient=0 control target=3 excluded power budget=0
+11-12 06:14:19.404  1749  1757 I pixel-thermal: VIRTUAL-SKIN-SOC binded power rails: (S4M_VDD_CPUCL0: 327.01 mW)(S3M_VDD_CPUCL1: 230.89 mW)(S2S_VDD_G3D: 48.53 mW)(S7M_VDD_TPU: 0.00 mW)(S2M_VDD_CPUCL2: 1836.36 mW)
+11-12 06:14:19.404  1749  1757 I pixel-thermal: cellular-emergency:37.6011 raw data: VIRTUAL-SKIN:37601.1 cellular-emergency:37601.1
+11-12 06:14:19.404  1749  1757 I pixel-thermal: VIRTUAL-SKIN-CPU-LIGHT-ODPM:37.6011 raw data: VIRTUAL-SKIN:37601.1 VIRTUAL-SKIN-CPU-LIGHT-ODPM:37601.1
+11-12 06:14:19.404  1749  1757 I pixel-thermal: VIRTUAL-SKIN-CPU-LIGHT-ODPM power_budget=1592.21 err=1.39895 s_power=800 time_elapsed_ms=7022 p=559.579 i=232.633 d=-0 dt_per_min=nan compensation=0 budget transient=0 control target=2 excluded power budget=0
+11-12 06:14:19.404  1749  1757 I pixel-thermal: VIRTUAL-SKIN-CPU-LIGHT-ODPM binded power rails: (S4M_VDD_CPUCL0: 327.01 mW)(S3M_VDD_CPUCL1: 230.89 mW)(S2M_VDD_CPUCL2: 1836.36 mW)
+11-12 06:14:19.404  1749  1757 I pixel-thermal: VIRTUAL-SKIN-GPU:37.6011 raw data: VIRTUAL-SKIN:37601.1 VIRTUAL-SKIN-GPU:37601.1
+11-12 06:14:19.405  1749  1757 I pixel-thermal: Successfully update cdev thermal-cpufreq-2 sysfs to 4
+11-12 06:14:19.415  1388  1404 I CanvasMapInput: action=2 pointers=1 elapsedMs=2
+11-12 06:14:19.419  1388  1388 I CanvasMapInput: delivered action=2 count=1 ids=[0] elapsed=402
+11-12 06:14:19.433  1388  1404 I CanvasMapInput: action=2 pointers=1 elapsedMs=2
+11-12 06:14:19.444  1388  1388 I CanvasMapInput: delivered action=2 count=1 ids=[0] elapsed=427
+11-12 06:14:19.451  1388  1404 I CanvasMapInput: action=2 pointers=1 elapsedMs=2
+11-12 06:14:19.461  1388  1388 I CanvasMapInput: delivered action=2 count=1 ids=[0] elapsed=444
+11-12 06:14:19.469  1388  1404 I CanvasMapInput: action=2 pointers=1 elapsedMs=2
+11-12 06:14:19.477  1388  1388 I CanvasMapInput: delivered action=2 count=1 ids=[0] elapsed=461
+11-12 06:14:19.487  1388  1404 I CanvasMapInput: action=2 pointers=1 elapsedMs=1
+11-12 06:14:19.494  1388  1388 I CanvasMapInput: delivered action=2 count=1 ids=[0] elapsed=477
+11-12 06:14:19.506  1388  1404 I CanvasMapInput: action=2 pointers=1 elapsedMs=2
+11-12 06:14:19.511  1388  1388 I CanvasMapInput: delivered action=2 count=1 ids=[0] elapsed=494
+11-12 06:14:19.525  1388  1404 I CanvasMapInput: action=2 pointers=1 elapsedMs=2
+11-12 06:14:19.527  1388  1388 I CanvasMapInput: delivered action=2 count=1 ids=[0] elapsed=511
+11-12 06:14:19.543  1388  1404 I CanvasMapInput: action=2 pointers=1 elapsedMs=2
+11-12 06:14:19.553  1388  1388 I CanvasMapInput: delivered action=2 count=1 ids=[0] elapsed=536
+11-12 06:14:19.563  1388  1404 I CanvasMapInput: action=2 pointers=1 elapsedMs=3
+11-12 06:14:19.570  1388  1388 I CanvasMapInput: delivered action=2 count=1 ids=[0] elapsed=553
+11-12 06:14:19.582  1388  1404 I CanvasMapInput: action=2 pointers=1 elapsedMs=2
+11-12 06:14:19.586  1388  1388 I CanvasMapInput: delivered action=2 count=1 ids=[0] elapsed=569
+11-12 06:14:19.602  1388  1404 I CanvasMapInput: action=2 pointers=1 elapsedMs=3
+11-12 06:14:19.611  1388  1388 I CanvasMapInput: delivered action=2 count=1 ids=[0] elapsed=594
+11-12 06:14:19.619  1388  1388 I CanvasMapInput: delivered action=1 count=1 ids=[0] elapsed=607
+11-12 06:14:19.632  1388  1404 I CanvasMapInput: action=1 pointers=1 elapsedMs=14
+11-12 06:14:20.591  1388  1388 I CanvasMapProbe: {"step":"handle-drag-half","viewIdentity":91816241,"mapIdentity":264806422,"latitude":41.419908442068134,"longitude":2.13456043290995,"zoom":12.915181159973145,"zoomGesturesEnabled":true,"width":1080,"height":2400,"hillshade":[{"id":"goway:relief:hillshade","shadow":["rgba(6.000000476837158,11,22,1)"],"highlight":["rgba(93,115.00000762939453,144,1)"]}],"handleY":1321,"handleHeight":126,"handleValue":"{\"text\":\"Half open\",\"min\":0,\"now\":1,\"max\":2}","chrome":[{"id":"map-credit","x":891,"y":1173,"width":168,"height":137,"visibleRect":"[891,1173][1059,1310]","globalVisible":true,"shown":true},{"id":"map-credit-toggle","x":912,"y":1178,"width":126,"height":126,"visibleRect":"[912,1178][1038,1304]","globalVisible":true,"shown":true},{"id":"map-scale","x":21,"y":1085,"width":412,"height":77,"visibleRect":"[21,1085][433,1162]","globalVisible":true,"shown":true}],"imeVisible":false}
+11-12 06:14:21.058  1388  1388 I Choreographer: Skipped 55 frames!  The application may be doing too much work on its main thread.
+11-12 06:14:21.083  1388  1404 I CanvasMapInput: action=0 pointers=1 elapsedMs=11
+11-12 06:14:21.083  1388  1388 I CanvasMapInput: delivered action=0 count=1 ids=[0] elapsed=0
+11-12 06:14:21.135  1388  1388 I CanvasMapInput: delivered action=1 count=1 ids=[0] elapsed=61
+11-12 06:14:21.141  1388  1388 D AutofillManager: view not autofillable - not passing ime action check
+11-12 06:14:21.142  1388  1388 I AutofillManager: showAutofillDialog() return false due to improve fill dialog
+11-12 06:14:21.143  1388  1388 I ImeTracker: to.goway.canvas663:cb6e2e4: onRequestShow at ORIGIN_CLIENT reason SHOW_SOFT_INPUT fromUser true
+11-12 06:14:21.143  1388  1404 I CanvasMapInput: action=1 pointers=1 elapsedMs=10
+11-12 06:14:21.152   667   667 W powerhal-libperfmgr: Sess(6749), cannot resume, already active
+11-12 06:14:21.159  3487  3487 I LatinIME: Starting input. Cursor position = 0,0
+11-12 06:14:21.165  3487  3487 D ImeBackCallbackSender: Register OnBackInvokedCallback with priority=0 at app window (packageName=to.goway.canvas663)
+11-12 06:14:21.165  1388  1388 I ImeTracker: to.goway.canvas663:906580d3: onRequestShow at ORIGIN_CLIENT reason SHOW_SOFT_INPUT fromUser false
+11-12 06:14:21.165  1388  1388 I ImeTracker: to.goway.canvas663:906580d3: onCancelled at PHASE_CLIENT_REPORT_REQUESTED_VISIBLE_TYPES
+11-12 06:14:21.171  1388  1388 D WindowOnBackDispatcher: setTopOnBackInvokedCallback (unwrapped): ImeOnBackInvokedCallback@144387732 Callback=android.window.IOnBackInvokedCallback$Stub$Proxy@7fef76f
+11-12 06:14:21.190  1388  1388 D VRI[MainActivity]: WindowInsets changed: ime:[0,0,0,898]
+11-12 06:14:21.195  1388  1388 W InteractionJankMonitor: Initializing without READ_DEVICE_CONFIG permission. enabled=false, interval=1, missedFrameThreshold=3, frameTimeThreshold=64, package=to.goway.canvas663
+11-12 06:14:21.223  1450  1932 D WifiNetworkSelector: Current connected network: 0
+11-12 06:14:21.224  1450  1932 V WifiConnectivityManager: No partial scan because firmware roaming is supported.
+11-12 06:14:21.224  1450  1932 V WifiConnectivityManager: schedulePeriodicScanTimer intervalMs 40000
+11-12 06:14:21.483  1388  1388 I ImeTracker: to.goway.canvas663:cb6e2e4: onShown
+11-12 06:14:21.573   987  1077 I WifiHAL : Creating message to get link statistics; iface = 47
+11-12 06:14:21.623   987  4906 I WifiHAL : Getting cached scan results, iface handle = 0xb4000075e009a050
+11-12 06:14:21.623   987  4906 E WifiHAL : Creating message to get cached scan results
+11-12 06:14:21.628   987  4906 I WifiHAL : In GetCachedScanResultsCommand::handleResponse
+11-12 06:14:21.645  1450  1932 D WifiClientModeImpl[160565:wlan0]: updateLinkLayerStatsRssiSpeedFrequencyCapabilities rssi=-42 TxLinkspeed=1200 freq=5200 RxLinkSpeed=1200
+11-12 06:14:21.645  1450  1932 D WifiDataStall: tx tput in kbps: 1073203
+11-12 06:14:21.645  1450  1932 D WifiDataStall: rx tput in kbps: 1129687
+11-12 06:14:21.645  1450  1932 V WifiConfigManager: Updating scan detail cache freq=5200 BSSID=7a:96:99:18:18:8b RSSI=-41 for "LukeSkyRouter"WPA_PSK
+11-12 06:14:21.646  1450  1932 D WifiDataStall:  use default cca Level
+11-12 06:14:21.646  1450  1932 D WifiDataStall:  ccaLevel = 15
+11-12 06:14:21.646  1450  1932 D WifiDataStall: L2 txTputKbps: 1073203, rxTputKbps: 1129687, L3 txTputKbps: 0, rxTputKbps: 2, TxTrafficHigh: false, RxTrafficHigh: false, Throughput Sufficient: true
+11-12 06:14:21.646  1450  1932 D WifiThroughputPredictor:  utilization (LLS) -1 isBluetoothConnected: false final utilization: 15
+11-12 06:14:21.646  1450  1932 D WifiThroughputPredictor:  BW: 2 RSSI: -42 Nss: 2 Mode: 6 symDur: 13600 snrDb 32 bitPerTone: 8333 rate: 1200 throughput: 1129
+11-12 06:14:21.646  1450  1932 D WifiThroughputPredictor:  utilization (LLS) -1 isBluetoothConnected: false final utilization: 15
+11-12 06:14:21.647  1450  1932 D WifiThroughputPredictor:  BW: 2 RSSI: -42 Nss: 2 Mode: 6 symDur: 13600 snrDb 32 bitPerTone: 8333 rate: 1200 throughput: 1129
+11-12 06:14:21.651   987  4906 D WifiHAL : Start debug command: mType GET_FEATURE
+11-12 06:14:21.651   987  4906 I WifiHAL : CreateRequest mType = GET_FEATURE
+11-12 06:14:21.651   987  4906 D WifiHAL : In DebugCommand::handleResponse, mType:GET_FEATURE
+11-12 06:14:21.651   987  4906 D WifiHAL : len = 4, expected len = 4
+11-12 06:14:21.653  1450  1932 I HalDevMgr: bestIfaceCreationProposal is null, requestIface=STA, existingIface=[name=wlan0 type=STA]
+11-12 06:14:21.653  1450  1932 D WifiScoreCard: BSSID update SIGNAL_POLL ID: 300630434 SSID: "LukeSkyRouter", BSSID: 7a:96:99:18:18:8b, MAC: 9e:ac:31:50:a6:ce, IP: /192.168.8.170, Security type: 2, Supplicant state: COMPLETED, Wi-Fi standard: 11ax, RSSI: -42, Link speed: 1200Mbps, Tx Link speed: 1200Mbps, Max Supported Tx Link speed: 1200Mbps, Rx Link speed: 1200Mbps, Max Supported Rx Link speed: 1200Mbps, Frequency: 5200MHz, Net ID: 0, Metered hint: false, score: 88, isUsable: true, CarrierMerged: false, SubscriptionId: -1, IsPrimary: 1, Trusted: true, Restricted: false, Ephemeral: false, OEM paid: false, OEM private: false, OSU AP: false, FQDN: <none>, Provider friendly name: <none>, Requesting package name: <none>"LukeSkyRouter"wpa2-pskMLO Information: , Is TID-To-Link negotiation supported by the AP: false, AP MLD Address: <none>, AP MLO Link Id: <none>, AP MLO Affiliated links: <none>, Vendor Data: <none>
+11-12 06:14:21.653  1450  1932 D WifiScoreCard: txRate: 2 txSpeed: 1200
+11-12 06:14:21.654  1450  1932 D WifiScoreCard: network update SIGNAL_POLL "LukeSkyRouter" ID: 169407839 RSSI -42 txSpeed -1
+11-12 06:14:21.654  1450  1932 D WifiClientModeImpl[160565:wlan0]:  ClientModeImpl$L2ConnectedState screen=on 22 0 "LukeSkyRouter" 7a:96:99:18:18:8b rssi=-42 f=5200 sc=88 link=1200 tx=1.5, 0.0, 0.0 rx=8.0 bcn=14779546 [on:311 tx:1 rx:0 period:3082] from screen [on:75231807 period:1045202453] score=88
+11-12 06:14:22.187  2365  2552 D SatelliteController: iisInCarrierRoamingNbIotNtn: satellite is disabled
+11-12 06:14:22.189  2365  2552 D SatelliteController: getCarrierRoamingNtnConnectType: Falling back to global carrier config connect type: 0
+11-12 06:14:22.396  1388  1388 I CanvasMapProbe: {"step":"ime","viewIdentity":91816241,"mapIdentity":264806422,"latitude":41.419908442068134,"longitude":2.13456043290995,"zoom":12.915181159973145,"zoomGesturesEnabled":true,"width":1080,"height":2400,"hillshade":[{"id":"goway:relief:hillshade","shadow":["rgba(6.000000476837158,11,22,1)"],"highlight":["rgba(93,115.00000762939453,144,1)"]}],"handleY":840,"handleHeight":126,"handleValue":"{\"text\":\"Half open\",\"min\":0,\"now\":1,\"max\":2}","chrome":[{"id":"map-credit","x":891,"y":693,"width":168,"height":136,"visibleRect":"[891,693][1059,829]","globalVisible":true,"shown":true},{"id":"map-credit-toggle","x":912,"y":698,"width":126,"height":126,"visibleRect":"[912,698][1038,824]","globalVisible":true,"shown":true},{"id":"map-scale","x":21,"y":605,"width":412,"height":77,"visibleRect":"[21,605][433,682]","globalVisible":true,"shown":true}],"imeVisible":true}
+11-12 06:14:22.756  1388  1388 I Choreographer: Skipped 42 frames!  The application may be doing too much work on its main thread.
+11-12 06:14:22.768  3487  3487 I ImeTracker: com.android.inputmethod.latin:b1676ba2: onRequestHide at ORIGIN_IME reason HIDE_SOFT_INPUT_BY_BACK_KEY fromUser true
+11-12 06:14:22.770  1388  1388 D WindowOnBackDispatcher: setTopOnBackInvokedCallback (unwrapped): android.view.ViewRootImpl$$ExternalSyntheticLambda12@68e3236
+11-12 06:14:22.771  1388  1388 I ImeTracker: com.android.inputmethod.latin:b1676ba2: onCancelled at PHASE_CLIENT_ALREADY_HIDDEN
+11-12 06:14:22.772  1450  2193 I ImeTracker: system_server:3617ca77: onRequestShow at ORIGIN_SERVER reason IME_REQUESTED_CHANGED_LISTENER fromUser false
+11-12 06:14:22.778  1388  1388 D VRI[MainActivity]: WindowInsets changed: ime:null
+11-12 06:14:22.783  1450  1647 I ImeTracker: system_server:3617ca77: onCancelled at PHASE_SERVER_ALREADY_VISIBLE
+11-12 06:14:22.787  1450  1648 I ImeTracker: system_server:8a6c9828: onRequestShow at ORIGIN_SERVER reason CONTROLS_CHANGED fromUser false
+11-12 06:14:22.788  1388  1388 I ImeTracker: system_server:8a6c9828: onCancelled at PHASE_CLIENT_ON_CONTROLS_CHANGED
+11-12 06:14:23.079  1450 17156 I ImeTracker: com.android.inputmethod.latin:b1676ba2: onFinished on previously finished token at PHASE_WM_NOTIFY_HIDE_ANIMATION_FINISHED with STATUS_FAIL
+11-12 06:14:23.080  1450 17156 I ImeTracker: com.android.inputmethod.latin:b1676ba2: onFailed at PHASE_WM_NOTIFY_HIDE_ANIMATION_FINISHED
+11-12 06:14:23.082  3487  3487 D ImeBackCallbackSender: Unregister OnBackInvokedCallback at app window (packageName=to.goway.canvas663)
+11-12 06:14:23.082  3487  3487 I ImeTracker: com.android.inputmethod.latin:b1676ba2: onHidden
+11-12 06:14:23.082  1450  2193 I ImeTracker: com.android.inputmethod.latin:b1676ba2: onFinished on previously finished token at PHASE_NOT_SET with STATUS_SUCCESS
+11-12 06:14:23.094   667  2174 E powerhal-libperfmgr: Error: shouldn't report duration during pause state.
+11-12 06:14:23.227  1388  1388 I CanvasMapProbe: {"step":"back","viewIdentity":91816241,"mapIdentity":264806422,"latitude":41.419908442068134,"longitude":2.13456043290995,"zoom":12.915181159973145,"zoomGesturesEnabled":true,"width":1080,"height":2400,"hillshade":[{"id":"goway:relief:hillshade","shadow":["rgba(6.000000476837158,11,22,1)"],"highlight":["rgba(93,115.00000762939453,144,1)"]}],"handleY":1321,"handleHeight":126,"handleValue":"{\"text\":\"Half open\",\"min\":0,\"now\":1,\"max\":2}","chrome":[{"id":"map-credit","x":891,"y":1173,"width":168,"height":137,"visibleRect":"[891,1173][1059,1310]","globalVisible":true,"shown":true},{"id":"map-credit-toggle","x":912,"y":1178,"width":126,"height":126,"visibleRect":"[912,1178][1038,1304]","globalVisible":true,"shown":true},{"id":"map-scale","x":21,"y":1085,"width":412,"height":77,"visibleRect":"[21,1085][433,1162]","globalVisible":true,"shown":true}],"imeVisible":false}
+11-12 06:14:23.602  1450  2193 I ImeTracker: system_server:5f6f8c1b: onRequestHide at ORIGIN_SERVER reason IME_REQUESTED_CHANGED_LISTENER fromUser false
+11-12 06:14:23.605  1450  1647 I ImeTracker: system_server:5f6f8c1b: onCancelled at PHASE_SERVER_SHOULD_HIDE
+11-12 06:14:23.751  1388  1388 I Choreographer: Skipped 62 frames!  The application may be doing too much work on its main thread.
+11-12 06:14:23.752  1388  1404 I CanvasMapProbe: {"step":"matrix-results","detents":[true,true,true],"imeOpened":true,"imeClosed":true}
+11-12 06:14:24.219  1388  1388 I CanvasMapProbe: {"step":"panel-back","viewIdentity":91816241,"mapIdentity":264806422,"latitude":41.419908442068134,"longitude":2.13456043290995,"zoom":12.915181159973145,"zoomGesturesEnabled":true,"width":1080,"height":2400,"hillshade":[{"id":"goway:relief:hillshade","shadow":["rgba(6.000000476837158,11,22,1)"],"highlight":["rgba(93,115.00000762939453,144,1)"]}],"handleY":1981,"handleHeight":126,"handleValue":"{\"text\":\"Collapsed\",\"min\":0,\"now\":0,\"max\":2}","chrome":[{"id":"map-credit","x":891,"y":1833,"width":168,"height":137,"visibleRect":"[891,1833][1059,1970]","globalVisible":true,"shown":true},{"id":"map-credit-toggle","x":912,"y":1838,"width":126,"height":126,"visibleRect":"[912,1838][1038,1964]","globalVisible":true,"shown":true},{"id":"map-scale","x":21,"y":1745,"width":412,"height":77,"visibleRect":"[21,1745][433,1822]","globalVisible":true,"shown":true}],"imeVisible":false}
+11-12 06:14:24.660   987  4906 I WifiHAL : Creating message to get link statistics; iface = 47
+11-12 06:14:24.727   987  1077 I WifiHAL : Getting cached scan results, iface handle = 0xb4000075e009a050
+11-12 06:14:24.727   987  1077 E WifiHAL : Creating message to get cached scan results
+11-12 06:14:24.731   987  1077 I WifiHAL : In GetCachedScanResultsCommand::handleResponse
+11-12 06:14:24.750  1450  1932 D WifiClientModeImpl[160565:wlan0]: updateLinkLayerStatsRssiSpeedFrequencyCapabilities rssi=-42 TxLinkspeed=1200 freq=5200 RxLinkSpeed=1200
+11-12 06:14:24.751  1450  1932 D WifiDataStall: tx tput in kbps: 1073203
+11-12 06:14:24.751  1450  1932 D WifiDataStall: rx tput in kbps: 1129687
+11-12 06:14:24.751  1450  1932 V WifiConfigManager: Updating scan detail cache freq=5200 BSSID=7a:96:99:18:18:8b RSSI=-41 for "LukeSkyRouter"WPA_PSK
+11-12 06:14:24.751  1450  1932 D WifiDataStall:  use default cca Level
+11-12 06:14:24.751  1450  1932 D WifiDataStall:  ccaLevel = 15
+11-12 06:14:24.751  1450  1932 D WifiDataStall: L2 txTputKbps: 1073203, rxTputKbps: 1129687, L3 txTputKbps: 0, rxTputKbps: 13, TxTrafficHigh: false, RxTrafficHigh: false, Throughput Sufficient: true
+11-12 06:14:24.752  1450  1932 D WifiThroughputPredictor:  utilization (LLS) -1 isBluetoothConnected: false final utilization: 15
+11-12 06:14:24.752  1450  1932 D WifiThroughputPredictor:  BW: 2 RSSI: -42 Nss: 2 Mode: 6 symDur: 13600 snrDb 32 bitPerTone: 8333 rate: 1200 throughput: 1129
+11-12 06:14:24.752  1450  1932 D WifiThroughputPredictor:  utilization (LLS) -1 isBluetoothConnected: false final utilization: 15
+11-12 06:14:24.752  1450  1932 D WifiThroughputPredictor:  BW: 2 RSSI: -42 Nss: 2 Mode: 6 symDur: 13600 snrDb 32 bitPerTone: 8333 rate: 1200 throughput: 1129
+11-12 06:14:24.758   987  1077 D WifiHAL : Start debug command: mType GET_FEATURE
+11-12 06:14:24.758   987  1077 I WifiHAL : CreateRequest mType = GET_FEATURE
+11-12 06:14:24.758   987  1077 D WifiHAL : In DebugCommand::handleResponse, mType:GET_FEATURE
+11-12 06:14:24.758   987  1077 D WifiHAL : len = 4, expected len = 4
+11-12 06:14:24.760  1450  1932 I HalDevMgr: bestIfaceCreationProposal is null, requestIface=STA, existingIface=[name=wlan0 type=STA]
+11-12 06:14:24.761  1450  1932 D WifiScoreCard: BSSID update SIGNAL_POLL ID: 300630434 SSID: "LukeSkyRouter", BSSID: 7a:96:99:18:18:8b, MAC: 9e:ac:31:50:a6:ce, IP: /192.168.8.170, Security type: 2, Supplicant state: COMPLETED, Wi-Fi standard: 11ax, RSSI: -42, Link speed: 1200Mbps, Tx Link speed: 1200Mbps, Max Supported Tx Link speed: 1200Mbps, Rx Link speed: 1200Mbps, Max Supported Rx Link speed: 1200Mbps, Frequency: 5200MHz, Net ID: 0, Metered hint: false, score: 88, isUsable: true, CarrierMerged: false, SubscriptionId: -1, IsPrimary: 1, Trusted: true, Restricted: false, Ephemeral: false, OEM paid: false, OEM private: false, OSU AP: false, FQDN: <none>, Provider friendly name: <none>, Requesting package name: <none>"LukeSkyRouter"wpa2-pskMLO Information: , Is TID-To-Link negotiation supported by the AP: false, AP MLD Address: <none>, AP MLO Link Id: <none>, AP MLO Affiliated links: <none>, Vendor Data: <none>
+11-12 06:14:24.761  1450  1932 D WifiScoreCard: txRate: 1 txSpeed: 1200
+11-12 06:14:24.761  1450  1932 D WifiScoreCard: network update SIGNAL_POLL "LukeSkyRouter" ID: 169407839 RSSI -42 txSpeed -1
+11-12 06:14:24.761  1450  1932 D WifiClientModeImpl[160565:wlan0]:  ClientModeImpl$L2ConnectedState screen=on 22 0 "LukeSkyRouter" 7a:96:99:18:18:8b rssi=-42 f=5200 sc=88 link=1200 tx=0.5, 0.0, 0.0 rx=2.8 bcn=14779576 [on:107 tx:0 rx:0 period:3107] from screen [on:75231914 period:1045205560] score=88
+11-12 06:14:24.828  1388  1388 I Choreographer: Skipped 72 frames!  The application may be doing too much work on its main thread.
+11-12 06:14:24.848  1388  1404 I CanvasMapInput: action=0 pointers=1 elapsedMs=12
+11-12 06:14:24.848  1388  1388 I CanvasMapInput: delivered action=0 count=1 ids=[0] elapsed=0
+11-12 06:14:24.900  1388  1388 I CanvasMapInput: delivered action=1 count=1 ids=[0] elapsed=62
+11-12 06:14:24.917  1388  1404 I CanvasMapInput: action=1 pointers=1 elapsedMs=19
+11-12 06:14:25.391  1749  1757 I pixel-thermal: charger_therm:42.83 raw data: charger_therm:42830
+11-12 06:14:25.392  1749  1757 I pixel-thermal: VIRTUAL-SKIN-CHARGE:38.0289 raw data: VIRTUAL-SKIN-CHARGE:38028.9 VIRTUAL-SKIN-CHARGE-SUB-1:38028.9 VIRTUAL-SKIN-CHARGE-SUB-2:37922 charger_therm:42830 modem_therm:39875 quiet_therm:37248 rffe_therm:35757 soc_therm:38250
+11-12 06:14:25.393  1749  1757 I pixel-thermal: VIRTUAL-SKIN-CHARGE power_budget=3651.5 err=-0.0288849 s_power=2200 time_elapsed_ms=7011 p=-17.3309 i=1599.39 d=-0 dt_per_min=nan compensation=0 budget transient=0 control target=2 excluded power budget=130.566 (PARTIAL_SYSTEM_POWER: 2611.31 mW, cdev_weight: 0.050000)
+11-12 06:14:25.394  1749  1757 I pixel-thermal: VIRTUAL-SKIN-SPEAKER:36.6411 raw data: VIRTUAL-SKIN-SPEAKER:36641.1 VIRTUAL-SKIN-SPEAKER-SUB-1:34817 VIRTUAL-SKIN-SPEAKER-SUB-2:36641.1 battery:36300 gnss_tcxo_therm:38584 quiet_therm:37248 soc_therm:38250 usb_conn_therm:35534
+11-12 06:14:25.394  1749  1757 I pixel-thermal: VIRTUAL-SKIN-CHARGE-WLC:38.6824 raw data: VIRTUAL-SKIN-CHARGE-WLC:38682.4 charger_therm:42830 modem_therm:39875 rffe_therm:35757 soc_therm:38250
+11-12 06:14:25.394  1749  1757 I pixel-thermal: VIRTUAL-SKIN-CHARGE-WLC power_budget=1240.98 err=-0.682442 s_power=1400 time_elapsed_ms=7011 p=-409.465 i=381.01 d=-0 dt_per_min=nan compensation=0 budget transient=0 control target=2 excluded power budget=130.566 (PARTIAL_SYSTEM_POWER: 2611.31 mW, cdev_weight: 0.050000)
+11-12 06:14:25.399  1749  1757 I pixel-thermal: Successfully update cdev dc_icl sysfs to 15
+11-12 06:14:26.188  1388  1404 I CanvasMapInput: action=0 pointers=1 elapsedMs=16
+11-12 06:14:26.190  1388  1388 I CanvasMapInput: delivered action=0 count=1 ids=[0] elapsed=0
+11-12 06:14:26.190  1388  1404 I CanvasMapInput: action=2 pointers=1 elapsedMs=1
+11-12 06:14:26.194  1388  1388 I CanvasMapInput: delivered action=2 count=1 ids=[0] elapsed=18
+11-12 06:14:26.209  1388  1404 I CanvasMapInput: action=2 pointers=1 elapsedMs=2
+11-12 06:14:26.220  1388  1388 I CanvasMapInput: delivered action=2 count=1 ids=[0] elapsed=43
+11-12 06:14:26.227  1388  1404 I CanvasMapInput: action=2 pointers=1 elapsedMs=1
+11-12 06:14:26.236  1388  1388 I CanvasMapInput: delivered action=2 count=1 ids=[0] elapsed=60
+11-12 06:14:26.245  1388  1404 I CanvasMapInput: action=2 pointers=1 elapsedMs=1
+11-12 06:14:26.253  1388  1388 I CanvasMapInput: delivered action=2 count=1 ids=[0] elapsed=77
+11-12 06:14:26.264  1388  1404 I CanvasMapInput: action=2 pointers=1 elapsedMs=2
+11-12 06:14:26.270  1388  1388 I CanvasMapInput: delivered action=2 count=1 ids=[0] elapsed=93
+11-12 06:14:26.282  1388  1404 I CanvasMapInput: action=2 pointers=1 elapsedMs=2
+11-12 06:14:26.287  1388  1388 I CanvasMapInput: delivered action=2 count=1 ids=[0] elapsed=110
+11-12 06:14:26.302  1388  1404 I CanvasMapInput: action=2 pointers=1 elapsedMs=3
+11-12 06:14:26.312  1388  1388 I CanvasMapInput: delivered action=2 count=1 ids=[0] elapsed=135
+11-12 06:14:26.321  1388  1404 I CanvasMapInput: action=2 pointers=1 elapsedMs=2
+11-12 06:14:26.328  1388  1388 I CanvasMapInput: delivered action=2 count=1 ids=[0] elapsed=152
+11-12 06:14:26.340  1388  1404 I CanvasMapInput: action=2 pointers=1 elapsedMs=2
+11-12 06:14:26.345  1388  1388 I CanvasMapInput: delivered action=2 count=1 ids=[0] elapsed=168
+11-12 06:14:26.359  1388  1404 I CanvasMapInput: action=2 pointers=1 elapsedMs=2
+11-12 06:14:26.370  1388  1388 I CanvasMapInput: delivered action=2 count=1 ids=[0] elapsed=194
+11-12 06:14:26.378  1388  1404 I CanvasMapInput: action=2 pointers=1 elapsedMs=2
+11-12 06:14:26.387  1388  1388 I CanvasMapInput: delivered action=2 count=1 ids=[0] elapsed=210
+11-12 06:14:26.397  1388  1404 I CanvasMapInput: action=2 pointers=1 elapsedMs=2
+11-12 06:14:26.404  1388  1388 I CanvasMapInput: delivered action=2 count=1 ids=[0] elapsed=227
+11-12 06:14:26.415  1388  1404 I CanvasMapInput: action=2 pointers=1 elapsedMs=1
+11-12 06:14:26.420  1388  1388 I CanvasMapInput: delivered action=2 count=1 ids=[0] elapsed=244
+11-12 06:14:26.434  1388  1404 I CanvasMapInput: action=2 pointers=1 elapsedMs=2
+11-12 06:14:26.435  1749  1757 I pixel-thermal: VIRTUAL-SKIN:38.0634 raw data: VIRTUAL-SKIN:38063.4 VIRTUAL-SKIN-SUB-1:38063.4 VIRTUAL-SKIN-SUB-2:34209.4 VIRTUAL-SKIN-SUB-3:36008.2 charger_therm:42830 gnss_tcxo_therm:38584 modem_therm:39875 quiet_therm:37248 rffe_therm:35757 soc_therm:38250 usb_conn_therm:35534
+11-12 06:14:26.436  1749  1757 I pixel-thermal: soc_therm:38.25 raw data: soc_therm:38250
+11-12 06:14:26.436  1749  1757 I pixel-thermal: VIRTUAL-SKIN-HINT:38.0634 raw data: VIRTUAL-SKIN:38063.4 VIRTUAL-SKIN-HINT:38063.4
+11-12 06:14:26.436  1749  1757 I pixel-thermal: VIRTUAL-SKIN-CPU-MID:38.0634 raw data: VIRTUAL-SKIN:38063.4 VIRTUAL-SKIN-CPU-MID:38063.4
+11-12 06:14:26.437  1749  1757 I pixel-thermal: VIRTUAL-SKIN-CPU-HIGH:38.0634 raw data: VIRTUAL-SKIN:38063.4 VIRTUAL-SKIN-CPU-HIGH:38063.4
+11-12 06:14:26.437  1749  1757 I pixel-thermal: VIRTUAL-SKIN-SOC:38.0634 raw data: VIRTUAL-SKIN:38063.4 VIRTUAL-SKIN-SOC:38063.4
+11-12 06:14:26.437  1749  1757 I pixel-thermal: VIRTUAL-SKIN-SOC power_budget=2880.98 err=6.9366 s_power=800 time_elapsed_ms=7025 p=2080.98 i=0 d=-0 dt_per_min=nan compensation=0 budget transient=0 control target=3 excluded power budget=0
+11-12 06:14:26.437  1749  1757 I pixel-thermal: VIRTUAL-SKIN-SOC binded power rails: (S4M_VDD_CPUCL0: 303.85 mW)(S3M_VDD_CPUCL1: 194.71 mW)(S2S_VDD_G3D: 31.83 mW)(S7M_VDD_TPU: 0.00 mW)(S2M_VDD_CPUCL2: 1236.94 mW)
+11-12 06:14:26.437  1749  1757 I pixel-thermal: cellular-emergency:38.0634 raw data: VIRTUAL-SKIN:38063.4 cellular-emergency:38063.4
+11-12 06:14:26.437  1749  1757 I pixel-thermal: VIRTUAL-SKIN-CPU-LIGHT-ODPM:38.0634 raw data: VIRTUAL-SKIN:38063.4 VIRTUAL-SKIN-CPU-LIGHT-ODPM:38063.4
+11-12 06:14:26.437  1749  1757 I pixel-thermal: VIRTUAL-SKIN-CPU-LIGHT-ODPM power_budget=1411.96 err=0.9366 s_power=800 time_elapsed_ms=7025 p=374.64 i=237.316 d=-0 dt_per_min=nan compensation=0 budget transient=0 control target=2 excluded power budget=0
+11-12 06:14:26.437  1749  1757 I pixel-thermal: VIRTUAL-SKIN-CPU-LIGHT-ODPM binded power rails: (S4M_VDD_CPUCL0: 303.85 mW)(S3M_VDD_CPUCL1: 194.71 mW)(S2M_VDD_CPUCL2: 1236.94 mW)
+11-12 06:14:26.437  1749  1757 I pixel-thermal: VIRTUAL-SKIN-GPU:38.0634 raw data: VIRTUAL-SKIN:38063.4 VIRTUAL-SKIN-GPU:38063.4
+11-12 06:14:26.438  1749  1757 I pixel-thermal: Successfully update cdev thermal-cpufreq-2 sysfs to 5
+11-12 06:14:26.445  1388  1388 I CanvasMapInput: delivered action=2 count=1 ids=[0] elapsed=269
+11-12 06:14:26.451  1388  1404 I CanvasMapInput: action=2 pointers=1 elapsedMs=1
+11-12 06:14:26.462  1388  1388 I CanvasMapInput: delivered action=2 count=1 ids=[0] elapsed=285
+11-12 06:14:26.468  1388  1404 I CanvasMapInput: action=2 pointers=1 elapsedMs=1
+11-12 06:14:26.479  1388  1388 I CanvasMapInput: delivered action=2 count=1 ids=[0] elapsed=302
+11-12 06:14:26.486  1388  1404 I CanvasMapInput: action=2 pointers=1 elapsedMs=2
+11-12 06:14:26.495  1388  1388 I CanvasMapInput: delivered action=2 count=1 ids=[0] elapsed=319
+11-12 06:14:26.504  1388  1404 I CanvasMapInput: action=2 pointers=1 elapsedMs=2
+11-12 06:14:26.512  1388  1388 I CanvasMapInput: delivered action=2 count=1 ids=[0] elapsed=336
+11-12 06:14:26.523  1388  1404 I CanvasMapInput: action=2 pointers=1 elapsedMs=2
+11-12 06:14:26.529  1388  1388 I CanvasMapInput: delivered action=2 count=1 ids=[0] elapsed=352
+11-12 06:14:26.543  1388  1404 I CanvasMapInput: action=2 pointers=1 elapsedMs=2
+11-12 06:14:26.546  1388  1388 I CanvasMapInput: delivered action=2 count=1 ids=[0] elapsed=369
+11-12 06:14:26.561  1388  1404 I CanvasMapInput: action=2 pointers=1 elapsedMs=2
+11-12 06:14:26.571  1388  1388 I CanvasMapInput: delivered action=2 count=1 ids=[0] elapsed=394
+11-12 06:14:26.580  1388  1404 I CanvasMapInput: action=2 pointers=1 elapsedMs=2
+11-12 06:14:26.587  1388  1388 I CanvasMapInput: delivered action=2 count=1 ids=[0] elapsed=411
+11-12 06:14:26.599  1388  1404 I CanvasMapInput: action=2 pointers=1 elapsedMs=2
+11-12 06:14:26.604  1388  1388 I CanvasMapInput: delivered action=2 count=1 ids=[0] elapsed=427
+11-12 06:14:26.617  1388  1404 I CanvasMapInput: action=2 pointers=1 elapsedMs=1
+11-12 06:14:26.621  1388  1388 I CanvasMapInput: delivered action=2 count=1 ids=[0] elapsed=444
+11-12 06:14:26.636  1388  1404 I CanvasMapInput: action=2 pointers=1 elapsedMs=2
+11-12 06:14:26.646  1388  1388 I CanvasMapInput: delivered action=2 count=1 ids=[0] elapsed=469
+11-12 06:14:26.655  1388  1404 I CanvasMapInput: action=2 pointers=1 elapsedMs=1
+11-12 06:14:26.663  1388  1388 I CanvasMapInput: delivered action=2 count=1 ids=[0] elapsed=486
+11-12 06:14:26.672  1388  1404 I CanvasMapInput: action=2 pointers=1 elapsedMs=1
+11-12 06:14:26.679  1388  1388 I CanvasMapInput: delivered action=2 count=1 ids=[0] elapsed=503
+11-12 06:14:26.690  1388  1404 I CanvasMapInput: action=2 pointers=1 elapsedMs=2
+11-12 06:14:26.696  1388  1388 I CanvasMapInput: delivered action=2 count=1 ids=[0] elapsed=519
+11-12 06:14:26.709  1388  1404 I CanvasMapInput: action=2 pointers=1 elapsedMs=2
+11-12 06:14:26.713  1388  1388 I CanvasMapInput: delivered action=2 count=1 ids=[0] elapsed=536
+11-12 06:14:26.728  1388  1404 I CanvasMapInput: action=2 pointers=1 elapsedMs=2
+11-12 06:14:26.738  1388  1388 I CanvasMapInput: delivered action=2 count=1 ids=[0] elapsed=561
+11-12 06:14:26.746  2365  2552 D SatelliteController: iisInCarrierRoamingNbIotNtn: satellite is disabled
+11-12 06:14:26.746  1388  1404 I CanvasMapInput: action=2 pointers=1 elapsedMs=2
+11-12 06:14:26.747  2365  2552 D SatelliteController: getCarrierRoamingNtnConnectType: Falling back to global carrier config connect type: 0
+11-12 06:14:26.755  1388  1388 I CanvasMapInput: delivered action=2 count=1 ids=[0] elapsed=578
+11-12 06:14:26.765  1388  1404 I CanvasMapInput: action=2 pointers=1 elapsedMs=2
+11-12 06:14:26.771  1388  1388 I CanvasMapInput: delivered action=2 count=1 ids=[0] elapsed=595
+11-12 06:14:26.783  1388  1388 I CanvasMapInput: delivered action=1 count=1 ids=[0] elapsed=611
+11-12 06:14:26.789  1388  1404 I CanvasMapInput: action=1 pointers=1 elapsedMs=7
+11-12 06:14:27.764   987  1077 I WifiHAL : Creating message to get link statistics; iface = 47
+11-12 06:14:27.808   987  4906 I WifiHAL : Getting cached scan results, iface handle = 0xb4000075e009a050
+11-12 06:14:27.808   987  4906 E WifiHAL : Creating message to get cached scan results
+11-12 06:14:27.809  1003  1051 I shamp   : Got File message request
+11-12 06:14:27.809  1003  1051 I shamp   : Got File write request
+11-12 06:14:27.809  1003  1051 I shamp   : file dir: 2 and name: dds.bin
+11-12 06:14:27.809  1003  1051 I shamp   : offset: 0x0, size: 0x10000
+11-12 06:14:27.809  1003  1051 I shamp   : prefix: /mnt/vendor/modem_userdata/replay/
+11-12 06:14:27.809  1003  1051 I shamp   : file_name: dds.bin
+11-12 06:14:27.809  1003  1051 I shamp   : Handle file write operation to path: /mnt/vendor/modem_userdata/replay/dds.bin for offset: 0x0 (total: 0x10000)
+11-12 06:14:27.810  1003  1051 I shamp   : size: 0x4000
+11-12 06:14:27.814   987  4906 I WifiHAL : In GetCachedScanResultsCommand::handleResponse
+11-12 06:14:27.823  1003  1051 I shamp   : Got File message request
+11-12 06:14:27.824  1003  1051 I shamp   : Got File write request
+11-12 06:14:27.824  1003  1051 I shamp   : file dir: 2 and name: dds.bin
+11-12 06:14:27.824  1003  1051 I shamp   : offset: 0x4000, size: 0x10000
+11-12 06:14:27.824  1003  1051 I shamp   : prefix: /mnt/vendor/modem_userdata/replay/
+11-12 06:14:27.824  1003  1051 I shamp   : file_name: dds.bin
+11-12 06:14:27.824  1003  1051 I shamp   : Handle file write operation to path: /mnt/vendor/modem_userdata/replay/dds.bin for offset: 0x4000 (total: 0x10000)
+11-12 06:14:27.824  1003  1051 I shamp   : size: 0x4000
+11-12 06:14:27.832  1450  1932 D WifiClientModeImpl[160565:wlan0]: updateLinkLayerStatsRssiSpeedFrequencyCapabilities rssi=-42 TxLinkspeed=1200 freq=5200 RxLinkSpeed=1200
+11-12 06:14:27.832  1450  1932 D WifiDataStall: tx tput in kbps: 1073203
+11-12 06:14:27.832  1450  1932 D WifiDataStall: rx tput in kbps: 1129687
+11-12 06:14:27.832  1450  1932 V WifiConfigManager: Updating scan detail cache freq=5200 BSSID=7a:96:99:18:18:8b RSSI=-41 for "LukeSkyRouter"WPA_PSK
+11-12 06:14:27.832  1450  1932 D WifiDataStall:  use default cca Level
+11-12 06:14:27.832  1450  1932 D WifiDataStall:  ccaLevel = 15
+11-12 06:14:27.832  1450  1932 D WifiDataStall: L2 txTputKbps: 1073203, rxTputKbps: 1129687, L3 txTputKbps: 0, rxTputKbps: 18, TxTrafficHigh: false, RxTrafficHigh: false, Throughput Sufficient: true
+11-12 06:14:27.832  1450  1932 D WifiThroughputPredictor:  utilization (LLS) -1 isBluetoothConnected: false final utilization: 15
+11-12 06:14:27.833  1450  1932 D WifiThroughputPredictor:  BW: 2 RSSI: -42 Nss: 2 Mode: 6 symDur: 13600 snrDb 32 bitPerTone: 8333 rate: 1200 throughput: 1129
+11-12 06:14:27.833  1450  1932 D WifiThroughputPredictor:  utilization (LLS) -1 isBluetoothConnected: false final utilization: 15
+11-12 06:14:27.833  1450  1932 D WifiThroughputPredictor:  BW: 2 RSSI: -42 Nss: 2 Mode: 6 symDur: 13600 snrDb 32 bitPerTone: 8333 rate: 1200 throughput: 1129
+11-12 06:14:27.833  1003  1051 I shamp   : Got File message request
+11-12 06:14:27.833  1003  1051 I shamp   : Got File write request
+11-12 06:14:27.833  1003  1051 I shamp   : file dir: 2 and name: dds.bin
+11-12 06:14:27.833  1003  1051 I shamp   : offset: 0x8000, size: 0x10000
+11-12 06:14:27.833  1003  1051 I shamp   : prefix: /mnt/vendor/modem_userdata/replay/
+11-12 06:14:27.833  1003  1051 I shamp   : file_name: dds.bin
+11-12 06:14:27.833  1003  1051 I shamp   : Handle file write operation to path: /mnt/vendor/modem_userdata/replay/dds.bin for offset: 0x8000 (total: 0x10000)
+11-12 06:14:27.833  1003  1051 I shamp   : size: 0x4000
+11-12 06:14:27.836   987  4906 D WifiHAL : Start debug command: mType GET_FEATURE
+11-12 06:14:27.836   987  4906 I WifiHAL : CreateRequest mType = GET_FEATURE
+11-12 06:14:27.836   987  4906 D WifiHAL : In DebugCommand::handleResponse, mType:GET_FEATURE
+11-12 06:14:27.836   987  4906 D WifiHAL : len = 4, expected len = 4
+11-12 06:14:27.837  1450  1932 I HalDevMgr: bestIfaceCreationProposal is null, requestIface=STA, existingIface=[name=wlan0 type=STA]
+11-12 06:14:27.838  1450  1932 D WifiScoreCard: BSSID update SIGNAL_POLL ID: 300630434 SSID: "LukeSkyRouter", BSSID: 7a:96:99:18:18:8b, MAC: 9e:ac:31:50:a6:ce, IP: /192.168.8.170, Security type: 2, Supplicant state: COMPLETED, Wi-Fi standard: 11ax, RSSI: -42, Link speed: 1200Mbps, Tx Link speed: 1200Mbps, Max Supported Tx Link speed: 1200Mbps, Rx Link speed: 1200Mbps, Max Supported Rx Link speed: 1200Mbps, Frequency: 5200MHz, Net ID: 0, Metered hint: false, score: 88, isUsable: true, CarrierMerged: false, SubscriptionId: -1, IsPrimary: 1, Trusted: true, Restricted: false, Ephemeral: false, OEM paid: false, OEM private: false, OSU AP: false, FQDN: <none>, Provider friendly name: <none>, Requesting package name: <none>"LukeSkyRouter"wpa2-pskMLO Information: , Is TID-To-Link negotiation supported by the AP: false, AP MLD Address: <none>, AP MLO Link Id: <none>, AP MLO Affiliated links: <none>, Vendor Data: <none>
+11-12 06:14:27.838  1450  1932 D WifiScoreCard: txRate: 1 txSpeed: 1200
+11-12 06:14:27.838  1450  1932 D WifiScoreCard: network update SIGNAL_POLL "LukeSkyRouter" ID: 169407839 RSSI -42 txSpeed -1
+11-12 06:14:27.838  1450  1932 D WifiClientModeImpl[160565:wlan0]:  ClientModeImpl$L2ConnectedState screen=on 22 0 "LukeSkyRouter" 7a:96:99:18:18:8b rssi=-42 f=5200 sc=88 link=1200 tx=0.1, 0.0, 0.0 rx=1.0 bcn=14779605 [on:107 tx:0 rx:0 period:3076] from screen [on:75232021 period:1045208637] score=88
+11-12 06:14:27.843  1003  1051 I shamp   : Got File message request
+11-12 06:14:27.843  1003  1051 I shamp   : Got File write request
+11-12 06:14:27.843  1003  1051 I shamp   : file dir: 2 and name: dds.bin
+11-12 06:14:27.843  1003  1051 I shamp   : offset: 0xC000, size: 0x10000
+11-12 06:14:27.844  1003  1051 I shamp   : prefix: /mnt/vendor/modem_userdata/replay/
+11-12 06:14:27.844  1003  1051 I shamp   : file_name: dds.bin
+11-12 06:14:27.844  1003  1051 I shamp   : Handle file write operation to path: /mnt/vendor/modem_userdata/replay/dds.bin for offset: 0xC000 (total: 0x10000)
+11-12 06:14:27.844  1003  1051 I shamp   : size: 0x4000
+11-12 06:14:27.869  1003  1051 E shamp   : Moved file into target path
+11-12 06:14:27.896  1003  1051 I shamp   : Got File message request
+11-12 06:14:27.896  1003  1051 I shamp   : Got File write request
+11-12 06:14:27.896  1003  1051 I shamp   : file dir: 2 and name: dds.bin
+11-12 06:14:27.897  1003  1051 I shamp   : offset: 0x0, size: 0x10000
+11-12 06:14:27.897  1003  1051 I shamp   : prefix: /mnt/vendor/modem_userdata/replay/
+11-12 06:14:27.897  1003  1051 I shamp   : file_name: dds.bin
+11-12 06:14:27.897  1003  1051 I shamp   : Handle file write operation to path: /mnt/vendor/modem_userdata/replay/dds.bin for offset: 0x0 (total: 0x10000)
+11-12 06:14:27.897  1003  1051 I shamp   : size: 0x4000
+11-12 06:14:27.918  1003  1051 I shamp   : Got File message request
+11-12 06:14:27.918  1003  1051 I shamp   : Got File write request
+11-12 06:14:27.918  1003  1051 I shamp   : file dir: 2 and name: dds.bin
+11-12 06:14:27.918  1003  1051 I shamp   : offset: 0x4000, size: 0x10000
+11-12 06:14:27.918  1003  1051 I shamp   : prefix: /mnt/vendor/modem_userdata/replay/
+11-12 06:14:27.918  1003  1051 I shamp   : file_name: dds.bin
+11-12 06:14:27.918  1003  1051 I shamp   : Handle file write operation to path: /mnt/vendor/modem_userdata/replay/dds.bin for offset: 0x4000 (total: 0x10000)
+11-12 06:14:27.918  1003  1051 I shamp   : size: 0x4000
+11-12 06:14:27.929  1003  1051 I shamp   : Got File message request
+11-12 06:14:27.929  1003  1051 I shamp   : Got File write request
+11-12 06:14:27.929  1003  1051 I shamp   : file dir: 2 and name: dds.bin
+11-12 06:14:27.929  1003  1051 I shamp   : offset: 0x8000, size: 0x10000
+11-12 06:14:27.929  1003  1051 I shamp   : prefix: /mnt/vendor/modem_userdata/replay/
+11-12 06:14:27.929  1003  1051 I shamp   : file_name: dds.bin
+11-12 06:14:27.929  1003  1051 I shamp   : Handle file write operation to path: /mnt/vendor/modem_userdata/replay/dds.bin for offset: 0x8000 (total: 0x10000)
+11-12 06:14:27.929  1003  1051 I shamp   : size: 0x4000
+11-12 06:14:27.940  1003  1051 I shamp   : Got File message request
+11-12 06:14:27.940  1003  1051 I shamp   : Got File write request
+11-12 06:14:27.940  1003  1051 I shamp   : file dir: 2 and name: dds.bin
+11-12 06:14:27.940  1003  1051 I shamp   : offset: 0xC000, size: 0x10000
+11-12 06:14:27.940  1003  1051 I shamp   : prefix: /mnt/vendor/modem_userdata/replay/
+11-12 06:14:27.940  1003  1051 I shamp   : file_name: dds.bin
+11-12 06:14:27.940  1003  1051 I shamp   : Handle file write operation to path: /mnt/vendor/modem_userdata/replay/dds.bin for offset: 0xC000 (total: 0x10000)
+11-12 06:14:27.941  1003  1051 I shamp   : size: 0x4000
+11-12 06:14:27.972  1003  1051 E shamp   : Moved file into target path
+11-12 06:14:28.008  1003  1051 I shamp   : Got File message request
+11-12 06:14:28.008  1003  1051 I shamp   : Got File write request
+11-12 06:14:28.008  1003  1051 I shamp   : file dir: 2 and name: dds.bin
+11-12 06:14:28.009  1003  1051 I shamp   : offset: 0x0, size: 0x10000
+11-12 06:14:28.009  1003  1051 I shamp   : prefix: /mnt/vendor/modem_userdata/replay/
+11-12 06:14:28.009  1003  1051 I shamp   : file_name: dds.bin
+11-12 06:14:28.009  1003  1051 I shamp   : Handle file write operation to path: /mnt/vendor/modem_userdata/replay/dds.bin for offset: 0x0 (total: 0x10000)
+11-12 06:14:28.010  1003  1051 I shamp   : size: 0x4000
+11-12 06:14:28.022  1003  1051 I shamp   : Got File message request
+11-12 06:14:28.022  1003  1051 I shamp   : Got File write request
+11-12 06:14:28.022  1003  1051 I shamp   : file dir: 2 and name: dds.bin
+11-12 06:14:28.022  1003  1051 I shamp   : offset: 0x4000, size: 0x10000
+11-12 06:14:28.022  1003  1051 I shamp   : prefix: /mnt/vendor/modem_userdata/replay/
+11-12 06:14:28.022  1003  1051 I shamp   : file_name: dds.bin
+11-12 06:14:28.023  1003  1051 I shamp   : Handle file write operation to path: /mnt/vendor/modem_userdata/replay/dds.bin for offset: 0x4000 (total: 0x10000)
+11-12 06:14:28.023  1003  1051 I shamp   : size: 0x4000
+11-12 06:14:28.037  1003  1051 I shamp   : Got File message request
+11-12 06:14:28.037  1003  1051 I shamp   : Got File write request
+11-12 06:14:28.037  1003  1051 I shamp   : file dir: 2 and name: dds.bin
+11-12 06:14:28.038  1003  1051 I shamp   : offset: 0x8000, size: 0x10000
+11-12 06:14:28.038  1003  1051 I shamp   : prefix: /mnt/vendor/modem_userdata/replay/
+11-12 06:14:28.038  1003  1051 I shamp   : file_name: dds.bin
+11-12 06:14:28.038  1003  1051 I shamp   : Handle file write operation to path: /mnt/vendor/modem_userdata/replay/dds.bin for offset: 0x8000 (total: 0x10000)
+11-12 06:14:28.038  1003  1051 I shamp   : size: 0x4000
+11-12 06:14:28.048  1003  1051 I shamp   : Got File message request
+11-12 06:14:28.048  1003  1051 I shamp   : Got File write request
+11-12 06:14:28.048  1003  1051 I shamp   : file dir: 2 and name: dds.bin
+11-12 06:14:28.048  1003  1051 I shamp   : offset: 0xC000, size: 0x10000
+11-12 06:14:28.048  1003  1051 I shamp   : prefix: /mnt/vendor/modem_userdata/replay/
+11-12 06:14:28.048  1003  1051 I shamp   : file_name: dds.bin
+11-12 06:14:28.048  1003  1051 I shamp   : Handle file write operation to path: /mnt/vendor/modem_userdata/replay/dds.bin for offset: 0xC000 (total: 0x10000)
+11-12 06:14:28.048  1003  1051 I shamp   : size: 0x4000
+11-12 06:14:28.075  1003  1051 E shamp   : Moved file into target path
+11-12 06:14:28.110  1388  1388 I CanvasMapProbe: {"step":"body-scroll-fixture","scrollHeight":1203,"contentHeight":1923,"childCount":6,"canScroll":true}
+11-12 06:14:28.121  1388  1404 I CanvasMapInput: action=0 pointers=1 elapsedMs=10
+11-12 06:14:28.121  1388  1388 I CanvasMapInput: delivered action=0 count=1 ids=[0] elapsed=0
+11-12 06:14:28.122  1388  1404 I CanvasMapInput: action=2 pointers=1 elapsedMs=0
+11-12 06:14:28.133  1388  1388 I CanvasMapInput: delivered action=2 count=1 ids=[0] elapsed=15
+11-12 06:14:28.141  1388  1404 I CanvasMapInput: action=2 pointers=1 elapsedMs=2
+11-12 06:14:28.150  1388  1388 I CanvasMapInput: delivered action=2 count=1 ids=[0] elapsed=33
+11-12 06:14:28.161  1388  1404 I CanvasMapInput: action=2 pointers=1 elapsedMs=3
+11-12 06:14:28.167  1388  1388 I CanvasMapInput: delivered action=2 count=1 ids=[0] elapsed=50
+11-12 06:14:28.180  1388  1404 I CanvasMapInput: action=2 pointers=1 elapsedMs=2
+11-12 06:14:28.183  1388  1388 I CanvasMapInput: delivered action=2 count=1 ids=[0] elapsed=67
+11-12 06:14:28.198  1388  1404 I CanvasMapInput: action=2 pointers=1 elapsedMs=1
+11-12 06:14:28.208  1388  1388 I CanvasMapInput: delivered action=2 count=1 ids=[0] elapsed=92
+11-12 06:14:28.217  1388  1404 I CanvasMapInput: action=2 pointers=1 elapsedMs=2
+11-12 06:14:28.225  1388  1388 I CanvasMapInput: delivered action=2 count=1 ids=[0] elapsed=108
+11-12 06:14:28.236  1388  1404 I CanvasMapInput: action=2 pointers=1 elapsedMs=2
+11-12 06:14:28.242  1388  1388 I CanvasMapInput: delivered action=2 count=1 ids=[0] elapsed=125
+11-12 06:14:28.255  1388  1404 I CanvasMapInput: action=2 pointers=1 elapsedMs=2
+11-12 06:14:28.258  1388  1388 I CanvasMapInput: delivered action=2 count=1 ids=[0] elapsed=142
+11-12 06:14:28.273  1388  1404 I CanvasMapInput: action=2 pointers=1 elapsedMs=1
+11-12 06:14:28.283  1388  1388 I CanvasMapInput: delivered action=2 count=1 ids=[0] elapsed=167
+11-12 06:14:28.292  1388  1404 I CanvasMapInput: action=2 pointers=1 elapsedMs=2
+11-12 06:14:28.300  1388  1388 I CanvasMapInput: delivered action=2 count=1 ids=[0] elapsed=183
+11-12 06:14:28.310  1388  1404 I CanvasMapInput: action=2 pointers=1 elapsedMs=1
+11-12 06:14:28.317  1388  1388 I CanvasMapInput: delivered action=2 count=1 ids=[0] elapsed=200
+11-12 06:14:28.328  1388  1404 I CanvasMapInput: action=2 pointers=1 elapsedMs=2
+11-12 06:14:28.333  1388  1388 I CanvasMapInput: delivered action=2 count=1 ids=[0] elapsed=217
+11-12 06:14:28.347  1388  1404 I CanvasMapInput: action=2 pointers=1 elapsedMs=2
+11-12 06:14:28.350  1388  1388 I CanvasMapInput: delivered action=2 count=1 ids=[0] elapsed=234
+11-12 06:14:28.365  1388  1404 I CanvasMapInput: action=2 pointers=1 elapsedMs=2
+11-12 06:14:28.375  1388  1388 I CanvasMapInput: delivered action=2 count=1 ids=[0] elapsed=259
+11-12 06:14:28.384  1388  1404 I CanvasMapInput: action=2 pointers=1 elapsedMs=2
+11-12 06:14:28.392  1388  1388 I CanvasMapInput: delivered action=2 count=1 ids=[0] elapsed=275
+11-12 06:14:28.402  1388  1404 I CanvasMapInput: action=2 pointers=1 elapsedMs=1
+11-12 06:14:28.409  1388  1388 I CanvasMapInput: delivered action=2 count=1 ids=[0] elapsed=292
+11-12 06:14:28.421  1388  1404 I CanvasMapInput: action=2 pointers=1 elapsedMs=2
+11-12 06:14:28.425  1388  1388 I CanvasMapInput: delivered action=2 count=1 ids=[0] elapsed=309
+11-12 06:14:28.439  1388  1404 I CanvasMapInput: action=2 pointers=1 elapsedMs=1
+11-12 06:14:28.451  1388  1388 I CanvasMapInput: delivered action=2 count=1 ids=[0] elapsed=334
+11-12 06:14:28.459  1388  1404 I CanvasMapInput: action=2 pointers=1 elapsedMs=1
+11-12 06:14:28.467  1388  1388 I CanvasMapInput: delivered action=2 count=1 ids=[0] elapsed=351
+11-12 06:14:28.477  1388  1404 I CanvasMapInput: action=2 pointers=1 elapsedMs=2
+11-12 06:14:28.484  1388  1388 I CanvasMapInput: delivered action=2 count=1 ids=[0] elapsed=367
+11-12 06:14:28.496  1388  1404 I CanvasMapInput: action=2 pointers=1 elapsedMs=2
+11-12 06:14:28.501  1388  1388 I CanvasMapInput: delivered action=2 count=1 ids=[0] elapsed=384
+11-12 06:14:28.515  1388  1404 I CanvasMapInput: action=2 pointers=1 elapsedMs=2
+11-12 06:14:28.526  1388  1388 I CanvasMapInput: delivered action=2 count=1 ids=[0] elapsed=409
+11-12 06:14:28.535  1388  1404 I CanvasMapInput: action=2 pointers=1 elapsedMs=3
+11-12 06:14:28.542  1388  1388 I CanvasMapInput: delivered action=2 count=1 ids=[0] elapsed=426
+11-12 06:14:28.552  1388  1404 I CanvasMapInput: action=2 pointers=1 elapsedMs=1
+11-12 06:14:28.559  1388  1388 I CanvasMapInput: delivered action=2 count=1 ids=[0] elapsed=442
+11-12 06:14:28.573  1388  1388 I CanvasMapInput: delivered action=1 count=1 ids=[0] elapsed=460
+11-12 06:14:28.586  1388  1404 I CanvasMapInput: action=1 pointers=1 elapsedMs=15
+11-12 06:14:29.588  1388  1404 I CanvasMapProbe: {"step":"body-scroll-result","before":0,"after":557,"snap":2}
+11-12 06:14:29.590  1388  1388 I CanvasMapProbe: {"step":"panel-half-before-canvas-pan","viewIdentity":91816241,"mapIdentity":264806422,"latitude":41.419908442068134,"longitude":2.13456043290995,"zoom":12.915181159973145,"zoomGesturesEnabled":true,"width":1080,"height":2400,"hillshade":[{"id":"goway:relief:hillshade","shadow":["rgba(6.000000476837158,11,22,1)"],"highlight":["rgba(93,115.00000762939453,144,1)"]}],"handleY":840,"handleHeight":126,"handleValue":"{\"text\":\"Expanded\",\"min\":0,\"now\":2,\"max\":2}","chrome":[{"id":"map-credit","x":891,"y":693,"width":168,"height":136,"visibleRect":"[891,693][1059,829]","globalVisible":true,"shown":true},{"id":"map-credit-toggle","x":912,"y":698,"width":126,"height":126,"visibleRect":"[912,698][1038,824]","globalVisible":true,"shown":true},{"id":"map-scale","x":21,"y":605,"width":412,"height":77,"visibleRect":"[21,605][433,682]","globalVisible":true,"shown":true}],"imeVisible":false}
+11-12 06:14:29.956  1388  1388 I Choreographer: Skipped 43 frames!  The application may be doing too much work on its main thread.
+11-12 06:14:29.974  1388  1404 I CanvasMapInput: action=0 pointers=1 elapsedMs=9
+11-12 06:14:29.975  1388  1388 I CanvasMapInput: delivered action=0 count=1 ids=[0] elapsed=0
+11-12 06:14:29.976  1388  1404 I CanvasMapInput: action=2 pointers=1 elapsedMs=2
+11-12 06:14:29.980  1388  1388 I CanvasMapInput: delivered action=2 count=1 ids=[0] elapsed=9
+11-12 06:14:29.994  1388  1404 I CanvasMapInput: action=2 pointers=1 elapsedMs=2
+11-12 06:14:30.005  1388  1388 I CanvasMapInput: delivered action=2 count=1 ids=[0] elapsed=34
+11-12 06:14:30.013  1388  1404 I CanvasMapInput: action=2 pointers=1 elapsedMs=2
+11-12 06:14:30.021  1388  1388 I CanvasMapInput: delivered action=2 count=1 ids=[0] elapsed=50
+11-12 06:14:30.032  1388  1404 I CanvasMapInput: action=2 pointers=1 elapsedMs=2
+11-12 06:14:30.038  1388  1388 I CanvasMapInput: delivered action=2 count=1 ids=[0] elapsed=67
+11-12 06:14:30.051  1388  1404 I CanvasMapInput: action=2 pointers=1 elapsedMs=1
+11-12 06:14:30.054  1388  1388 I CanvasMapInput: delivered action=2 count=1 ids=[0] elapsed=84
+11-12 06:14:30.069  1388  1404 I CanvasMapInput: action=2 pointers=1 elapsedMs=2
+11-12 06:14:30.080  1388  1388 I CanvasMapInput: delivered action=2 count=1 ids=[0] elapsed=109
+11-12 06:14:30.089  1388  1404 I CanvasMapInput: action=2 pointers=1 elapsedMs=3
+11-12 06:14:30.096  1388  1388 I CanvasMapInput: delivered action=2 count=1 ids=[0] elapsed=126
+11-12 06:14:30.108  1388  1404 I CanvasMapInput: action=2 pointers=1 elapsedMs=3
+11-12 06:14:30.113  1388  1388 I CanvasMapInput: delivered action=2 count=1 ids=[0] elapsed=142
+11-12 06:14:30.127  1388  1404 I CanvasMapInput: action=2 pointers=1 elapsedMs=2
+11-12 06:14:30.138  1388  1388 I CanvasMapInput: delivered action=2 count=1 ids=[0] elapsed=168
+11-12 06:14:30.146  1388  1404 I CanvasMapInput: action=2 pointers=1 elapsedMs=2
+11-12 06:14:30.155  1388  1388 I CanvasMapInput: delivered action=2 count=1 ids=[0] elapsed=184
+11-12 06:14:30.165  1388  1404 I CanvasMapInput: action=2 pointers=1 elapsedMs=2
+11-12 06:14:30.172  1388  1388 I CanvasMapInput: delivered action=2 count=1 ids=[0] elapsed=201
+11-12 06:14:30.183  1388  1404 I CanvasMapInput: action=2 pointers=1 elapsedMs=1
+11-12 06:14:30.188  1388  1388 I CanvasMapInput: delivered action=2 count=1 ids=[0] elapsed=218
+11-12 06:14:30.202  1388  1404 I CanvasMapInput: action=2 pointers=1 elapsedMs=2
+11-12 06:14:30.213  1388  1388 I CanvasMapInput: delivered action=2 count=1 ids=[0] elapsed=243
+11-12 06:14:30.220  1388  1404 I CanvasMapInput: action=2 pointers=1 elapsedMs=1
+11-12 06:14:30.230  1388  1388 I CanvasMapInput: delivered action=2 count=1 ids=[0] elapsed=259
+11-12 06:14:30.239  1388  1404 I CanvasMapInput: action=2 pointers=1 elapsedMs=2
+11-12 06:14:30.247  1388  1388 I CanvasMapInput: delivered action=2 count=1 ids=[0] elapsed=276
+11-12 06:14:30.257  1388  1404 I CanvasMapInput: action=2 pointers=1 elapsedMs=2
+11-12 06:14:30.264  1388  1388 I CanvasMapInput: delivered action=2 count=1 ids=[0] elapsed=293
+11-12 06:14:30.274  1388  1404 I CanvasMapInput: action=2 pointers=1 elapsedMs=1
+11-12 06:14:30.280  1388  1388 I CanvasMapInput: delivered action=2 count=1 ids=[0] elapsed=310
+11-12 06:14:30.292  1388  1404 I CanvasMapInput: action=2 pointers=1 elapsedMs=1
+11-12 06:14:30.297  1388  1388 I CanvasMapInput: delivered action=2 count=1 ids=[0] elapsed=326
+11-12 06:14:30.311  1388  1404 I CanvasMapInput: action=2 pointers=1 elapsedMs=2
+11-12 06:14:30.322  1388  1388 I CanvasMapInput: delivered action=2 count=1 ids=[0] elapsed=351
+11-12 06:14:30.330  1388  1404 I CanvasMapInput: action=2 pointers=1 elapsedMs=2
+11-12 06:14:30.339  1388  1388 I CanvasMapInput: delivered action=2 count=1 ids=[0] elapsed=368
+11-12 06:14:30.351  1388  1404 I CanvasMapInput: action=2 pointers=1 elapsedMs=3
+11-12 06:14:30.355  1388  1388 I CanvasMapInput: delivered action=2 count=1 ids=[0] elapsed=385
+11-12 06:14:30.370  1388  1404 I CanvasMapInput: action=2 pointers=1 elapsedMs=2
+11-12 06:14:30.381  1388  1388 I CanvasMapInput: delivered action=2 count=1 ids=[0] elapsed=403
+11-12 06:14:30.388  1388  1404 I CanvasMapInput: action=2 pointers=1 elapsedMs=1
+11-12 06:14:30.397  1388  1388 I CanvasMapInput: delivered action=2 count=1 ids=[0] elapsed=427
+11-12 06:14:30.406  1388  1404 I CanvasMapInput: action=2 pointers=1 elapsedMs=1
+11-12 06:14:30.414  1388  1388 I CanvasMapInput: delivered action=2 count=1 ids=[0] elapsed=443
+11-12 06:14:30.426  1388  1388 I CanvasMapInput: delivered action=1 count=1 ids=[0] elapsed=458
+11-12 06:14:30.441  1388  1404 I CanvasMapInput: action=1 pointers=1 elapsedMs=18
+11-12 06:14:30.839   987  4906 I WifiHAL : Creating message to get link statistics; iface = 47
+11-12 06:14:30.863   987  1077 I WifiHAL : Getting cached scan results, iface handle = 0xb4000075e009a050
+11-12 06:14:30.863   987  1077 E WifiHAL : Creating message to get cached scan results
+11-12 06:14:30.865   987  1077 I WifiHAL : In GetCachedScanResultsCommand::handleResponse
+11-12 06:14:30.876  1450  1932 D WifiClientModeImpl[160565:wlan0]: updateLinkLayerStatsRssiSpeedFrequencyCapabilities rssi=-42 TxLinkspeed=1200 freq=5200 RxLinkSpeed=1200
+11-12 06:14:30.876  1450  1932 D WifiDataStall: tx tput in kbps: 1073203
+11-12 06:14:30.876  1450  1932 D WifiDataStall: rx tput in kbps: 1129687
+11-12 06:14:30.876  1450  1932 V WifiConfigManager: Updating scan detail cache freq=5200 BSSID=7a:96:99:18:18:8b RSSI=-41 for "LukeSkyRouter"WPA_PSK
+11-12 06:14:30.876  1450  1932 D WifiDataStall:  use default cca Level
+11-12 06:14:30.876  1450  1932 D WifiDataStall:  ccaLevel = 15
+11-12 06:14:30.876  1450  1932 D WifiDataStall: L2 txTputKbps: 1073203, rxTputKbps: 1129687, L3 txTputKbps: 1, rxTputKbps: 310, TxTrafficHigh: false, RxTrafficHigh: true, Throughput Sufficient: true
+11-12 06:14:30.877  1450  1932 D WifiThroughputPredictor:  utilization (LLS) -1 isBluetoothConnected: false final utilization: 15
+11-12 06:14:30.877  1450  1932 D WifiThroughputPredictor:  BW: 2 RSSI: -42 Nss: 2 Mode: 6 symDur: 13600 snrDb 32 bitPerTone: 8333 rate: 1200 throughput: 1129
+11-12 06:14:30.877  1450  1932 D WifiThroughputPredictor:  utilization (LLS) -1 isBluetoothConnected: false final utilization: 15
+11-12 06:14:30.877  1450  1932 D WifiThroughputPredictor:  BW: 2 RSSI: -42 Nss: 2 Mode: 6 symDur: 13600 snrDb 32 bitPerTone: 8333 rate: 1200 throughput: 1129
+11-12 06:14:30.880   987  1077 D WifiHAL : Start debug command: mType GET_FEATURE
+11-12 06:14:30.880   987  1077 I WifiHAL : CreateRequest mType = GET_FEATURE
+11-12 06:14:30.880   987  1077 D WifiHAL : In DebugCommand::handleResponse, mType:GET_FEATURE
+11-12 06:14:30.880   987  1077 D WifiHAL : len = 4, expected len = 4
+11-12 06:14:30.881  1450  1932 I HalDevMgr: bestIfaceCreationProposal is null, requestIface=STA, existingIface=[name=wlan0 type=STA]
+11-12 06:14:30.881  1450  1932 D WifiScoreCard: BSSID update SIGNAL_POLL ID: 300630434 SSID: "LukeSkyRouter", BSSID: 7a:96:99:18:18:8b, MAC: 9e:ac:31:50:a6:ce, IP: /192.168.8.170, Security type: 2, Supplicant state: COMPLETED, Wi-Fi standard: 11ax, RSSI: -42, Link speed: 1200Mbps, Tx Link speed: 1200Mbps, Max Supported Tx Link speed: 1200Mbps, Rx Link speed: 1200Mbps, Max Supported Rx Link speed: 1200Mbps, Frequency: 5200MHz, Net ID: 0, Metered hint: false, score: 88, isUsable: true, CarrierMerged: false, SubscriptionId: -1, IsPrimary: 1, Trusted: true, Restricted: false, Ephemeral: false, OEM paid: false, OEM private: false, OSU AP: false, FQDN: <none>, Provider friendly name: <none>, Requesting package name: <none>"LukeSkyRouter"wpa2-pskMLO Information: , Is TID-To-Link negotiation supported by the AP: false, AP MLD Address: <none>, AP MLO Link Id: <none>, AP MLO Affiliated links: <none>, Vendor Data: <none>
+11-12 06:14:30.881  1450  1932 D WifiScoreCard: txRate: 1 txSpeed: 1200
+11-12 06:14:30.881  1450  1932 D WifiScoreCard: network update SIGNAL_POLL "LukeSkyRouter" ID: 169407839 RSSI -42 txSpeed -1
+11-12 06:14:30.882  1450  1932 D WifiClientModeImpl[160565:wlan0]:  ClientModeImpl$L2ConnectedState screen=on 22 0 "LukeSkyRouter" 7a:96:99:18:18:8b rssi=-42 f=5200 sc=88 link=1200 tx=0.9, 0.0, 0.0 rx=19.3 bcn=14779635 [on:261 tx:0 rx:0 period:3044] from screen [on:75232282 period:1045211681] score=88
+11-12 06:14:31.643  1388  1388 I CanvasMapProbe: {"step":"panel-half-after-canvas-pan","viewIdentity":91816241,"mapIdentity":264806422,"latitude":41.4199084420191,"longitude":2.1269805124562424,"zoom":12.915181159973145,"zoomGesturesEnabled":true,"width":1080,"height":2400,"hillshade":[{"id":"goway:relief:hillshade","shadow":["rgba(6.000000476837158,11,22,1)"],"highlight":["rgba(93,115.00000762939453,144,1)"]}],"handleY":840,"handleHeight":126,"handleValue":"{\"text\":\"Expanded\",\"min\":0,\"now\":2,\"max\":2}","chrome":[{"id":"map-credit","x":891,"y":693,"width":168,"height":136,"visibleRect":"[891,693][1059,829]","globalVisible":true,"shown":true},{"id":"map-credit-toggle","x":912,"y":698,"width":126,"height":126,"visibleRect":"[912,698][1038,824]","globalVisible":true,"shown":true},{"id":"map-scale","x":21,"y":605,"width":412,"height":77,"visibleRect":"[21,605][433,682]","globalVisible":true,"shown":true}],"imeVisible":false}
+11-12 06:14:32.027  1388  1388 I Choreographer: Skipped 46 frames!  The application may be doing too much work on its main thread.
+11-12 06:14:32.029  1388  1404 I TestRunner: finished: realMapPanPinchDetentsAndKeyboard(to.goway.canvas663.CanvasMapProbeTest)

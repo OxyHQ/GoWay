@@ -1,0 +1,261 @@
+{
+  "platform": "Android",
+  "device": "Google Pixel 8a",
+  "os": "Android 16/API 36",
+  "serial": "43221JEKB12200",
+  "build": "isolated GoWay Canvas Lab",
+  "test": "CanvasMapProbeTest.legalTargets",
+  "requestedSnap": "expanded",
+  "keyboardOpened": true,
+  "result": "passed",
+  "probe": [
+    {
+      "step": "legal-start-2",
+      "width": 1080,
+      "height": 2400,
+      "imeVisible": true,
+      "handleY": 840,
+      "handleHeight": 126,
+      "handleValue": "{\"text\":\"Expanded\",\"min\":0,\"now\":2,\"max\":2}",
+      "chrome": [
+        {
+          "id": "map-credit",
+          "x": 891,
+          "y": 693,
+          "width": 168,
+          "height": 136,
+          "visibleRect": "[891,693][1059,829]",
+          "globalVisible": true,
+          "shown": true
+        },
+        {
+          "id": "map-credit-toggle",
+          "x": 912,
+          "y": 698,
+          "width": 126,
+          "height": 126,
+          "visibleRect": "[912,698][1038,824]",
+          "globalVisible": true,
+          "shown": true
+        },
+        {
+          "id": "map-scale",
+          "x": 21,
+          "y": 605,
+          "width": 288,
+          "height": 77,
+          "visibleRect": "[21,605][309,682]",
+          "globalVisible": true,
+          "shown": true
+        }
+      ]
+    },
+    {
+      "step": "legal-expanded",
+      "width": 1080,
+      "height": 2400,
+      "imeVisible": true,
+      "handleY": 977,
+      "handleHeight": 126,
+      "handleValue": "{\"text\":\"Expanded\",\"min\":0,\"now\":2,\"max\":2}",
+      "chrome": [
+        {
+          "id": "map-credit",
+          "x": 21,
+          "y": 693,
+          "width": 1038,
+          "height": 273,
+          "visibleRect": "[21,693][1059,966]",
+          "globalVisible": true,
+          "shown": true
+        },
+        {
+          "id": "map-credit-toggle",
+          "x": 912,
+          "y": 835,
+          "width": 126,
+          "height": 126,
+          "visibleRect": "[912,835][1038,961]",
+          "globalVisible": true,
+          "shown": true
+        },
+        {
+          "id": "map-scale",
+          "x": 21,
+          "y": 605,
+          "width": 288,
+          "height": 77,
+          "visibleRect": "[21,605][309,682]",
+          "globalVisible": true,
+          "shown": true
+        }
+      ]
+    }
+  ],
+  "samples": {
+    "count": 20,
+    "allActivated": true,
+    "items": [
+      {
+        "kind": "toggle",
+        "edge": "center",
+        "opened": true
+      },
+      {
+        "kind": "toggle",
+        "edge": "top",
+        "opened": true
+      },
+      {
+        "kind": "toggle",
+        "edge": "bottom",
+        "opened": true
+      },
+      {
+        "kind": "toggle",
+        "edge": "left",
+        "opened": true
+      },
+      {
+        "kind": "toggle",
+        "edge": "right",
+        "opened": true
+      },
+      {
+        "kind": "link",
+        "edge": "center",
+        "label": "© OpenMapTiles",
+        "activated": true,
+        "destinations": [
+          "https://www.openmaptiles.org/"
+        ]
+      },
+      {
+        "kind": "link",
+        "edge": "top",
+        "label": "© OpenMapTiles",
+        "activated": true,
+        "destinations": [
+          "https://www.openmaptiles.org/"
+        ]
+      },
+      {
+        "kind": "link",
+        "edge": "bottom",
+        "label": "© OpenMapTiles",
+        "activated": true,
+        "destinations": [
+          "https://www.openmaptiles.org/"
+        ]
+      },
+      {
+        "kind": "link",
+        "edge": "left",
+        "label": "© OpenMapTiles",
+        "activated": true,
+        "destinations": [
+          "https://www.openmaptiles.org/"
+        ]
+      },
+      {
+        "kind": "link",
+        "edge": "right",
+        "label": "© OpenMapTiles",
+        "activated": true,
+        "destinations": [
+          "https://www.openmaptiles.org/"
+        ]
+      },
+      {
+        "kind": "link",
+        "edge": "center",
+        "label": "© OpenStreetMap",
+        "activated": true,
+        "destinations": [
+          "https://www.openstreetmap.org/copyright"
+        ]
+      },
+      {
+        "kind": "link",
+        "edge": "top",
+        "label": "© OpenStreetMap",
+        "activated": true,
+        "destinations": [
+          "https://www.openstreetmap.org/copyright"
+        ]
+      },
+      {
+        "kind": "link",
+        "edge": "bottom",
+        "label": "© OpenStreetMap",
+        "activated": true,
+        "destinations": [
+          "https://www.openstreetmap.org/copyright"
+        ]
+      },
+      {
+        "kind": "link",
+        "edge": "left",
+        "label": "© OpenStreetMap",
+        "activated": true,
+        "destinations": [
+          "https://www.openstreetmap.org/copyright"
+        ]
+      },
+      {
+        "kind": "link",
+        "edge": "right",
+        "label": "© OpenStreetMap",
+        "activated": true,
+        "destinations": [
+          "https://www.openstreetmap.org/copyright"
+        ]
+      },
+      {
+        "kind": "link",
+        "edge": "center",
+        "label": "© Mapterhorn",
+        "activated": true,
+        "destinations": [
+          "https://goway.to/attribution#elevation"
+        ]
+      },
+      {
+        "kind": "link",
+        "edge": "top",
+        "label": "© Mapterhorn",
+        "activated": true,
+        "destinations": [
+          "https://goway.to/attribution#elevation"
+        ]
+      },
+      {
+        "kind": "link",
+        "edge": "bottom",
+        "label": "© Mapterhorn",
+        "activated": true,
+        "destinations": [
+          "https://goway.to/attribution#elevation"
+        ]
+      },
+      {
+        "kind": "link",
+        "edge": "left",
+        "label": "© Mapterhorn",
+        "activated": true,
+        "destinations": [
+          "https://goway.to/attribution#elevation"
+        ]
+      },
+      {
+        "kind": "link",
+        "edge": "right",
+        "label": "© Mapterhorn",
+        "activated": true,
+        "destinations": [
+          "https://goway.to/attribution#elevation"
+        ]
+      }
+    ]
+  }
+}

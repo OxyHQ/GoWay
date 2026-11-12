@@ -1,0 +1,46 @@
+{
+  "date": "2026-11-11",
+  "device": "Google Pixel 8a",
+  "android": "16 / API 36",
+  "serial": "43221JEKB12200",
+  "test": "connectedCanvasLabAndroidTest",
+  "runnerArguments": {
+    "fastPinch": "true",
+    "architectures": "arm64-v8a"
+  },
+  "result": "passed",
+  "tests": {
+    "total": 1,
+    "failed": 0,
+    "realMapPanPinchDetentsAndKeyboard": "passed with fastPinch=true; zoom 11 -> 12.9446; all 3 detents settled; handle drag expanded and returned to half; IME opened and closed; map and view identity retained"
+  },
+  "separateFullSuite": {
+    "tests": 2,
+    "failed": 0,
+    "legalTargets": "passed; all 19 edge samples activated",
+    "testSourceSha256": "bbb28167c48550b2b6cf39722c1a3c66ba63ddda77084eb7d39dfba1e40ec52a"
+  },
+  "baseline": {
+    "slowSyntheticPinch": "failed to change zoom on the same cleaned build; all detents and IME/Back completed before final pinch assertion",
+    "slowProfile": "40px initial half-span; 5px per move",
+    "fastProfile": "80px initial half-span; 12px per move"
+  },
+  "worktreeBase": "2e9a65ed430f7ea164051e2353219a8db4c08861",
+  "mapLibrePackage": "11.5.1-canvas663.2",
+  "mapLibreTarballSha256": "21a51e9d35c83e692dc6e07ba7c5ee3e54e6d04c3bc4bafdd7e83a2a91b8ad15",
+  "mapLibrePatchSha256": "2d3466b7b5c6cbe6e2aeef3d423a73ca2cec555a4a33c9d101408d34e1322450",
+  "apkSha256": "dfa22dbe17df9e23f24101115c265d9ebf1820e42a9ca8e52431a1c4206e31a1",
+  "probeSourceSha256": "acacb4c19248a916c80af425d7efbbb86df7e131bc56b876d4aa80aa91a4c071",
+  "logSha256": "2e66139a9f3279bff3546789995fe82afe95e2fdc36ec6b0ac2c50e69fdd2558",
+  "slowProfileLogSha256": "d2185e317060c4406fec2dc35ff475e7560c4fa078536e9e3ce6d4a49820ed10",
+  "legalTargetsSummarySha256": "17861c95705dd63b7ef9f9919c772253b4bb9fbeeab649f342bae202eee1c66c",
+  "productionBuild": false,
+  "physicalManualGesture": false,
+  "iosTested": false,
+  "interactionFollowUp": {
+    "probeSourceSha256": "2432cbc4fa1901f1a9162d2dee0246b4a6819ffc9a33f7d5ad6fbc638e984773",
+    "logSha256": "13c2a3da3f8902bafed3ee37d7bae02bd6ddef190f1471ef4813aac62b550b4c",
+    "result": "partial; panel Back closed to peek and retained map/view identity; no overflowing body content was available, so scroll arbitration was not verified",
+    "gradleRun": "failed at the scroll assertion because the live Explore content had no vertical overflow; map gestures, detents, handle drag, keyboard/IME, and panel Back observations were recorded before that assertion"
+  }
+}

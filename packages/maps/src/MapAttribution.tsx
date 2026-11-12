@@ -37,7 +37,7 @@
  * for exactly as long as it is drawn.
  */
 import { memo, useCallback, useEffect, useRef } from 'react';
-import { type LayoutChangeEvent, StyleSheet, View } from 'react-native';
+import { type LayoutChangeEvent, Platform, StyleSheet, View } from 'react-native';
 import { withTiming } from 'react-native-reanimated';
 import { localizedLabel } from '@goway.to/sdk/map';
 import { useBloomLocale } from '@oxy.so/bloom/locale';
@@ -61,6 +61,13 @@ import type { MapCreditDisclosure, MapCreditLink } from './types';
 const ATTRIBUTION_GAP = CREDIT_GAP;
 /** From the left edge when no mark is drawn there: the plate's own right inset. */
 const CREDIT_SIDE_INSET = 8;
+// Native hitSlop cannot extend through the clipped credit plate. Reserve the
+// complete target in layout so adjacent links never share invisible hit areas.
+const nativeCreditTarget = Platform.select({
+  android: { minHeight: 48, minWidth: 48 },
+  ios: { minHeight: 44, minWidth: 44 },
+  default: undefined,
+});
 
 /**
  * How much of the bottom-right the credit occupies above the bottom edge when
@@ -167,6 +174,8 @@ function MapAttributionComponent({
                   material="flat"
                   size="md"
                   key={`${link.label}|${link.href}`}
+                  style={nativeCreditTarget}
+                  hitSlop={nativeCreditTarget ? 0 : undefined}
                   href={link.href}
                   target="_blank"
                   accessibilityLabel={link.label}
@@ -187,6 +196,8 @@ function MapAttributionComponent({
             accessibilityLabel={
               shown.tag && disclosure ? `${disclosure.text}. ${toggleLabel}` : toggleLabel
             }
+            style={nativeCreditTarget}
+            hitSlop={nativeCreditTarget ? 0 : undefined}
             aria-expanded={expanded}
             onPress={onToggle}
             testID="map-credit-toggle"

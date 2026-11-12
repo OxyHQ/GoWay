@@ -1,0 +1,157 @@
+{
+  "samples": 19,
+  "allActivated": true,
+  "targets": [
+    {
+      "kind": "toggle",
+      "edge": "center",
+      "opened": true
+    },
+    {
+      "kind": "toggle",
+      "edge": "top",
+      "opened": true
+    },
+    {
+      "kind": "toggle",
+      "edge": "bottom",
+      "opened": true
+    },
+    {
+      "kind": "toggle",
+      "edge": "left",
+      "opened": true
+    },
+    {
+      "kind": "toggle",
+      "edge": "right",
+      "opened": true
+    },
+    {
+      "kind": "link",
+      "label": "\u00a9 OpenMapTiles",
+      "edge": "center",
+      "activated": true,
+      "destinations": [
+        "https://www.openmaptiles.org/"
+      ]
+    },
+    {
+      "kind": "link",
+      "label": "\u00a9 OpenMapTiles",
+      "edge": "top",
+      "activated": true,
+      "destinations": [
+        "https://www.openmaptiles.org/"
+      ]
+    },
+    {
+      "kind": "link",
+      "label": "\u00a9 OpenMapTiles",
+      "edge": "bottom",
+      "activated": true,
+      "destinations": [
+        "https://www.openmaptiles.org/"
+      ]
+    },
+    {
+      "kind": "link",
+      "label": "\u00a9 OpenMapTiles",
+      "edge": "left",
+      "activated": true,
+      "destinations": [
+        "https://www.openmaptiles.org/"
+      ]
+    },
+    {
+      "kind": "link",
+      "label": "\u00a9 OpenMapTiles",
+      "edge": "right",
+      "activated": true,
+      "destinations": [
+        "https://www.openmaptiles.org/"
+      ]
+    },
+    {
+      "kind": "link",
+      "label": "\u00a9 OpenStreetMap",
+      "edge": "center",
+      "activated": true,
+      "destinations": [
+        "https://www.openstreetmap.org/copyright"
+      ]
+    },
+    {
+      "kind": "link",
+      "label": "\u00a9 OpenStreetMap",
+      "edge": "top",
+      "activated": true,
+      "destinations": [
+        "https://www.openstreetmap.org/copyright"
+      ]
+    },
+    {
+      "kind": "link",
+      "label": "\u00a9 OpenStreetMap",
+      "edge": "bottom",
+      "activated": true,
+      "destinations": [
+        "https://www.openstreetmap.org/copyright"
+      ]
+    },
+    {
+      "kind": "link",
+      "label": "\u00a9 OpenStreetMap",
+      "edge": "left",
+      "activated": true,
+      "destinations": [
+        "https://www.openstreetmap.org/copyright"
+      ]
+    },
+    {
+      "kind": "link",
+      "label": "\u00a9 OpenStreetMap",
+      "edge": "right",
+      "activated": true,
+      "destinations": [
+        "https://www.openstreetmap.org/copyright"
+      ]
+    },
+    {
+      "kind": "link",
+      "label": "\u00a9 Mapterhorn",
+      "edge": "center",
+      "activated": true,
+      "destinations": [
+        "https://goway.to/attribution#elevation"
+      ]
+    },
+    {
+      "kind": "link",
+      "label": "\u00a9 Mapterhorn",
+      "edge": "top",
+      "activated": true,
+      "destinations": [
+        "https://goway.to/attribution#elevation"
+      ]
+    },
+    {
+      "kind": "link",
+      "label": "\u00a9 Mapterhorn",
+      "edge": "bottom",
+      "activated": true,
+      "destinations": [
+        "https://goway.to/attribution#elevation"
+      ]
+    },
+    {
+      "kind": "link",
+      "label": "\u00a9 Mapterhorn",
+      "edge": "left",
+      "activated": true,
+      "destinations": [
+        "https://goway.to/attribution#elevation"
+      ]
+    }
+  ]
+}

@@ -1,0 +1,214 @@
+{
+  "platform": "Android",
+  "device": "Google Pixel 8a",
+  "os": "Android 16/API 36",
+  "serial": "43221JEKB12200",
+  "build": "isolated GoWay Canvas Lab",
+  "test": "CanvasMapProbeTest.legalTargets",
+  "requestedSnap": "peek",
+  "keyboardOpened": false,
+  "result": "passed",
+  "probe": [
+    {
+      "step": "legal-start-0",
+      "width": 1080,
+      "height": 2400,
+      "imeVisible": false,
+      "handleY": 1981,
+      "handleValue": "{\"text\":\"Collapsed\",\"min\":0,\"now\":0,\"max\":2}",
+      "chrome": [
+        {
+          "id": "map-credit",
+          "x": 891,
+          "y": 1833,
+          "width": 168,
+          "height": 137,
+          "visibleRect": "[891,1833][1059,1970]",
+          "globalVisible": true,
+          "shown": true
+        },
+        {
+          "id": "map-credit-toggle",
+          "x": 912,
+          "y": 1838,
+          "width": 126,
+          "height": 126,
+          "visibleRect": "[912,1838][1038,1964]",
+          "globalVisible": true,
+          "shown": true
+        },
+        {
+          "id": "map-scale",
+          "x": 21,
+          "y": 1745,
+          "width": 288,
+          "height": 77,
+          "visibleRect": "[21,1745][309,1822]",
+          "globalVisible": true,
+          "shown": true
+        }
+      ]
+    },
+    {
+      "step": "legal-expanded",
+      "width": 1080,
+      "height": 2400,
+      "imeVisible": false,
+      "handleY": 1981,
+      "handleValue": "{\"text\":\"Collapsed\",\"min\":0,\"now\":0,\"max\":2}",
+      "chrome": [
+        {
+          "id": "map-credit",
+          "x": 21,
+          "y": 1697,
+          "width": 1038,
+          "height": 273,
+          "visibleRect": "[21,1697][1059,1970]",
+          "globalVisible": true,
+          "shown": true
+        },
+        {
+          "id": "map-credit-toggle",
+          "x": 912,
+          "y": 1839,
+          "width": 126,
+          "height": 126,
+          "visibleRect": "[912,1839][1038,1965]",
+          "globalVisible": true,
+          "shown": true
+        },
+        {
+          "id": "map-scale",
+          "x": 21,
+          "y": 1609,
+          "width": 288,
+          "height": 77,
+          "visibleRect": "[21,1609][309,1686]",
+          "globalVisible": true,
+          "shown": true
+        }
+      ]
+    }
+  ],
+  "samples": {
+    "count": 20,
+    "allActivated": true,
+    "items": [
+      {
+        "kind": "toggle",
+        "edge": "center",
+        "opened": true
+      },
+      {
+        "kind": "toggle",
+        "edge": "top",
+        "opened": true
+      },
+      {
+        "kind": "toggle",
+        "edge": "bottom",
+        "opened": true
+      },
+      {
+        "kind": "toggle",
+        "edge": "left",
+        "opened": true
+      },
+      {
+        "kind": "toggle",
+        "edge": "right",
+        "opened": true
+      },
+      {
+        "kind": "link",
+        "edge": "center",
+        "label": "© OpenMapTiles",
+        "activated": true
+      },
+      {
+        "kind": "link",
+        "edge": "top",
+        "label": "© OpenMapTiles",
+        "activated": true
+      },
+      {
+        "kind": "link",
+        "edge": "bottom",
+        "label": "© OpenMapTiles",
+        "activated": true
+      },
+      {
+        "kind": "link",
+        "edge": "left",
+        "label": "© OpenMapTiles",
+        "activated": true
+      },
+      {
+        "kind": "link",
+        "edge": "right",
+        "label": "© OpenMapTiles",
+        "activated": true
+      },
+      {
+        "kind": "link",
+        "edge": "center",
+        "label": "© OpenStreetMap",
+        "activated": true
+      },
+      {
+        "kind": "link",
+        "edge": "top",
+        "label": "© OpenStreetMap",
+        "activated": true
+      },
+      {
+        "kind": "link",
+        "edge": "bottom",
+        "label": "© OpenStreetMap",
+        "activated": true
+      },
+      {
+        "kind": "link",
+        "edge": "left",
+        "label": "© OpenStreetMap",
+        "activated": true
+      },
+      {
+        "kind": "link",
+        "edge": "right",
+        "label": "© OpenStreetMap",
+        "activated": true
+      },
+      {
+        "kind": "link",
+        "edge": "center",
+        "label": "© Mapterhorn",
+        "activated": true
+      },
+      {
+        "kind": "link",
+        "edge": "top",
+        "label": "© Mapterhorn",
+        "activated": true
+      },
+      {
+        "kind": "link",
+        "edge": "bottom",
+        "label": "© Mapterhorn",
+        "activated": true
+      },
+      {
+        "kind": "link",
+        "edge": "left",
+        "label": "© Mapterhorn",
+        "activated": true
+      },
+      {
+        "kind": "link",
+        "edge": "right",
+        "label": "© Mapterhorn",
+        "activated": true
+      }
+    ]
+  }
+}

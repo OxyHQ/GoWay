@@ -1,0 +1,112 @@
+{
+  "browser": "Chromium headless",
+  "viewport": {
+    "width": 390,
+    "height": 844
+  },
+  "boxes": {
+    "map-top-bar": {
+      "x": 0,
+      "y": 0,
+      "width": 390,
+      "height": 112,
+      "right": 390,
+      "bottom": 112,
+      "display": "flex",
+      "visibility": "visible",
+      "pointerEvents": "none"
+    },
+    "map-top-right-stack": {
+      "x": 330,
+      "y": 128,
+      "width": 44,
+      "height": 96,
+      "right": 374,
+      "bottom": 224,
+      "display": "flex",
+      "visibility": "visible",
+      "pointerEvents": "none"
+    },
+    "map-controls": {
+      "x": 182,
+      "y": 344.203125,
+      "width": 192,
+      "height": 44,
+      "right": 374,
+      "bottom": 388.203125,
+      "display": "flex",
+      "visibility": "visible",
+      "pointerEvents": "auto"
+    },
+    "map-credit": {
+      "x": 322,
+      "y": 412.203125,
+      "width": 60,
+      "height": 48,
+      "right": 382,
+      "bottom": 460.203125,
+      "display": "flex",
+      "visibility": "visible",
+      "pointerEvents": "auto"
+    },
+    "map-credit-toggle": {
+      "x": 330,
+      "y": 414.203125,
+      "width": 44,
+      "height": 44,
+      "right": 374,
+      "bottom": 458.203125,
+      "display": "flex",
+      "visibility": "visible",
+      "pointerEvents": "auto"
+    },
+    "map-scale": {
+      "x": 8,
+      "y": 381.203125,
+      "width": 105.9375,
+      "height": 27,
+      "right": 113.9375,
+      "bottom": 408.203125,
+      "display": "flex",
+      "visibility": "visible",
+      "pointerEvents": "auto"
+    },
+    "explore-panel": {
+      "x": 0,
+      "y": 464.20001220703125,
+      "width": 390,
+      "height": 533,
+      "right": 390,
+      "bottom": 997.2000122070312,
+      "display": "flex",
+      "visibility": "visible",
+      "pointerEvents": "auto"
+    },
+    "explore-panel-handle": {
+      "x": 0,
+      "y": 464.20001220703125,
+      "width": 390,
+      "height": 44,
+      "right": 390,
+      "bottom": 508.20001220703125,
+      "display": "flex",
+      "visibility": "visible",
+      "pointerEvents": "auto"
+    },
+    "explore-search": {
+      "x": 46,
+      "y": 516.2000122070312,
+      "width": 292,
+      "height": 36,
+      "right": 338,
+      "bottom": 552.2000122070312,
+      "display": "block",
+      "visibility": "visible",
+      "pointerEvents": "auto"
+    }
+  },
+  "consoleErrors": [
+    "Failed to load resource: the server responded with a status of 503 ()"
+  ],
+  "failedRequests": []
+}

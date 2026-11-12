@@ -1,0 +1,28 @@
+{
+  "viewport": {
+    "width": 390,
+    "height": 844
+  },
+  "drag": {
+    "from": [
+      40,
+      275
+    ],
+    "to": [
+      340,
+      281
+    ],
+    "distancePx": 300
+  },
+  "searchThisArea": {
+    "count": 1,
+    "box": {
+      "x": 118,
+      "y": 128,
+      "width": 154,
+      "height": 40
+    },
+    "visible": true
+  },
+  "errors": []
+}

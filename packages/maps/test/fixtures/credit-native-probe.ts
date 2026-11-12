@@ -17,6 +17,10 @@ mock.module('react-native', () => ({
   View: 'View',
   Pressable: 'Pressable',
   Linking: { openURL: async () => {} },
+  Platform: {
+    OS: 'android',
+    select: (value: { android?: unknown; default?: unknown }) => value.android ?? value.default,
+  },
   StyleSheet: { create: (value: unknown) => value, absoluteFill: {} },
 }));
 mock.module('react-native-reanimated', () => ({
@@ -40,22 +44,42 @@ mock.module(resolve(src, 'MapBrand.tsx'), () => ({ MAP_BRAND_CLEARANCE: 92 }));
 
 const { MapAttribution } = await import('../../src/MapAttribution');
 type FakeElement = {
-  props: { testID?: string; children?: FakeElement; onLayout?: (event: unknown) => void };
+  type?: unknown;
+  props: {
+    testID?: string;
+    children?: FakeElement | FakeElement[];
+    onLayout?: (event: unknown) => void;
+    style?: unknown;
+    hitSlop?: unknown;
+  };
+};
+const walkElements = (value: unknown): FakeElement[] => {
+  if (Array.isArray(value)) return value.flatMap(walkElements);
+  if (!value || typeof value !== 'object' || !('props' in value) || !('type' in value)) return [];
+  const current = value as FakeElement;
+  return [current, ...walkElements(current.props.children)];
 };
 const local: number[] = [];
+let lastTree = {} as FakeElement;
 const render = () => {
-  const tree = (MapAttribution as unknown as (props: unknown) => FakeElement)({
+  lastTree = (MapAttribution as unknown as (props: unknown) => FakeElement)({
     expanded: true,
     onToggle: () => {},
     onHeightChange: (height: number) => local.push(height),
   });
-  const plate = tree.props.children;
+  const plate = lastTree.props.children as FakeElement;
   assert.equal(plate?.props.testID, 'map-credit');
   assert.equal(typeof plate.props.onLayout, 'function');
   return (height: number) => plate.props.onLayout?.({ nativeEvent: { layout: { height } } });
 };
 
 const withoutProvider = render();
+const androidButtons = walkElements(lastTree).filter((element) => element.type === 'Button');
+assert.ok(androidButtons.length >= 2);
+for (const button of androidButtons) {
+  assert.deepEqual(button.props.style, { minHeight: 48, minWidth: 48 });
+  assert.equal(button.props.hitSlop, 0);
+}
 assert.deepEqual(local, []); // The credit is present before the first measurement.
 withoutProvider(62);
 assert.deepEqual(local, [62]);
