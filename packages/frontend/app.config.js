@@ -165,7 +165,7 @@ module.exports = {
             'GoWay reads which way your phone is tilted while you record a street capture. It does not count your steps or track your activity.',
         },
       ],
-      // Dictation and voice calls with Alia (`@alia.onl/sdk`) recognise speech on
+      // Dictation and voice calls with Alia (`@gemies/sdk`) recognise speech on
       // the device; the plugin writes the two iOS purpose strings and the
       // Android RECORD_AUDIO permission.
       [

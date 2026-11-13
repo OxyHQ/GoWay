@@ -25,8 +25,8 @@ import { Avatar } from '@oxy.so/bloom/avatar';
 import { useTheme } from '@oxy.so/bloom/theme';
 import { useClaimTopEdge, windowEdgeGap } from '@oxy.so/bloom/layout';
 import { RiUserLine } from '@oxy.so/bloom/icons/RiUserLine';
-import { AliaChatSheet, type AliaChatSheetRef } from '@alia.onl/sdk';
-import { AliaAvatarIcon } from '@alia.onl/sdk/avatar';
+import { GemieChatSheet, type GemieChatSheetRef } from '@gemies/sdk';
+import { GemieAvatarIcon } from '@gemies/sdk/avatar';
 
 import { GowayLogo } from '@goway.to/maps';
 import { useAuthGate } from '@/lib/authGate';
@@ -49,7 +49,7 @@ export function MapTopBar() {
   const gate = useAuthGate();
   const { user, openAccountDialog } = useOxy();
 
-  const aliaChatRef = useRef<AliaChatSheetRef>(null);
+  const aliaChatRef = useRef<GemieChatSheetRef>(null);
   const aliaWelcomeSuggestions = useMemo(
     () => [
       { id: 'nearby', text: t('map.aliaSuggestion.nearby') },
@@ -83,7 +83,7 @@ export function MapTopBar() {
       {
         id: 'ask-alia',
         label: t('map.askAlia'),
-        icon: AliaAvatarIcon,
+        icon: GemieAvatarIcon,
         onPress: handleAskAlia,
         group: 'discovery',
         priority: 30,
@@ -163,7 +163,7 @@ export function MapTopBar() {
         </Pressable>
       </View>
       {gate.canUsePrivateApi && (
-        <AliaChatSheet
+        <GemieChatSheet
           ref={aliaChatRef}
           clientContext={t('map.aliaClientContext')}
           welcomeSuggestions={aliaWelcomeSuggestions}
