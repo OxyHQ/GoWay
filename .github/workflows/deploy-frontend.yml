@@ -108,7 +108,9 @@ jobs:
         # regenerates `public/vendor/maplibre-gl/<version>/` — gitignored, so it
         # exists in this checkout only because this step runs — and copies all
         # of `public/` into `dist/`, which is how `public/_headers` ships.
-        run: bun run --cwd packages/frontend export:web
+        # `build:web` then runs app-preset's `oxy-web-pwa` on it (manifest
+        # link, theme-color, service worker); CI's dev export skips that step.
+        run: bun run --cwd packages/frontend build:web
         env:
           NODE_ENV: production
           # GoWay's production Oxy client id. A repo VARIABLE, not a secret: the
