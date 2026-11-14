@@ -21,7 +21,7 @@
     "build:contracts": "bun run --cwd packages/contracts build",
     "build:sdk": "bun run --cwd packages/sdk build",
     "build:maps": "bun run --cwd packages/maps build",
-    "build:frontend": "bun run --cwd packages/frontend export:web",
+    "build:frontend": "bun run --cwd packages/frontend build:web",
     "build:backend": "bun run --cwd packages/backend build",
     "web": "bun run --cwd packages/frontend web",
     "android": "bun run --cwd packages/frontend android",
