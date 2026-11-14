@@ -21,8 +21,11 @@ import type { PropsWithChildren } from 'react';
  *
  * ## So how does the brand reach a browser tab
  *
- * Through the two channels that need no HTML from us, both verified in the
- * export:
+ * `export:web` runs app-preset's `oxy-web-pwa` on the export, which writes into
+ * that `index.html` the manifest link (`public/manifest.json`), the
+ * apple-touch-icon, the theme-color pair below (passed on its command line) and
+ * the service worker registration. Besides that, through the two channels that
+ * need no HTML from us, both verified in the export:
  *
  *  - `web.favicon` in `app.config.js`. Expo rasterises it into
  *    `dist/favicon.ico` and injects the one `<link rel="icon">` that the
@@ -48,8 +51,8 @@ export default function Root({ children }: PropsWithChildren) {
         <meta charSet="utf-8" />
         <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
         {/* Startup fallback; Bloom adopts one entry and becomes the runtime owner. */}
-        <meta name="theme-color" content="#faf1f6" media="(prefers-color-scheme: light)" />
-        <meta name="theme-color" content="#100d10" media="(prefers-color-scheme: dark)" />
+        <meta name="theme-color" content="#e3efff" media="(prefers-color-scheme: light)" />
+        <meta name="theme-color" content="#000f1e" media="(prefers-color-scheme: dark)" />
 
         {/* Preferred over the .ico wherever a browser understands it: the mark
             is a heavy-outlined bubble letter that closes up at 16 CSS px, and
