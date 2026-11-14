@@ -35,6 +35,7 @@ bun run validate:agents-md   # byte budget for every AGENTS.md
 - Theme through `BloomThemeProvider`; no hardcoded brand colors or restated Bloom tokens.
 - Gate private API calls on `useAuth().canUsePrivateApi`; only the root `Stack` swaps route groups.
 - Backend auth is `@oxy.so/core/server` only; no app-local auth, bearer parsing or CORS. Call your own API via `oxyServices.createLinkedClient({ baseURL })`.
+- First-party never asks people for permissions: this app acts for a person with `actingFor` on what oxy's first-party registry declares (oxy ADR 0066); permissions, scopes and consent are only for third parties.
 - Every request, response, error code and value set is a zod schema in `packages/contracts`. A route change edits `API_OPERATIONS`, then `bun run openapi`. Never add a `*Schemas.ts` or hand parser.
 - Lists are `{ items, nextCursor }` with fingerprinted cursors (`http/cursor.ts`); errors use the contract's closed codes.
 - Vocabulary labels carry every `LABEL_LANGUAGES` language; read via `localizedLabel`/`matchLanguageTag`, never `locale.startsWith` (`docs/LABEL_TRANSLATIONS.md`).
