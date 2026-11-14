@@ -21,7 +21,7 @@ import type { PropsWithChildren } from 'react';
  *
  * ## So how does the brand reach a browser tab
  *
- * `export:web` runs app-preset's `oxy-web-pwa` on the export, which writes into
+ * `build:web` (the deploy's build) runs app-preset's `oxy-web-pwa` on the export, which writes into
  * that `index.html` the manifest link (`public/manifest.json`), the
  * apple-touch-icon, the theme-color pair below (passed on its command line) and
  * the service worker registration. Besides that, through the two channels that

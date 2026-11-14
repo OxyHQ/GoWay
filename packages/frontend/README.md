@@ -10,6 +10,7 @@ bun run --cwd packages/frontend web        # web dev server
 bun run --cwd packages/frontend typecheck
 bun run --cwd packages/frontend lint
 bun run --cwd packages/frontend export:web # static web export → dist/
+bun run --cwd packages/frontend build:web  # the deploy's build: export:web, then oxy-web-pwa (installable, offline)
 ```
 
 ---
