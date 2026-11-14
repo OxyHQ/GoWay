@@ -23,7 +23,7 @@ import { oxy } from './oxy/server';
 type AuthedSocket = Socket & { user?: { id: string } };
 
 export interface RealtimeOptions {
-  /** Count the connection in Oxy's ecosystem activity (`./platformActivity`). */
+  /** Count the connection in Oxy's ecosystem activity (`startEcosystemTraffic`). */
   observeSocket?: (socket: Socket) => void;
   /**
    * The live layer: attaches the `/live` namespace — PUBLIC, unlike the

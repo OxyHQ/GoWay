@@ -12,7 +12,7 @@
  *     SIGTERM. Closing the HTTP server first lets in-flight requests finish
  *     against a live connection instead of erroring on a socket closed
  *     underneath them.
- *   - REPORT TO OXY LAST. The ecosystem activity publisher (`src/platformActivity`)
+ *   - REPORT TO OXY LAST. The ecosystem activity publisher (`startEcosystemTraffic`)
  *     is constructed before the app so its observer is the first middleware; it
  *     reports this instance online only between listen and the start of a drain,
  *     and is stopped after everything else has closed so the final requests are
@@ -25,13 +25,14 @@
  */
 
 import http from 'node:http';
+import { startEcosystemTraffic } from '@oxy.so/core/server';
 import { createApp } from './src/app';
 import { config } from './src/config';
 import { closePostgres, connectPostgres } from './src/db/postgres';
 import { attachRealtime } from './src/realtime';
 import { liveConfig } from './src/config/live';
 import { createLiveService } from './src/live';
-import { startPlatformActivity } from './src/platformActivity';
+import { workloadCredentials } from './src/oxy/workload';
 import { street3dConfig } from './src/config/street3d';
 import { getDb } from './src/db/postgres';
 import { startScheduler } from './src/street3d/scheduler';
@@ -51,16 +52,20 @@ let shuttingDown = false;
  */
 let serving = false;
 
-// Not started outside ECS — see src/platformActivity.ts. Without a workload
-// identity `activity` is undefined and every observer below is skipped.
-const activity = startPlatformActivity(() => serving);
+// Publishes where an AWS region is configured (or as OXY_ECOSYSTEM_ACTIVITY_ENABLED
+// says); elsewhere the handle is inert and every observer below passes through.
+const activity = startEcosystemTraffic({
+  service: 'goway',
+  ready: () => serving,
+  workloadCredentials,
+});
 // GoWay Live: `null` unless LIVE_SOURCES lists at least one usable source.
 // Built here, started after listen, never a readiness dependency.
 const live = createLiveService({ config: liveConfig, logger: createLogger('live') });
-const app = createApp({ activity: activity?.observeHttp, live });
+const app = createApp({ activity: activity.observeHttp, live });
 const server = http.createServer(app);
 const io = attachRealtime(server, {
-  observeSocket: activity ? (socket) => void activity.observeSocket(socket) : undefined,
+  observeSocket: (socket) => void activity.observeSocket(socket),
   live,
 });
 
@@ -106,7 +111,7 @@ function shutdown(signal: string): void {
   void io.close(() => {
     server.close(() => {
       void closePostgres()
-        .finally(() => activity?.stop())
+        .finally(() => activity.stop())
         .finally(() => {
           clearTimeout(forceExit);
           process.exit(0);
@@ -125,10 +130,7 @@ async function boot(): Promise<void> {
 
   server.listen(config.port, () => {
     serving = true;
-    logger.info(
-      { port: config.port, nodeEnv: config.nodeEnv, oxyActivity: activity ? 'publishing' : 'off' },
-      'GoWay backend listening',
-    );
+    logger.info({ port: config.port, nodeEnv: config.nodeEnv }, 'GoWay backend listening');
     startStreet3d();
     // GoWay's queued Oxy file reference changes and the nightly reconciliation
     // (`oxy/fileReferences`). Always on: nothing to configure, never a readiness dependency.
