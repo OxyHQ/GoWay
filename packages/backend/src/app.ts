@@ -62,7 +62,7 @@ const JSON_BODY_LIMIT = '1mb';
 
 export interface CreateAppOptions {
   /**
-   * The Oxy ecosystem traffic observer (`./platformActivity`). Passed in by
+   * The Oxy ecosystem traffic observer (`startEcosystemTraffic`). Passed in by
    * `server.ts` rather than imported, so an app a test builds publishes nothing.
    */
   activity?: RequestHandler;
