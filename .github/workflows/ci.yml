@@ -370,7 +370,7 @@ jobs:
 
   # quality's hosted twin in the Seldon race: the same name and steps.
   quality-hosted:
-    name: Build, typecheck and lint
+    name: ${{ vars.CI_SELDON_RACE == 'true' && 'Build, typecheck and lint' || 'Build, typecheck and lint (seldon twin, off)' }}
     needs: [race]
     if: ${{ !cancelled() && !failure() && needs.race.outputs.race == 'true' }}
     runs-on: ubuntu-latest
@@ -383,7 +383,7 @@ jobs:
   # quality's rescue: reruns it hosted when its Seldon lane failed (the house
   # network drops connections); a genuine failure fails again.
   quality-rescue:
-    name: Build, typecheck and lint
+    name: ${{ vars.CI_SELDON_RACE == 'true' && 'Build, typecheck and lint' || 'Build, typecheck and lint (seldon rescue, off)' }}
     needs: [quality]
     if: ${{ !cancelled() && needs.quality.result == 'failure' && vars.CI_SELDON_RACE == 'true' && github.run_attempt == 1 && (github.event_name == 'pull_request' || github.event_name == 'merge_group') && !github.event.pull_request.head.repo.fork }}
     runs-on: ubuntu-latest
@@ -457,7 +457,7 @@ jobs:
 
   # gates's hosted twin in the Seldon race: the same name and steps.
   gates-hosted:
-    name: Repository gates
+    name: ${{ vars.CI_SELDON_RACE == 'true' && 'Repository gates' || 'Repository gates (seldon twin, off)' }}
     needs: [race]
     if: ${{ !cancelled() && !failure() && needs.race.outputs.race == 'true' }}
     runs-on: ubuntu-latest
@@ -470,7 +470,7 @@ jobs:
   # gates's rescue: reruns it hosted when its Seldon lane failed (the house
   # network drops connections); a genuine failure fails again.
   gates-rescue:
-    name: Repository gates
+    name: ${{ vars.CI_SELDON_RACE == 'true' && 'Repository gates' || 'Repository gates (seldon rescue, off)' }}
     needs: [gates]
     if: ${{ !cancelled() && needs.gates.result == 'failure' && vars.CI_SELDON_RACE == 'true' && github.run_attempt == 1 && (github.event_name == 'pull_request' || github.event_name == 'merge_group') && !github.event.pull_request.head.repo.fork }}
     runs-on: ubuntu-latest
@@ -536,7 +536,7 @@ jobs:
 
   # webexport's hosted twin in the Seldon race: the same name and steps.
   webexport-hosted:
-    name: Export the web app (development build)
+    name: ${{ vars.CI_SELDON_RACE == 'true' && 'Export the web app (development build)' || 'Export the web app (development build) (seldon twin, off)' }}
     needs: [changes, race]
     if: ${{ needs.race.outputs.race == 'true' && (!cancelled() && !failure() && needs.changes.outputs.web == 'true') }}
     runs-on: ubuntu-latest
@@ -549,7 +549,7 @@ jobs:
   # webexport's rescue: reruns it hosted when its Seldon lane failed (the house
   # network drops connections); a genuine failure fails again.
   webexport-rescue:
-    name: Export the web app (development build)
+    name: ${{ vars.CI_SELDON_RACE == 'true' && 'Export the web app (development build)' || 'Export the web app (development build) (seldon rescue, off)' }}
     needs: [changes, webexport]
     if: ${{ !cancelled() && needs.webexport.result == 'failure' && vars.CI_SELDON_RACE == 'true' && github.run_attempt == 1 && (github.event_name == 'pull_request' || github.event_name == 'merge_group') && !github.event.pull_request.head.repo.fork && (!cancelled() && needs.changes.outputs.web == 'true') }}
     runs-on: ubuntu-latest
@@ -747,7 +747,7 @@ jobs:
 
   # lockfile's hosted twin in the Seldon race: the same name and steps.
   lockfile-hosted:
-    name: Lockfile sync
+    name: ${{ vars.CI_SELDON_RACE == 'true' && 'Lockfile sync' || 'Lockfile sync (seldon twin, off)' }}
     needs: [race]
     if: ${{ !cancelled() && !failure() && needs.race.outputs.race == 'true' }}
     runs-on: ubuntu-latest
@@ -760,7 +760,7 @@ jobs:
   # lockfile's rescue: reruns it hosted when its Seldon lane failed (the house
   # network drops connections); a genuine failure fails again.
   lockfile-rescue:
-    name: Lockfile sync
+    name: ${{ vars.CI_SELDON_RACE == 'true' && 'Lockfile sync' || 'Lockfile sync (seldon rescue, off)' }}
     needs: [lockfile]
     if: ${{ !cancelled() && needs.lockfile.result == 'failure' && vars.CI_SELDON_RACE == 'true' && github.run_attempt == 1 && (github.event_name == 'pull_request' || github.event_name == 'merge_group') && !github.event.pull_request.head.repo.fork }}
     runs-on: ubuntu-latest
@@ -879,7 +879,7 @@ jobs:
 
   # test's hosted twin in the Seldon race: the same name and steps.
   test-hosted:
-    name: Backend tests
+    name: ${{ vars.CI_SELDON_RACE == 'true' && 'Backend tests' || 'Backend tests (seldon twin, off)' }}
     needs: [race]
     if: ${{ !cancelled() && !failure() && needs.race.outputs.race == 'true' }}
     runs-on: ubuntu-latest
@@ -893,7 +893,7 @@ jobs:
   # test's rescue: reruns it hosted when its Seldon lane failed (the house
   # network drops connections); a genuine failure fails again.
   test-rescue:
-    name: Backend tests
+    name: ${{ vars.CI_SELDON_RACE == 'true' && 'Backend tests' || 'Backend tests (seldon rescue, off)' }}
     needs: [test]
     if: ${{ !cancelled() && needs.test.result == 'failure' && vars.CI_SELDON_RACE == 'true' && github.run_attempt == 1 && (github.event_name == 'pull_request' || github.event_name == 'merge_group') && !github.event.pull_request.head.repo.fork }}
     runs-on: ubuntu-latest
