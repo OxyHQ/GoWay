@@ -121,15 +121,74 @@ jobs:
         if: steps.filter.outputs.web == 'true'
         run: bun packages/frontend/scripts/city3dAffected.ts HEAD^1 HEAD >> "$GITHUB_OUTPUT"
 
+  # The Seldon race (OxyHQ/oxy docs/engineering/build-and-deploy.md, CI on
+  # Seldon), opt-in with the repository variable CI_SELDON_RACE=true, on
+  # same-repository pull_request and merge_group runs only. Push and dispatch
+  # runs stay hosted: main deploys from its push run (`deploy` and
+  # `deploy-frontend` below need these jobs' own results). Unset, every job runs
+  # hosted as before and none of these takes a runner. Set, `quality`, `test`
+  # and `webexport` run on seldon-ci and `gates` and `lockfile` on
+  # seldon-ci-light; a lane still queued 3 minutes after it was created gets its
+  # hosted twin (the `-hosted` jobs), the lane that starts first wins and the
+  # finish job cancels the other through its job-level concurrency group. A
+  # Seldon lane that fails, whatever the reason (the house network drops new
+  # connections in bursts), reruns hosted in its `-rescue` job, which fails
+  # again on a genuine failure. CI complete takes the raced jobs' verdict from
+  # the race.
+  #
+  # Hosted on purpose: `city3d` and `devconsole` drive Chromium, whose system
+  # libraries the Seldon image does not carry; `worker` resolves a Python
+  # environment from PyPI, which Seldon's cache does not proxy.
+  race:
+    needs: [changes]
+    if: ${{ !cancelled() && vars.CI_SELDON_RACE == 'true' && github.run_attempt == 1 && (github.event_name == 'pull_request' || github.event_name == 'merge_group') && !github.event.pull_request.head.repo.fork }}
+    uses: OxyHQ/oxy/.github/workflows/seldon-race-start.yml@main
+    permissions:
+      actions: read
+    with:
+      names: |
+        Build, typecheck and lint
+        Repository gates
+        Export the web app (development build)
+        Lockfile sync
+        Backend tests
+
+  race-finish:
+    needs: race
+    # `!cancelled()`: an ancestor skipped on this event must not skip it.
+    if: ${{ !cancelled() && needs.race.outputs.race == 'true' }}
+    uses: OxyHQ/oxy/.github/workflows/seldon-race-finish.yml@main
+    permissions:
+      actions: read
+    with:
+      names: |
+        Build, typecheck and lint
+        Repository gates
+        Export the web app (development build)
+        Lockfile sync
+        Backend tests
+
   quality:
     name: Build, typecheck and lint
-    runs-on: ubuntu-latest
+    runs-on: &seldon-lane ${{ vars.CI_SELDON_RACE == 'true' && github.run_attempt == 1 && (github.event_name == 'pull_request' || github.event_name == 'merge_group') && !github.event.pull_request.head.repo.fork && 'seldon-ci' || 'ubuntu-latest' }}
+    concurrency:
+      group: seldon-race-${{ github.run_id }}-${{ github.run_attempt }}-seldon-Build, typecheck and lint
+    permissions: &race-lane-permissions
+      contents: read
+      actions: read # the Seldon race guard reads this run's jobs
     # Generous on purpose. A suite consuming most of its budget on a GOOD run
     # has no headroom, so ordinary runner contention flips it to a timeout —
     # which GitHub reports as `cancelled`, indistinguishable from a supersession
     # without doing arithmetic on the job's own timestamps.
     timeout-minutes: 30
-    steps:
+    steps: &quality-steps
+      # A lane that starts after its hosted twin waits here to be cancelled (the Seldon race).
+      - &race-guard
+        name: Seldon race guard
+        if: vars.CI_SELDON_RACE == 'true' && !endsWith(github.job, '-rescue')
+        uses: OxyHQ/oxy/.github/actions/seldon-race@main
+        with:
+          mode: guard
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
         with:
@@ -309,11 +368,38 @@ jobs:
         # The build already ran above; this packs what it produced.
         run: bun run smoke:sdk
 
+  # quality's hosted twin in the Seldon race: the same name and steps.
+  quality-hosted:
+    name: ${{ vars.CI_SELDON_RACE == 'true' && 'Build, typecheck and lint' || 'Build, typecheck and lint (seldon twin, off)' }}
+    needs: [race]
+    if: ${{ !cancelled() && !failure() && needs.race.outputs.race == 'true' }}
+    runs-on: ubuntu-latest
+    concurrency:
+      group: seldon-race-${{ github.run_id }}-${{ github.run_attempt }}-hosted-Build, typecheck and lint
+    permissions: *race-lane-permissions
+    timeout-minutes: 30
+    steps: *quality-steps
+
+  # quality's rescue: reruns it hosted when its Seldon lane failed (the house
+  # network drops connections); a genuine failure fails again.
+  quality-rescue:
+    name: ${{ vars.CI_SELDON_RACE == 'true' && 'Build, typecheck and lint' || 'Build, typecheck and lint (seldon rescue, off)' }}
+    needs: [quality]
+    if: ${{ !cancelled() && needs.quality.result == 'failure' && vars.CI_SELDON_RACE == 'true' && github.run_attempt == 1 && (github.event_name == 'pull_request' || github.event_name == 'merge_group') && !github.event.pull_request.head.repo.fork }}
+    runs-on: ubuntu-latest
+    permissions: *race-lane-permissions
+    timeout-minutes: 30
+    steps: *quality-steps
+
   gates:
     name: Repository gates
-    runs-on: ubuntu-latest
+    runs-on: &seldon-lane-light ${{ vars.CI_SELDON_RACE == 'true' && github.run_attempt == 1 && (github.event_name == 'pull_request' || github.event_name == 'merge_group') && !github.event.pull_request.head.repo.fork && 'seldon-ci-light' || 'ubuntu-latest' }}
+    concurrency:
+      group: seldon-race-${{ github.run_id }}-${{ github.run_attempt }}-seldon-Repository gates
+    permissions: *race-lane-permissions
     timeout-minutes: 15
-    steps:
+    steps: &gates-steps
+      - *race-guard
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
         with:
@@ -369,6 +455,29 @@ jobs:
       - name: Verify the production image's build inputs are reviewed
         run: python3 -B .github/scripts/reviewed-image.py check
 
+  # gates's hosted twin in the Seldon race: the same name and steps.
+  gates-hosted:
+    name: ${{ vars.CI_SELDON_RACE == 'true' && 'Repository gates' || 'Repository gates (seldon twin, off)' }}
+    needs: [race]
+    if: ${{ !cancelled() && !failure() && needs.race.outputs.race == 'true' }}
+    runs-on: ubuntu-latest
+    concurrency:
+      group: seldon-race-${{ github.run_id }}-${{ github.run_attempt }}-hosted-Repository gates
+    permissions: *race-lane-permissions
+    timeout-minutes: 15
+    steps: *gates-steps
+
+  # gates's rescue: reruns it hosted when its Seldon lane failed (the house
+  # network drops connections); a genuine failure fails again.
+  gates-rescue:
+    name: ${{ vars.CI_SELDON_RACE == 'true' && 'Repository gates' || 'Repository gates (seldon rescue, off)' }}
+    needs: [gates]
+    if: ${{ !cancelled() && needs.gates.result == 'failure' && vars.CI_SELDON_RACE == 'true' && github.run_attempt == 1 && (github.event_name == 'pull_request' || github.event_name == 'merge_group') && !github.event.pull_request.head.repo.fork }}
+    runs-on: ubuntu-latest
+    permissions: *race-lane-permissions
+    timeout-minutes: 15
+    steps: *gates-steps
+
   # The DEVELOPMENT export both browser gates below drive, built ONCE per run
   # and handed to every leg as an artifact. It was exported four times per run
   # (each `city3d` leg and the `devconsole` job), ~2 min each, from the
@@ -384,9 +493,13 @@ jobs:
     name: Export the web app (development build)
     needs: changes
     if: ${{ !cancelled() && !failure() && needs.changes.outputs.web == 'true' }}
-    runs-on: ubuntu-latest
+    runs-on: *seldon-lane
+    concurrency:
+      group: seldon-race-${{ github.run_id }}-${{ github.run_attempt }}-seldon-Export the web app (development build)
+    permissions: *race-lane-permissions
     timeout-minutes: 20
-    steps:
+    steps: &webexport-steps
+      - *race-guard
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
         with:
@@ -416,8 +529,33 @@ jobs:
           name: web-export-dev
           path: ${{ runner.temp }}/web-export-dev.tgz
           if-no-files-found: error
+          # A rescue replaces whatever its failed Seldon lane uploaded.
+          overwrite: true
           compression-level: 0
           retention-days: 1
+
+  # webexport's hosted twin in the Seldon race: the same name and steps.
+  webexport-hosted:
+    name: ${{ vars.CI_SELDON_RACE == 'true' && 'Export the web app (development build)' || 'Export the web app (development build) (seldon twin, off)' }}
+    needs: [changes, race]
+    if: ${{ needs.race.outputs.race == 'true' && (!cancelled() && !failure() && needs.changes.outputs.web == 'true') }}
+    runs-on: ubuntu-latest
+    concurrency:
+      group: seldon-race-${{ github.run_id }}-${{ github.run_attempt }}-hosted-Export the web app (development build)
+    permissions: *race-lane-permissions
+    timeout-minutes: 20
+    steps: *webexport-steps
+
+  # webexport's rescue: reruns it hosted when its Seldon lane failed (the house
+  # network drops connections); a genuine failure fails again.
+  webexport-rescue:
+    name: ${{ vars.CI_SELDON_RACE == 'true' && 'Export the web app (development build)' || 'Export the web app (development build) (seldon rescue, off)' }}
+    needs: [changes, webexport]
+    if: ${{ !cancelled() && needs.webexport.result == 'failure' && vars.CI_SELDON_RACE == 'true' && github.run_attempt == 1 && (github.event_name == 'pull_request' || github.event_name == 'merge_group') && !github.event.pull_request.head.repo.fork && (!cancelled() && needs.changes.outputs.web == 'true') }}
+    runs-on: ubuntu-latest
+    permissions: *race-lane-permissions
+    timeout-minutes: 20
+    steps: *webexport-steps
 
   # The 3D city's VISIBILITY gate (docs/MAP_NATIVE_3D.md, "The visibility
   # gate"): the real app, exported, in headless Chromium on SwiftShader, over a
@@ -447,8 +585,10 @@ jobs:
   # that failed 39694073332's objects leg before it began.
   city3d:
     name: 3D city visibility (${{ matrix.shard }}/${{ strategy.job-total }})
-    needs: [changes, webexport]
-    if: ${{ !cancelled() && !failure() && needs.changes.outputs.city3d == 'true' }}
+    # The export comes from whichever lane of the Seldon race passed, so each
+    # lane is named and success is required of one of them.
+    needs: [changes, webexport, webexport-hosted, webexport-rescue]
+    if: ${{ !cancelled() && needs.changes.result == 'success' && (needs.webexport.result == 'success' || needs.webexport-hosted.result == 'success' || needs.webexport-rescue.result == 'success') && needs.changes.outputs.city3d == 'true' }}
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -508,8 +648,10 @@ jobs:
   # (playwright-core and the export server only); ~25 s of gate.
   devconsole:
     name: Development console
-    needs: [changes, webexport]
-    if: ${{ !cancelled() && !failure() && needs.changes.outputs.web == 'true' }}
+    # The export comes from whichever lane of the Seldon race passed, so each
+    # lane is named and success is required of one of them.
+    needs: [changes, webexport, webexport-hosted, webexport-rescue]
+    if: ${{ !cancelled() && needs.changes.result == 'success' && (needs.webexport.result == 'success' || needs.webexport-hosted.result == 'success' || needs.webexport-rescue.result == 'success') && needs.changes.outputs.web == 'true' }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -581,7 +723,10 @@ jobs:
 
   lockfile:
     name: Lockfile sync
-    runs-on: ubuntu-latest
+    runs-on: *seldon-lane-light
+    concurrency:
+      group: seldon-race-${{ github.run_id }}-${{ github.run_attempt }}-seldon-Lockfile sync
+    permissions: *race-lane-permissions
     # Its own job, and it CANNOT be folded into `quality`. The gate needs a plain
     # `bun install` to see what the lockfile would become, and `quality` installs
     # with `--frozen-lockfile`; the two cannot share a checkout. (Nor can
@@ -589,7 +734,8 @@ jobs:
     # version bumped without regenerating the lockfile.) The install per fixture
     # is why the budget is larger than the work looks.
     timeout-minutes: 25
-    steps:
+    steps: &lockfile-steps
+      - *race-guard
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
         with:
@@ -599,15 +745,41 @@ jobs:
       - name: Verify bun.lock was committed with its manifest change
         run: bun run check:lockfile
 
+  # lockfile's hosted twin in the Seldon race: the same name and steps.
+  lockfile-hosted:
+    name: ${{ vars.CI_SELDON_RACE == 'true' && 'Lockfile sync' || 'Lockfile sync (seldon twin, off)' }}
+    needs: [race]
+    if: ${{ !cancelled() && !failure() && needs.race.outputs.race == 'true' }}
+    runs-on: ubuntu-latest
+    concurrency:
+      group: seldon-race-${{ github.run_id }}-${{ github.run_attempt }}-hosted-Lockfile sync
+    permissions: *race-lane-permissions
+    timeout-minutes: 25
+    steps: *lockfile-steps
+
+  # lockfile's rescue: reruns it hosted when its Seldon lane failed (the house
+  # network drops connections); a genuine failure fails again.
+  lockfile-rescue:
+    name: ${{ vars.CI_SELDON_RACE == 'true' && 'Lockfile sync' || 'Lockfile sync (seldon rescue, off)' }}
+    needs: [lockfile]
+    if: ${{ !cancelled() && needs.lockfile.result == 'failure' && vars.CI_SELDON_RACE == 'true' && github.run_attempt == 1 && (github.event_name == 'pull_request' || github.event_name == 'merge_group') && !github.event.pull_request.head.repo.fork }}
+    runs-on: ubuntu-latest
+    permissions: *race-lane-permissions
+    timeout-minutes: 25
+    steps: *lockfile-steps
+
   test:
     name: Backend tests
-    runs-on: ubuntu-latest
+    runs-on: *seldon-lane
+    concurrency:
+      group: seldon-race-${{ github.run_id }}-${{ github.run_attempt }}-seldon-Backend tests
+    permissions: *race-lane-permissions
     # x86 REQUIRED, and not a preference. ARM runners (`ubuntu-*-arm`) have no
     # service containers at all, and `postgis/postgis` publishes no arm64 image —
     # either one alone makes the `services:` block below impossible.
     timeout-minutes: 30
 
-    services:
+    services: &test-services
       postgres:
         # The SAME tag docker-compose.postgres.yml pins. `env.POSTGIS_IMAGE`
         # cannot be used here — GitHub does not evaluate `env` in a `services`
@@ -639,7 +811,8 @@ jobs:
           --health-timeout 5s
           --health-retries 5
 
-    steps:
+    steps: &test-steps
+      - *race-guard
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
         with:
@@ -704,6 +877,31 @@ jobs:
           TEST_VALKEY_URL: redis://127.0.0.1:6379
         run: bun run test:backend
 
+  # test's hosted twin in the Seldon race: the same name and steps.
+  test-hosted:
+    name: ${{ vars.CI_SELDON_RACE == 'true' && 'Backend tests' || 'Backend tests (seldon twin, off)' }}
+    needs: [race]
+    if: ${{ !cancelled() && !failure() && needs.race.outputs.race == 'true' }}
+    runs-on: ubuntu-latest
+    concurrency:
+      group: seldon-race-${{ github.run_id }}-${{ github.run_attempt }}-hosted-Backend tests
+    permissions: *race-lane-permissions
+    timeout-minutes: 30
+    services: *test-services
+    steps: *test-steps
+
+  # test's rescue: reruns it hosted when its Seldon lane failed (the house
+  # network drops connections); a genuine failure fails again.
+  test-rescue:
+    name: ${{ vars.CI_SELDON_RACE == 'true' && 'Backend tests' || 'Backend tests (seldon rescue, off)' }}
+    needs: [test]
+    if: ${{ !cancelled() && needs.test.result == 'failure' && vars.CI_SELDON_RACE == 'true' && github.run_attempt == 1 && (github.event_name == 'pull_request' || github.event_name == 'merge_group') && !github.event.pull_request.head.repo.fork }}
+    runs-on: ubuntu-latest
+    permissions: *race-lane-permissions
+    timeout-minutes: 30
+    services: *test-services
+    steps: *test-steps
+
   # THE one status check `main` should require. Everything above reports here.
   #
   # Requiring the test jobs by NAME in branch protection cannot work: a required
@@ -717,15 +915,47 @@ jobs:
   # required check reporting `skipped` — is never satisfied.
   ci-complete:
     name: CI complete
-    needs: [changes, quality, gates, webexport, devconsole, city3d, lockfile, test]
+    # Not race-finish: its reapers run on seldon-ci-light and only follow the
+    # cancellation, so needing it would wait on Seldon.
+    needs:
+      - changes
+      - race
+      - quality
+      - quality-hosted
+      - quality-rescue
+      - gates
+      - gates-hosted
+      - gates-rescue
+      - webexport
+      - webexport-hosted
+      - webexport-rescue
+      - devconsole
+      - city3d
+      - lockfile
+      - lockfile-hosted
+      - lockfile-rescue
+      - test
+      - test-hosted
+      - test-rescue
     if: always()
     runs-on: ubuntu-latest
     timeout-minutes: 5
+    permissions:
+      actions: read # the Seldon race verdict reads this run's jobs
     steps:
+      # Per job name: passed when one of its lanes succeeded and no hosted lane
+      # failed. Whenever the race is on: a rescue can run without the race.
+      - name: Seldon race verdict
+        id: race
+        if: vars.CI_SELDON_RACE == 'true'
+        uses: OxyHQ/oxy/.github/actions/seldon-race@main
+        with:
+          mode: verdict
       - name: Require every CI job to have passed
         env:
           NEEDS_JSON: ${{ toJSON(needs) }}
           EVENT_NAME: ${{ github.event_name }}
+          RACE_VERDICT: ${{ steps.race.outputs.outcome }}
         run: |
           set -euo pipefail
           # Gate on job NAMES, never on counts. "No checks reported" and
@@ -754,9 +984,40 @@ jobs:
             filters_trusted=true
           fi
           echo "event=$EVENT_NAME changes=$changes_result filters_trusted=$filters_trusted"
+          # The Seldon race (see `race` above). Each raced job is a family: the
+          # job, its hosted twin `<job>-hosted` and its rescue `<job>-rescue`.
+          # When the race ran (and the job was not skipped by its filter) or
+          # the rescue ran, the family's result is the race's verdict: a
+          # cancelled loser is not a failure, and a failed Seldon lane is
+          # excused by its twin's or rescue's success. Otherwise the job is
+          # judged alone, and its twin and rescue must have skipped.
+          raced_jobs="quality gates webexport lockfile test"
+          raced=$(printf '%s' "$NEEDS_JSON" | jq -r '.race.outputs.race // ""')
+          race_start=$(printf '%s' "$NEEDS_JSON" | jq -r '.race.result // "MISSING"')
+          printf '%-12s %s (race=%s)\n' race "$race_start" "$raced"
           verdict=0
+          case "$race_start" in success | skipped) ;; *) verdict=1 ;; esac
+          family_result() {
+            local job="$1" own twin rescue
+            own=$(printf '%s' "$NEEDS_JSON" | jq -r --arg j "$job" '.[$j].result // "MISSING"')
+            twin=$(printf '%s' "$NEEDS_JSON" | jq -r --arg j "$job-hosted" '.[$j].result // "MISSING"')
+            rescue=$(printf '%s' "$NEEDS_JSON" | jq -r --arg j "$job-rescue" '.[$j].result // "MISSING"')
+            if [ "$rescue" != skipped ] || { [ "$raced" = true ] && ! { [ "$own" = skipped ] && [ "$twin" = skipped ]; }; }; then
+              echo "${RACE_VERDICT:-no verdict}"
+              return
+            fi
+            if [ "$twin" != skipped ]; then
+              echo "::error::$job-hosted ran although the Seldon race did not: $twin" >&2
+              echo "twin-without-race"
+              return
+            fi
+            echo "$own"
+          }
           for job in $expected; do
-            result=$(printf '%s' "$NEEDS_JSON" | jq -r --arg j "$job" '.[$j].result // "MISSING"')
+            case " $raced_jobs " in
+              *" $job "*) result=$(family_result "$job") ;;
+              *) result=$(printf '%s' "$NEEDS_JSON" | jq -r --arg j "$job" '.[$j].result // "MISSING"') ;;
+            esac
             printf '%-12s %s\n' "$job" "$result"
             # `cancelled` fails. A cancelled job verified nothing, and
             # cancellation is common precisely when several pushes race — the
@@ -775,7 +1036,10 @@ jobs:
           # above. A job added to `needs:` but not to `expected` would otherwise
           # be silently unchecked.
           actual=$(printf '%s' "$NEEDS_JSON" | jq -r 'keys | join(" ")')
-          wanted=$(printf '%s\n' $expected | sort | tr '\n' ' ' | sed 's/ $//')
+          # Plus the race's start and each raced job's twin and rescue.
+          lanes="race"
+          for job in $raced_jobs; do lanes="$lanes $job-hosted $job-rescue"; done
+          wanted=$(printf '%s\n' $expected $lanes | LC_ALL=C sort | tr '\n' ' ' | sed 's/ $//')
           if [ "$actual" != "$wanted" ]; then
             echo "::error::needs holds [$actual] but this gate checks [$wanted]; every job must be in both."
             verdict=1
