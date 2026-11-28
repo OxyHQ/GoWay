@@ -29,11 +29,11 @@ bun run dev:frontend   # Expo alone
 ```
 
 Port **5440** rather than 5432: an Oxy developer machine routinely has several
-backends' local databases up at once, and 5432–5439 and 5441 are already spoken
-for (5432 oxy-api, 5433 Mention, 5434 Homiio/Syra, 5435 Mercaria,
-5436 CrowdSource, 5437 Moovo, 5438 Noted, 5439 Peable, 5441 Schedio). A port
-collision does not fail loudly once a container is running — it connects you to
-somebody else's database and migrates it.
+backends' local databases up at once, and 5432–5439 are already spoken for
+(5432 oxy-api, 5433 Mention, 5434 Homiio/Syra, 5435 Mercaria, 5436 CrowdSource,
+5437 Moovo, 5438 Noted, 5439 Peable). A port collision does not fail loudly
+once a container is running — it connects you to somebody else's database and
+migrates it.
 
 `CREATE EXTENSION postgis` is privileged. On a brand-new database a role with
 `rds_superuser` has to run it once before GoWay's migration role can migrate;

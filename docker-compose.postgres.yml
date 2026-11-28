@@ -53,9 +53,9 @@ services:
       #
       # Every 54xx already spoken for, surveyed across ~/Oxy rather than assumed:
       # 5432 oxy-api, 5433 Mention, 5434 Homiio/Syra, 5435 Mercaria,
-      # 5436 CrowdSource, 5437 Moovo, 5438 Noted, 5439 PEABLE, 5441 Schedio.
+      # 5436 CrowdSource, 5437 Moovo, 5438 Noted, 5439 PEABLE.
       # 5439 was the obvious next free number and is not free; it was measured
-      # listening on this machine. 5440 is the gap between Peable and Schedio.
+      # listening on this machine. 5440 is the first port after Peable.
       # If it is taken on yours, pick the next free port HERE and in
       # packages/backend/.env together.
       - '127.0.0.1:5440:5432'
